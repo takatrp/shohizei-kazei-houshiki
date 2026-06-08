@@ -64,6 +64,7 @@
   .mini{font-size:12px;color:var(--muted)}
   .grid{display:grid;grid-template-columns:1fr;gap:10px}
   @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}}
+  .full-field{grid-column:1/-1}
   .field label,.check-label{display:block;font-size:12px;font-weight:800;color:#334155;margin-bottom:5px}
   input[type="text"],input[type="number"],input[type="date"],select{
     width:100%;border:1px solid var(--line-strong);border-radius:8px;background:#fff;color:var(--ink);
@@ -251,8 +252,8 @@
           <label class="check-row">
             <input type="checkbox" id="specificUnder10m" checked>
             <span>
-              <span class="check-label">特定期間も1,000万円以下、または給与等支払額で判定可能</span>
-              <small>2割特例の可否確認用です。</small>
+              <span class="check-label">特定期間の課税売上高が1,000万円以下、または給与等支払額で判定して免税点制度の適用が制限されない</span>
+              <small>2割特例・3割特例の可否確認用です。</small>
             </span>
           </label>
           <label class="check-row">
@@ -316,25 +317,58 @@
             <label for="purchase8">軽8％課税仕入・経費（インボイスあり）</label>
             <input type="text" inputmode="numeric" class="money js-amount" id="purchase8" placeholder="0">
           </div>
-          <div class="field">
-            <label for="exemptPurchase10">10%免税事業者からの課税仕入</label>
-            <input type="text" inputmode="numeric" class="money js-amount" id="exemptPurchase10" placeholder="0">
+          <div class="notice full-field">
+            免税事業者等からの課税仕入は、課税仕入れを行った時期ごとの控除割合で分けて入力してください。期中に控除割合が変わる場合でも一括判定しません。
           </div>
           <div class="field">
-            <label for="exemptPurchase8">軽8％免税事業者からの課税仕入</label>
-            <input type="text" inputmode="numeric" class="money js-amount" id="exemptPurchase8" placeholder="0">
+            <label for="exemptPurchase80_10">80%対象 10%免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase80_10" placeholder="0">
+            <div class="mini">令和5年10月1日から令和8年9月30日まで</div>
           </div>
           <div class="field">
-            <label for="exemptCreditMode">免税事業者仕入の控除割合</label>
-            <select id="exemptCreditMode">
-              <option value="auto">期間から自動判定</option>
-              <option value="1">100%</option>
-              <option value="0.8">80%</option>
-              <option value="0.7">70%</option>
-              <option value="0.5">50%</option>
-              <option value="0.3">30%</option>
-              <option value="0">0%</option>
-            </select>
+            <label for="exemptPurchase80_8">80%対象 軽8％免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase80_8" placeholder="0">
+            <div class="mini">令和5年10月1日から令和8年9月30日まで</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase70_10">70%対象 10%免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase70_10" placeholder="0">
+            <div class="mini">令和8年10月1日から令和10年9月30日まで</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase70_8">70%対象 軽8％免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase70_8" placeholder="0">
+            <div class="mini">令和8年10月1日から令和10年9月30日まで</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase50_10">50%対象 10%免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase50_10" placeholder="0">
+            <div class="mini">令和10年10月1日から令和12年9月30日まで</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase50_8">50%対象 軽8％免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase50_8" placeholder="0">
+            <div class="mini">令和10年10月1日から令和12年9月30日まで</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase30_10">30%対象 10%免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase30_10" placeholder="0">
+            <div class="mini">令和12年10月1日から令和13年9月30日まで</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase30_8">30%対象 軽8％免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase30_8" placeholder="0">
+            <div class="mini">令和12年10月1日から令和13年9月30日まで</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase0_10">0%対象 10%免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase0_10" placeholder="0">
+            <div class="mini">令和13年10月1日以後</div>
+          </div>
+          <div class="field">
+            <label for="exemptPurchase0_8">0%対象 軽8％免税事業者からの課税仕入</label>
+            <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase0_8" placeholder="0">
+            <div class="mini">令和13年10月1日以後</div>
           </div>
           <div class="field">
             <label for="creditPercent">本則で控除できる仕入税額割合</label>
@@ -390,7 +424,7 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r1</span> ｜
+    <span>r2</span> ｜
     <span id="footerDate"></span>
     <div>
       参考：
@@ -407,7 +441,7 @@
 'use strict';
 
 const STORAGE_KEY = 'shohizeiKazeiHoushiki.v1';
-const TODAY_LABEL = '2026-06-08';
+const TODAY_LABEL = '2026-06-09';
 const BUSINESS_TYPES = [
   { key:'type1', name:'第1種', detail:'卸売業', deemed:0.90 },
   { key:'type2', name:'第2種', detail:'小売業・飲食料品農林漁業', deemed:0.80 },
@@ -424,11 +458,12 @@ const METHOD_LABELS = {
   special3: '3割特例'
 };
 
-const EXEMPT_PURCHASE_CREDIT_PERIODS = [
-  { start:'2023-10-01', end:'2026-09-30', ratio:0.80 },
-  { start:'2026-10-01', end:'2028-09-30', ratio:0.70 },
-  { start:'2028-10-01', end:'2030-09-30', ratio:0.50 },
-  { start:'2030-10-01', end:'2031-09-30', ratio:0.30 }
+const EXEMPT_PURCHASE_BUCKETS = [
+  { key:'80', label:'80%対象', range:'令和5年10月1日から令和8年9月30日まで', ratio:0.80 },
+  { key:'70', label:'70%対象', range:'令和8年10月1日から令和10年9月30日まで', ratio:0.70 },
+  { key:'50', label:'50%対象', range:'令和10年10月1日から令和12年9月30日まで', ratio:0.50 },
+  { key:'30', label:'30%対象', range:'令和12年10月1日から令和13年9月30日まで', ratio:0.30 },
+  { key:'0', label:'0%対象', range:'令和13年10月1日以後', ratio:0 }
 ];
 
 const $ = id => document.getElementById(id);
@@ -522,8 +557,7 @@ function getContext(){
     specificUnder10m: $('specificUnder10m').checked,
     noSpecialExclusion: $('noSpecialExclusion').checked,
     simpleBaseUnder50m: $('simpleBaseUnder50m').checked,
-    simpleNoticeReady: $('simpleNoticeReady').checked,
-    exemptCreditMode: $('exemptCreditMode').value
+    simpleNoticeReady: $('simpleNoticeReady').checked
   };
 }
 
@@ -552,6 +586,7 @@ function getEligibility(ctx){
   if(!ctx.invoiceRegistered) threeReasons.push('インボイス登録がありません');
   if(!ctx.invoiceTransition) threeReasons.push('インボイス登録を機に課税事業者となった期間ではありません');
   if(!ctx.baseUnder10m) threeReasons.push('基準期間の課税売上高が1,000万円超です');
+  if(!ctx.specificUnder10m) threeReasons.push('特定期間の要件確認が必要です');
   if(!ctx.noSpecialExclusion) threeReasons.push('適用除外に該当する可能性があります');
 
   const simpleReasons = [];
@@ -585,65 +620,66 @@ function collectSales(){
   return { rows, totalAmount, totalTax, deemedCredit };
 }
 
-function getExemptPurchaseCredit(ctx){
-  if(ctx.exemptCreditMode !== 'auto'){
-    const ratio = clamp(Number(ctx.exemptCreditMode), 0, 1);
-    return { ratio, label:`手動 ${percent(ratio)}`, crossesBoundary:false };
-  }
-  const end = ctx.end || TODAY_LABEL;
-  let ratio = 0;
-  let label = '自動 0%';
-  if(end < '2023-10-01'){
-    ratio = 1;
-    label = '自動 100%';
-  }else{
-    const period = EXEMPT_PURCHASE_CREDIT_PERIODS.find(item => end >= item.start && end <= item.end);
-    if(period){
-      ratio = period.ratio;
-      label = `自動 ${percent(ratio)}`;
-    }
-  }
-  const crossesBoundary = EXEMPT_PURCHASE_CREDIT_PERIODS.some(item => {
-    return ctx.start && ctx.end && ctx.start < item.start && ctx.end >= item.start;
-  });
-  return { ratio, label, crossesBoundary };
+function exemptPurchaseInputId(bucketKey, rate){
+  return `exemptPurchase${bucketKey}_${rate}`;
 }
 
-function calcExemptCreditLabel(exemptCredit, purchases){
-  if(!purchases.exemptTotalAmount) return 'なし';
-  return `${yen(purchases.exemptTax)} × ${exemptCredit.label}`;
+function getExemptPurchaseInputIds(){
+  return EXEMPT_PURCHASE_BUCKETS.flatMap(bucket => [
+    exemptPurchaseInputId(bucket.key, '10'),
+    exemptPurchaseInputId(bucket.key, '8')
+  ]);
+}
+
+function collectExemptPurchases(){
+  let totalAmount = 0;
+  let totalTax = 0;
+  let creditableTax = 0;
+  const buckets = EXEMPT_PURCHASE_BUCKETS.map(bucket => {
+    const amount10 = parseNumber($(exemptPurchaseInputId(bucket.key, '10')).value);
+    const amount8 = parseNumber($(exemptPurchaseInputId(bucket.key, '8')).value);
+    const tax10 = taxFromAmount(amount10, 10);
+    const tax8 = taxFromAmount(amount8, 8);
+    const rowAmount = amount10 + amount8;
+    const rowTax = tax10 + tax8;
+    const rowCreditableTax = rowTax * bucket.ratio;
+    totalAmount += rowAmount;
+    totalTax += rowTax;
+    creditableTax += rowCreditableTax;
+    return { ...bucket, amount10, amount8, tax10, tax8, rowAmount, rowTax, rowCreditableTax };
+  });
+  return { buckets, totalAmount, totalTax, creditableTax };
+}
+
+function calcExemptCreditLabel(purchases){
+  const used = purchases.exemptBuckets.filter(bucket => bucket.rowAmount || bucket.rowTax);
+  if(!used.length) return 'なし';
+  return used.map(bucket => `${bucket.label} ${yen(bucket.rowTax)} × ${percent(bucket.ratio)}`).join('、');
 }
 
 function collectPurchases(){
   const amount10 = parseNumber($('purchase10').value);
   const amount8 = parseNumber($('purchase8').value);
-  const exemptAmount10 = parseNumber($('exemptPurchase10').value);
-  const exemptAmount8 = parseNumber($('exemptPurchase8').value);
+  const exemptPurchases = collectExemptPurchases();
   const tax10 = taxFromAmount(amount10, 10);
   const tax8 = taxFromAmount(amount8, 8);
-  const exemptTax10 = taxFromAmount(exemptAmount10, 10);
-  const exemptTax8 = taxFromAmount(exemptAmount8, 8);
   const invoiceTotalAmount = amount10 + amount8;
-  const exemptTotalAmount = exemptAmount10 + exemptAmount8;
   const invoiceTax = tax10 + tax8;
-  const exemptTax = exemptTax10 + exemptTax8;
-  const totalAmount = invoiceTotalAmount + exemptTotalAmount;
-  const totalTax = invoiceTax + exemptTax;
+  const totalAmount = invoiceTotalAmount + exemptPurchases.totalAmount;
+  const totalTax = invoiceTax + exemptPurchases.totalTax;
   const creditRatio = clamp(parseNumber($('creditPercent').value) / 100, 0, 1);
   const adjustment = parseNumber($('regularAdjustment').value);
   return {
     amount10,
     amount8,
-    exemptAmount10,
-    exemptAmount8,
     tax10,
     tax8,
-    exemptTax10,
-    exemptTax8,
     invoiceTotalAmount,
-    exemptTotalAmount,
+    exemptBuckets: exemptPurchases.buckets,
+    exemptTotalAmount: exemptPurchases.totalAmount,
     invoiceTax,
-    exemptTax,
+    exemptTax: exemptPurchases.totalTax,
+    exemptCreditableTax: exemptPurchases.creditableTax,
     totalAmount,
     totalTax,
     creditRatio,
@@ -656,8 +692,7 @@ function calculate(){
   const eligibility = getEligibility(ctx);
   const sales = collectSales();
   const purchases = collectPurchases();
-  const exemptCredit = getExemptPurchaseCredit(ctx);
-  const creditablePurchaseTax = purchases.invoiceTax + purchases.exemptTax * exemptCredit.ratio;
+  const creditablePurchaseTax = purchases.invoiceTax + purchases.exemptCreditableTax;
   const regularCredit = creditablePurchaseTax * purchases.creditRatio;
   const regularAmount = sales.totalTax - regularCredit + purchases.adjustment;
   const simplifiedAmount = sales.totalTax - sales.deemedCredit;
@@ -670,7 +705,7 @@ function calculate(){
       amount:regularAmount,
       eligible:true,
       status:'候補',
-      reason:`売上税額 ${yen(sales.totalTax)} - 仕入控除 ${yen(regularCredit)}（免税事業者仕入 ${calcExemptCreditLabel(exemptCredit, purchases)}）+ 調整 ${yen(purchases.adjustment)}`,
+      reason:`売上税額 ${yen(sales.totalTax)} - 仕入控除 ${yen(regularCredit)}（免税事業者仕入 ${calcExemptCreditLabel(purchases)}）+ 調整 ${yen(purchases.adjustment)}`,
       include:hasSales
     },
     {
@@ -700,7 +735,7 @@ function calculate(){
   ];
   const valid = methods.filter(method => method.include);
   const sorted = valid.slice().sort((a,b) => a.amount - b.amount);
-  return { ctx, eligibility, sales, purchases, exemptCredit, creditablePurchaseTax, regularCredit, methods, valid, sorted, best: sorted[0] || null };
+  return { ctx, eligibility, sales, purchases, creditablePurchaseTax, regularCredit, methods, valid, sorted, best: sorted[0] || null };
 }
 
 function renderSalesTax(rows){
@@ -717,7 +752,7 @@ function renderSummary(calc){
     ['課税仕入合計', yen(calc.purchases.totalAmount).replace('円','')],
     ['仕入税額', yen(calc.purchases.totalTax)],
     ['免税事業者仕入', yen(calc.purchases.exemptTotalAmount).replace('円','')],
-    ['免税仕入控除割合', calc.exemptCredit.label],
+    ['免税仕入控除税額', yen(calc.purchases.exemptCreditableTax)],
     ['控除対象仕入税額', yen(calc.creditablePurchaseTax)],
     ['本則控除率', (calc.purchases.creditRatio * 100).toFixed(1).replace(/\.0$/,'') + '%'],
     ['売上税額率', taxableSalesRatio ? (taxableSalesRatio * 100).toFixed(2) + '%' : '-']
@@ -764,16 +799,22 @@ function renderMethodCards(calc){
     ].filter(Boolean).join(' ');
     const diff = calc.best && method.include ? method.amount - calc.best.amount : null;
     const diffText = diff === null ? '' : diff === 0 ? '最有利' : `${yen(diff)} 多い`;
+    const amountHtml = method.eligible
+      ? `<div class="method-amount ${amountClass(method.amount)}">${method.amount < 0 ? '還付 ' : ''}${yen(method.amount)}</div>`
+      : '<div class="method-amount">適用不可</div>';
+    const barHtml = method.eligible
+      ? `<div class="bar ${isRefund ? 'refund' : ''}" aria-hidden="true"><span style="width:${barWidth}%"></span></div>`
+      : '';
     return `
       <article class="${cardClass}">
         <div class="method-head">
           <div class="method-name">${escapeHtml(METHOD_LABELS[method.key])}</div>
           <span class="status ${statusClass}">${isBest ? '最有利' : escapeHtml(method.status)}</span>
         </div>
-        <div class="method-amount ${amountClass(method.amount)}">${method.amount < 0 ? '還付 ' : ''}${yen(method.amount)}</div>
+        ${amountHtml}
         <div class="method-reason">${escapeHtml(method.reason || '')}</div>
         <div class="method-reason">${diffText}</div>
-        <div class="bar ${isRefund ? 'refund' : ''}" aria-hidden="true"><span style="width:${barWidth}%"></span></div>
+        ${barHtml}
       </article>
     `;
   }).join('');
@@ -785,9 +826,6 @@ function renderEligibilityNotice(calc){
   if(!calc.eligibility.special2.ok) messages.push('2割特例: ' + calc.eligibility.special2.reasons.join(' / '));
   if(!calc.eligibility.special3.ok) messages.push('3割特例: ' + calc.eligibility.special3.reasons.join(' / '));
   if(!calc.eligibility.simplified.ok) messages.push('簡易課税: ' + calc.eligibility.simplified.reasons.join(' / '));
-  if(calc.purchases.exemptTotalAmount && calc.exemptCredit.crossesBoundary){
-    messages.push('免税事業者からの課税仕入: 課税期間が控除割合の切替日をまたいでいます。必要に応じて控除割合を手動で選んでください。');
-  }
   if(!messages.length){
     messages.push('現在のチェック条件では、本則課税・簡易課税・2割特例を候補に含めています。3割特例は令和9年分・令和10年分の個人事業者向けです。');
   }
@@ -804,14 +842,14 @@ function buildSummaryText(calc){
   lines.push(`課税仕入合計: ${yen(calc.purchases.totalAmount)}`);
   lines.push(`仕入税額: ${yen(calc.purchases.totalTax)}`);
   lines.push(`免税事業者仕入: ${yen(calc.purchases.exemptTotalAmount)}`);
-  lines.push(`免税事業者仕入の控除割合: ${calc.exemptCredit.label}`);
+  lines.push(`免税事業者仕入の控除対象税額: ${yen(calc.purchases.exemptCreditableTax)}`);
   lines.push(`控除対象仕入税額: ${yen(calc.creditablePurchaseTax)}`);
   if(calc.best){
     lines.push(`最有利見込み: ${METHOD_LABELS[calc.best.key]} (${yen(calc.best.amount)})`);
   }
   lines.push('');
   calc.methods.forEach(method => {
-    lines.push(`${METHOD_LABELS[method.key]}: ${method.eligible ? '候補' : '要件外'} / ${yen(method.amount)} / ${method.reason}`);
+    lines.push(`${METHOD_LABELS[method.key]}: ${method.eligible ? `候補 / ${yen(method.amount)}` : '適用不可'} / ${method.reason}`);
   });
   return lines.join('\n');
 }
@@ -829,7 +867,7 @@ function downloadCsv(calc){
     ['インボイスあり課税仕入', Math.round(calc.purchases.invoiceTotalAmount)],
     ['免税事業者からの課税仕入', Math.round(calc.purchases.exemptTotalAmount)],
     ['免税事業者仕入の税額', Math.round(calc.purchases.exemptTax)],
-    ['免税事業者仕入の控除割合', calc.exemptCredit.label],
+    ['免税事業者仕入の控除対象税額', Math.round(calc.purchases.exemptCreditableTax)],
     ['控除対象仕入税額', Math.round(calc.creditablePurchaseTax)],
     ['本則仕入控除額', Math.round(calc.regularCredit)],
     ['本則控除率', calc.purchases.creditRatio],
@@ -837,7 +875,14 @@ function downloadCsv(calc){
     ['方式','適用可否','概算納付額','計算メモ']
   ];
   calc.methods.forEach(method => {
-    rows.push([METHOD_LABELS[method.key], method.eligible ? '候補' : '要件外', Math.round(method.amount), method.reason]);
+    rows.push([METHOD_LABELS[method.key], method.eligible ? '候補' : '要件外', method.eligible ? Math.round(method.amount) : '適用不可', method.reason]);
+  });
+  rows.push([]);
+  rows.push(['免税事業者仕入区分','10%仕入','軽8％仕入','仕入税額','控除割合','控除対象税額']);
+  calc.purchases.exemptBuckets.forEach(bucket => {
+    if(bucket.rowAmount || bucket.rowTax){
+      rows.push([`${bucket.label} ${bucket.range}`, Math.round(bucket.amount10), Math.round(bucket.amount8), Math.round(bucket.rowTax), bucket.ratio, Math.round(bucket.rowCreditableTax)]);
+    }
   });
   rows.push([]);
   rows.push(['事業区分','10%売上','軽8％売上','売上税額','みなし仕入率']);
@@ -862,8 +907,9 @@ function downloadCsv(calc){
 function saveState(){
   const ids = [
     'periodStart','periodEnd','invoiceRegistered','invoiceTransition','baseUnder10m','specificUnder10m',
-    'noSpecialExclusion','simpleBaseUnder50m','simpleNoticeReady','purchase10','purchase8','exemptPurchase10',
-    'exemptPurchase8','exemptCreditMode','creditPercent','regularAdjustment'
+    'noSpecialExclusion','simpleBaseUnder50m','simpleNoticeReady','purchase10','purchase8',
+    ...getExemptPurchaseInputIds(),
+    'creditPercent','regularAdjustment'
   ];
   const data = {};
   ids.forEach(id => {
@@ -921,7 +967,6 @@ function resetAll(){
   ['invoiceRegistered','invoiceTransition','baseUnder10m','specificUnder10m','noSpecialExclusion','simpleBaseUnder50m','simpleNoticeReady'].forEach(id => {
     $(id).checked = true;
   });
-  $('exemptCreditMode').value = 'auto';
   $('creditPercent').value = '100';
   update();
 }

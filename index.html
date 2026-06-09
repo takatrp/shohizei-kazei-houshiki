@@ -427,7 +427,7 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r3</span> ｜
+    <span>r4</span> ｜
     <span id="footerDate"></span>
     <div>
       参考：
@@ -614,9 +614,16 @@ function baseUnder10mReason(ctx){
 }
 
 function specificUnder10mReason(ctx){
-  return ctx.specificInputEntered
-    ? '特定期間の要件により免税点制度の適用が制限されます'
-    : '特定期間の課税売上高または給与等支払額を入力してください';
+  if(!ctx.specificInputEntered){
+    return '特定期間の課税売上高または給与等支払額を入力してください';
+  }
+  if(ctx.specificSalesEntered && ctx.specificTaxableSales > 10000000 && !ctx.specificPayrollEntered){
+    return '特定期間の給与等支払額を入力してください';
+  }
+  if(ctx.specificPayrollEntered && ctx.specificPayrollAmount > 10000000 && !ctx.specificSalesEntered){
+    return '特定期間の課税売上高を入力してください';
+  }
+  return '特定期間の要件により免税点制度の適用が制限されます';
 }
 
 function simpleBaseUnder50mReason(ctx){
@@ -625,11 +632,18 @@ function simpleBaseUnder50mReason(ctx){
     : '基準期間の課税売上高を入力してください';
 }
 
+function individualCalendarYearReason(){
+  return '個人事業者で暦年以外の課税期間が入力されています（課税期間短縮等に該当するものとして特例候補から外します）';
+}
+
 function getEligibility(ctx){
   const periodValid = ctx.start && ctx.end && ctx.start <= ctx.end;
   const twoReasons = [];
   if(!periodValid || !periodIncludes(ctx.start, ctx.end, '2023-10-01', '2026-09-30')){
     twoReasons.push('対象期間外です');
+  }
+  if(ctx.entity === 'individual' && !ctx.individualCalendarYear){
+    twoReasons.push(individualCalendarYearReason());
   }
   if(!ctx.invoiceRegistered) twoReasons.push('インボイス登録がありません');
   if(!ctx.invoiceTransition) twoReasons.push('インボイス登録を機に課税事業者となった期間ではありません');
@@ -640,7 +654,7 @@ function getEligibility(ctx){
   const threeReasons = [];
   if(ctx.entity !== 'individual') threeReasons.push('法人は対象外です');
   if(ctx.entity === 'individual' && !ctx.individualCalendarYear){
-    threeReasons.push('個人事業者の課税期間が暦年（1月1日から12月31日）ではありません');
+    threeReasons.push(individualCalendarYearReason());
   }
   if(!periodValid || !periodIncludes(ctx.start, ctx.end, '2027-01-01', '2028-12-31')){
     threeReasons.push('令和9年分・令和10年分ではありません');

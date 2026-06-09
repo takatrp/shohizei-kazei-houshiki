@@ -148,6 +148,8 @@
   .notice.warn{background:var(--warn-bg);border-color:#ffd589;color:#6f3f04}
   .notice.bad{background:var(--bad-bg);border-color:#ffc1ba;color:#7f1d1d}
   .period-inline-notice{margin-top:8px;font-weight:800}
+  .major-warning{border-width:2px;font-size:13px;font-weight:800}
+  .major-warning strong{display:block;color:#5f3402;font-size:14px;margin-bottom:4px}
   .notice ul{margin:6px 0 0 18px;padding:0}
   .notice li{margin:3px 0}
   .footer{
@@ -228,6 +230,15 @@
           <label for="modeTaxExcluded">税抜</label>
         </div>
 
+        <h3>税率モード</h3>
+        <div class="segmented">
+          <input type="radio" name="taxScenario" id="taxScenarioCurrent" value="current" checked>
+          <label for="taxScenarioCurrent">現行（軽8％）</label>
+          <input type="radio" name="taxScenario" id="taxScenarioFood1" value="food1">
+          <label for="taxScenarioFood1">試算（食料品1％）</label>
+        </div>
+        <div class="notice warn" id="taxScenarioNotice" style="display:none;margin-top:8px"></div>
+
         <h3>特例・簡易課税の判定条件</h3>
         <div class="checks">
           <label class="check-row">
@@ -295,7 +306,7 @@
               <tr>
                 <th>事業区分</th>
                 <th class="num">10%売上</th>
-                <th class="num">軽8％売上</th>
+                <th class="num">軽8％対象売上</th>
                 <th class="num">売上税額</th>
               </tr>
             </thead>
@@ -318,7 +329,7 @@
             <input type="text" inputmode="numeric" class="money js-amount" id="purchase10" placeholder="0">
           </div>
           <div class="field">
-            <label for="purchase8">軽8％課税仕入・経費（インボイスあり）</label>
+            <label for="purchase8">軽8％対象課税仕入・経費（インボイスあり）</label>
             <input type="text" inputmode="numeric" class="money js-amount" id="purchase8" placeholder="0">
           </div>
           <div class="notice full-field">
@@ -411,12 +422,16 @@
           <h2>確認メモ</h2>
           <span class="mini" id="lastUpdatedLabel"></span>
         </div>
-        <div class="notice warn" id="eligibilityNotice"></div>
+        <div class="notice warn major-warning">
+          <strong>重要：簡易課税の2年継続適用に注意</strong>
+          簡易課税を選択すると、原則として2年間は継続適用となり、本則課税へすぐ戻れない場合があります。高額資産の取得、課税売上割合、設備投資予定、免税事業者仕入の影響も含めて、選択前に必ず個別確認してください。
+        </div>
+        <div class="notice warn" id="eligibilityNotice" style="margin-top:10px"></div>
         <div class="notice" style="margin-top:10px">
           <ul>
             <li>本則課税は、インボイス保存、免税事業者からの課税仕入、課税売上割合、個別対応方式・一括比例配分方式、調整対象固定資産などで変動します。</li>
             <li>免税事業者からの課税仕入は控除割合を概算反映します。1事業者ごとの年間・事業年度1億円超の制限などは個別確認してください。</li>
-            <li>簡易課税は選択届出と事業区分の判定が重要で、原則2年間は継続適用です。</li>
+            <li>簡易課税は選択届出と事業区分の判定が重要です。上記の2年継続適用も確認してください。</li>
             <li>このツールは方式比較のための概算です。申告書作成時は帳簿・届出状況・国税庁手引きで確認してください。</li>
           </ul>
         </div>
@@ -429,7 +444,7 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r5</span> ｜
+    <span>r6</span> ｜
     <span id="footerDate"></span>
     <div>
       参考：
@@ -462,6 +477,19 @@ const METHOD_LABELS = {
   simplified: '簡易課税',
   special2: '2割特例',
   special3: '3割特例'
+};
+
+const TAX_SCENARIOS = {
+  current: {
+    label:'現行税率（10％・軽8％）',
+    reducedRate:8,
+    notice:'現行の軽減税率8％で計算します。'
+  },
+  food1: {
+    label:'試算：食料品等1％',
+    reducedRate:1,
+    notice:'未施行の議論段階の試算です。軽8％対象欄に入力した売上・仕入を1％として計算します。外食、対象品目、経過措置、返品、レジ・会計処理などは個別確認してください。'
+  }
 };
 
 const EXEMPT_PURCHASE_BUCKETS = [
@@ -539,6 +567,19 @@ function percent(value){
   return (value * 100).toFixed(0) + '%';
 }
 
+function taxScenarioKey(){
+  const key = document.querySelector('input[name="taxScenario"]:checked')?.value || 'current';
+  return TAX_SCENARIOS[key] ? key : 'current';
+}
+
+function taxScenarioConfig(key){
+  return TAX_SCENARIOS[key] || TAX_SCENARIOS.current;
+}
+
+function taxRateLabel(rate){
+  return `${rate}%`;
+}
+
 function clamp(value, min, max){
   return Math.min(max, Math.max(min, value));
 }
@@ -568,6 +609,8 @@ function getContext(){
   const start = $('periodStart').value;
   const end = $('periodEnd').value;
   const entity = document.querySelector('input[name="entityType"]:checked')?.value || 'individual';
+  const scenarioKey = taxScenarioKey();
+  const scenario = taxScenarioConfig(scenarioKey);
   const baseTaxableSales = amountValue('baseTaxableSales');
   const specificTaxableSales = amountValue('specificTaxableSales');
   const specificPayrollAmount = amountValue('specificPayrollAmount');
@@ -586,6 +629,9 @@ function getContext(){
     end,
     entity,
     amountMode: document.querySelector('input[name="amountMode"]:checked')?.value || 'included',
+    taxScenario: scenarioKey,
+    taxScenarioLabel: scenario.label,
+    reducedRate: scenario.reducedRate,
     invoiceRegistered: $('invoiceRegistered').checked,
     invoiceTransition: $('invoiceTransition').checked,
     baseTaxableSales,
@@ -679,7 +725,7 @@ function getEligibility(ctx){
   };
 }
 
-function collectSales(){
+function collectSales(ctx){
   let totalAmount = 0;
   let totalTax = 0;
   let deemedCredit = 0;
@@ -687,7 +733,7 @@ function collectSales(){
     const amount10 = parseNumber($(type.key + 'Sale10').value);
     const amount8 = parseNumber($(type.key + 'Sale8').value);
     const tax10 = taxFromAmount(amount10, 10);
-    const tax8 = taxFromAmount(amount8, 8);
+    const tax8 = taxFromAmount(amount8, ctx.reducedRate);
     const rowTax = tax10 + tax8;
     const rowAmount = amount10 + amount8;
     totalAmount += rowAmount;
@@ -709,7 +755,7 @@ function getExemptPurchaseInputIds(){
   ]);
 }
 
-function collectExemptPurchases(){
+function collectExemptPurchases(ctx){
   let totalAmount = 0;
   let totalTax = 0;
   let creditableTax = 0;
@@ -717,7 +763,7 @@ function collectExemptPurchases(){
     const amount10 = parseNumber($(exemptPurchaseInputId(bucket.key, '10')).value);
     const amount8 = parseNumber($(exemptPurchaseInputId(bucket.key, '8')).value);
     const tax10 = taxFromAmount(amount10, 10);
-    const tax8 = taxFromAmount(amount8, 8);
+    const tax8 = taxFromAmount(amount8, ctx.reducedRate);
     const rowAmount = amount10 + amount8;
     const rowTax = tax10 + tax8;
     const rowCreditableTax = rowTax * bucket.ratio;
@@ -735,12 +781,12 @@ function calcExemptCreditLabel(purchases){
   return used.map(bucket => `${bucket.label} ${yen(bucket.rowTax)} × ${percent(bucket.ratio)}`).join('、');
 }
 
-function collectPurchases(){
+function collectPurchases(ctx){
   const amount10 = parseNumber($('purchase10').value);
   const amount8 = parseNumber($('purchase8').value);
-  const exemptPurchases = collectExemptPurchases();
+  const exemptPurchases = collectExemptPurchases(ctx);
   const tax10 = taxFromAmount(amount10, 10);
-  const tax8 = taxFromAmount(amount8, 8);
+  const tax8 = taxFromAmount(amount8, ctx.reducedRate);
   const invoiceTotalAmount = amount10 + amount8;
   const invoiceTax = tax10 + tax8;
   const totalAmount = invoiceTotalAmount + exemptPurchases.totalAmount;
@@ -768,8 +814,8 @@ function collectPurchases(){
 function calculate(){
   const ctx = getContext();
   const eligibility = getEligibility(ctx);
-  const sales = collectSales();
-  const purchases = collectPurchases();
+  const sales = collectSales(ctx);
+  const purchases = collectPurchases(ctx);
   const creditablePurchaseTax = purchases.invoiceTax + purchases.exemptCreditableTax;
   const regularCredit = creditablePurchaseTax * purchases.creditRatio;
   const regularAmount = sales.totalTax - regularCredit + purchases.adjustment;
@@ -829,9 +875,19 @@ function renderPeriodInlineNotice(calc){
   notice.textContent = show ? individualCalendarYearReason() : '';
 }
 
+function renderTaxScenarioNotice(calc){
+  const notice = $('taxScenarioNotice');
+  const scenario = taxScenarioConfig(calc.ctx.taxScenario);
+  const isSimulation = calc.ctx.taxScenario !== 'current';
+  notice.style.display = isSimulation ? '' : 'none';
+  notice.textContent = isSimulation ? scenario.notice : '';
+}
+
 function renderSummary(calc){
   const taxableSalesRatio = calc.sales.totalAmount ? calc.sales.totalTax / calc.sales.totalAmount : 0;
   $('taxSummary').innerHTML = [
+    ['税率モード', calc.ctx.taxScenarioLabel],
+    ['軽8％対象税率', taxRateLabel(calc.ctx.reducedRate)],
     ['基準期間売上高', formatCtxAmount(calc.ctx.baseTaxableSales, calc.ctx.baseSalesEntered)],
     ['特定期間売上高', formatCtxAmount(calc.ctx.specificTaxableSales, calc.ctx.specificSalesEntered)],
     ['特定期間給与等', formatCtxAmount(calc.ctx.specificPayrollAmount, calc.ctx.specificPayrollEntered)],
@@ -910,6 +966,9 @@ function renderMethodCards(calc){
 
 function renderEligibilityNotice(calc){
   const messages = [];
+  if(calc.ctx.taxScenario !== 'current'){
+    messages.push('税率モード: 食料品等1％は未施行の議論段階にある試算です。現行申告用の判定ではありません。');
+  }
   if(!calc.eligibility.periodValid) messages.push('課税期間の開始日と終了日を確認してください。');
   if(!calc.eligibility.special2.ok) messages.push('2割特例: ' + calc.eligibility.special2.reasons.join(' / '));
   if(!calc.eligibility.special3.ok) messages.push('3割特例: ' + calc.eligibility.special3.reasons.join(' / '));
@@ -925,6 +984,8 @@ function buildSummaryText(calc){
   lines.push('消費税 課税方式判定ツール');
   lines.push(`課税期間: ${calc.ctx.start || '-'} から ${calc.ctx.end || '-'}`);
   lines.push(`入力金額: ${calc.ctx.amountMode === 'included' ? '税込' : '税抜'}`);
+  lines.push(`税率モード: ${calc.ctx.taxScenarioLabel}`);
+  lines.push(`軽8％対象税率: ${taxRateLabel(calc.ctx.reducedRate)}`);
   lines.push(`基準期間売上高: ${formatCtxAmount(calc.ctx.baseTaxableSales, calc.ctx.baseSalesEntered)}`);
   lines.push(`特定期間売上高: ${formatCtxAmount(calc.ctx.specificTaxableSales, calc.ctx.specificSalesEntered)}`);
   lines.push(`特定期間給与等: ${formatCtxAmount(calc.ctx.specificPayrollAmount, calc.ctx.specificPayrollEntered)}`);
@@ -951,6 +1012,8 @@ function downloadCsv(calc){
     ['課税期間開始', calc.ctx.start],
     ['課税期間終了', calc.ctx.end],
     ['入力金額', calc.ctx.amountMode === 'included' ? '税込' : '税抜'],
+    ['税率モード', calc.ctx.taxScenarioLabel],
+    ['軽8％対象税率', taxRateLabel(calc.ctx.reducedRate)],
     ['基準期間売上高', calc.ctx.baseSalesEntered ? Math.round(calc.ctx.baseTaxableSales) : '未入力'],
     ['特定期間売上高', calc.ctx.specificSalesEntered ? Math.round(calc.ctx.specificTaxableSales) : '未入力'],
     ['特定期間給与等', calc.ctx.specificPayrollEntered ? Math.round(calc.ctx.specificPayrollAmount) : '未入力'],
@@ -972,14 +1035,14 @@ function downloadCsv(calc){
     rows.push([METHOD_LABELS[method.key], method.eligible ? '候補' : '要件外', method.eligible ? Math.round(method.amount) : '適用不可', method.reason]);
   });
   rows.push([]);
-  rows.push(['免税事業者仕入区分','10%仕入','軽8％仕入','仕入税額','控除割合','控除対象税額']);
+  rows.push(['免税事業者仕入区分','10%仕入',`${taxRateLabel(calc.ctx.reducedRate)}対象仕入`,'仕入税額','控除割合','控除対象税額']);
   calc.purchases.exemptBuckets.forEach(bucket => {
     if(bucket.rowAmount || bucket.rowTax){
       rows.push([`${bucket.label} ${bucket.range}`, Math.round(bucket.amount10), Math.round(bucket.amount8), Math.round(bucket.rowTax), bucket.ratio, Math.round(bucket.rowCreditableTax)]);
     }
   });
   rows.push([]);
-  rows.push(['事業区分','10%売上','軽8％売上','売上税額','みなし仕入率']);
+  rows.push(['事業区分','10%売上',`${taxRateLabel(calc.ctx.reducedRate)}対象売上`,'売上税額','みなし仕入率']);
   calc.sales.rows.forEach(row => {
     rows.push([`${row.name} ${row.detail}`, Math.round(row.amount10), Math.round(row.amount8), Math.round(row.rowTax), row.deemed]);
   });
@@ -1013,6 +1076,7 @@ function saveState(){
   });
   data.entityType = document.querySelector('input[name="entityType"]:checked')?.value || 'individual';
   data.amountMode = document.querySelector('input[name="amountMode"]:checked')?.value || 'included';
+  data.taxScenario = taxScenarioKey();
   BUSINESS_TYPES.forEach(type => {
     data[type.key + 'Sale10'] = $(type.key + 'Sale10').value;
     data[type.key + 'Sale8'] = $(type.key + 'Sale8').value;
@@ -1039,7 +1103,7 @@ function restoreState(){
   try{
     const data = JSON.parse(raw);
     Object.entries(data).forEach(([id, value]) => {
-      if(id === 'entityType' || id === 'amountMode') return;
+      if(id === 'entityType' || id === 'amountMode' || id === 'taxScenario') return;
       const el = $(id);
       if(!el) return;
       if(el.type === 'checkbox') el.checked = !!value;
@@ -1049,6 +1113,8 @@ function restoreState(){
     if(entity) entity.checked = true;
     const mode = document.querySelector(`input[name="amountMode"][value="${data.amountMode}"]`);
     if(mode) mode.checked = true;
+    const scenario = document.querySelector(`input[name="taxScenario"][value="${data.taxScenario}"]`);
+    if(scenario) scenario.checked = true;
   }catch(error){
     console.warn('設定の復元に失敗しました', error);
   }
@@ -1058,6 +1124,7 @@ function update(){
   const calc = calculate();
   renderSalesTax(calc.sales.rows);
   renderPeriodInlineNotice(calc);
+  renderTaxScenarioNotice(calc);
   renderSummary(calc);
   renderHero(calc);
   renderMethodCards(calc);
@@ -1075,6 +1142,7 @@ function resetAll(){
   $('periodEnd').value = '2026-12-31';
   $('entityIndividual').checked = true;
   $('modeTaxIncluded').checked = true;
+  $('taxScenarioCurrent').checked = true;
   ['invoiceRegistered','invoiceTransition','noSpecialExclusion','simpleNoticeReady'].forEach(id => {
     $(id).checked = true;
   });

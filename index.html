@@ -150,6 +150,7 @@
   .period-inline-notice{margin-top:8px;font-weight:800}
   .major-warning{border-width:2px;font-size:13px;font-weight:800}
   .major-warning strong{display:block;color:#5f3402;font-size:14px;margin-bottom:4px}
+  .inline-warning{margin-top:6px;font-weight:800}
   .notice ul{margin:6px 0 0 18px;padding:0}
   .notice li{margin:3px 0}
   .footer{
@@ -387,7 +388,8 @@
           </div>
           <div class="field">
             <label for="creditPercent">本則で控除できる仕入税額割合</label>
-            <input type="number" id="creditPercent" min="0" max="100" step="0.1" value="100">
+            <input type="number" id="creditPercent" min="0" max="100" step="0.1" value="100" title="課税売上割合や個別対応方式・一括比例配分方式などを簡易的に反映するための概算割合です。">
+            <div class="notice warn inline-warning" id="regularCreditNotice"></div>
           </div>
           <div class="field">
             <label for="regularAdjustment">本則課税の個別調整額</label>
@@ -419,6 +421,29 @@
 
       <section class="panel">
         <div class="panel-title">
+          <h2>4期見通し</h2>
+          <span class="mini">同額前提の概算</span>
+        </div>
+        <div class="table-wrap">
+          <table aria-label="複数年見通し">
+            <thead>
+              <tr>
+                <th>課税期間</th>
+                <th>最有利見込み</th>
+                <th class="num">納付見込</th>
+                <th>使える特例</th>
+              </tr>
+            </thead>
+            <tbody id="projectionRows"></tbody>
+          </table>
+        </div>
+        <div class="notice warn" style="margin-top:8px">
+          現在の入力値が4期続く前提の簡易シミュレーションです。売上構成、仕入、設備投資、簡易課税の2年継続適用、3割特例終了後の着地は必ず別途確認してください。
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
           <h2>確認メモ</h2>
           <span class="mini" id="lastUpdatedLabel"></span>
         </div>
@@ -429,6 +454,7 @@
         <div class="notice warn" id="eligibilityNotice" style="margin-top:10px"></div>
         <div class="notice" style="margin-top:10px">
           <ul>
+            <li>制度時点: 2026年6月10日時点。令和8年度税制改正特集（国税庁）を基準にしています。</li>
             <li>本則課税は、インボイス保存、免税事業者からの課税仕入、課税売上割合、個別対応方式・一括比例配分方式、調整対象固定資産などで変動します。</li>
             <li>免税事業者からの課税仕入は控除割合を概算反映します。1事業者ごとの年間・事業年度1億円超の制限などは個別確認してください。</li>
             <li>簡易課税は選択届出と事業区分の判定が重要です。上記の2年継続適用も確認してください。</li>
@@ -444,8 +470,9 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r6</span> ｜
+    <span>r7</span> ｜
     <span id="footerDate"></span>
+    <div>制度時点：2026年6月10日（国税庁 令和8年度税制改正特集ベース）</div>
     <div>
       参考：
       <a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6351.htm" target="_blank" rel="noopener">国税庁 No.6351</a> /
@@ -462,7 +489,8 @@
 
 const STORAGE_KEY = 'shohizeiKazeiHoushiki.v3';
 const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2'];
-const TODAY_LABEL = '2026-06-09';
+const TODAY_LABEL = '2026-06-10';
+const LAW_BASIS_LABEL = '2026年6月10日時点（国税庁 令和8年度税制改正特集ベース）';
 const BUSINESS_TYPES = [
   { key:'type1', name:'第1種', detail:'卸売業', deemed:0.90 },
   { key:'type2', name:'第2種', detail:'小売業・飲食料品農林漁業', deemed:0.80 },
@@ -653,6 +681,36 @@ function getContext(){
 function periodIncludes(start, end, targetStart, targetEnd){
   if(!start || !end || start > end) return false;
   return start <= targetEnd && end >= targetStart;
+}
+
+function dateAddYears(value, years){
+  if(!value) return '';
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year + years, month - 1, day);
+  if(date.getMonth() !== month - 1){
+    date.setDate(0);
+  }
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function projectionPeriods(ctx){
+  if(!ctx.start || !ctx.end || ctx.start > ctx.end) return [];
+  if(ctx.entity === 'individual'){
+    const baseYear = Number(ctx.start.slice(0, 4)) || 2026;
+    return Array.from({ length:4 }, (_, index) => {
+      const year = baseYear + index;
+      return { start:`${year}-01-01`, end:`${year}-12-31`, label:`${year}年分` };
+    });
+  }
+  return Array.from({ length:4 }, (_, index) => ({
+    start:dateAddYears(ctx.start, index),
+    end:dateAddYears(ctx.end, index),
+    label:`${dateAddYears(ctx.start, index)}〜${dateAddYears(ctx.end, index)}`
+  }));
 }
 
 function baseUnder10mReason(ctx){
@@ -862,6 +920,32 @@ function calculate(){
   return { ctx, eligibility, sales, purchases, creditablePurchaseTax, regularCredit, methods, valid, sorted, best: sorted[0] || null };
 }
 
+function calculateProjectionMethods(calc, period){
+  const ctx = { ...calc.ctx, start:period.start, end:period.end };
+  const eligibility = getEligibility(ctx);
+  const amounts = {
+    regular:calc.methods.find(method => method.key === 'regular')?.amount || 0,
+    simplified:calc.methods.find(method => method.key === 'simplified')?.amount || 0,
+    special2:calc.sales.totalTax * 0.20,
+    special3:calc.sales.totalTax * 0.30
+  };
+  const hasSales = Math.round(calc.sales.totalTax) !== 0 || calc.sales.totalAmount !== 0;
+  const methods = [
+    { key:'regular', amount:amounts.regular, eligible:true, include:hasSales },
+    { key:'simplified', amount:amounts.simplified, eligible:eligibility.simplified.ok, include:hasSales && eligibility.simplified.ok },
+    { key:'special2', amount:amounts.special2, eligible:eligibility.special2.ok, include:hasSales && eligibility.special2.ok },
+    { key:'special3', amount:amounts.special3, eligible:eligibility.special3.ok, include:hasSales && eligibility.special3.ok }
+  ];
+  const valid = methods.filter(method => method.include);
+  const sorted = valid.slice().sort((a,b) => a.amount - b.amount);
+  const specials = [
+    eligibility.special2.ok ? '2割' : '',
+    eligibility.special3.ok ? '3割' : '',
+    eligibility.simplified.ok ? '簡易' : ''
+  ].filter(Boolean).join('・') || '本則のみ';
+  return { eligibility, best:sorted[0] || null, specials };
+}
+
 function renderSalesTax(rows){
   rows.forEach(row => {
     $(row.key + 'Tax').textContent = yen(row.rowTax);
@@ -881,6 +965,33 @@ function renderTaxScenarioNotice(calc){
   const isSimulation = calc.ctx.taxScenario !== 'current';
   notice.style.display = isSimulation ? '' : 'none';
   notice.textContent = isSimulation ? scenario.notice : '';
+}
+
+function renderRegularCreditNotice(calc){
+  const notice = $('regularCreditNotice');
+  const ratio = calc.purchases.creditRatio;
+  if(ratio >= 0.999){
+    notice.textContent = '本則を100%控除で試算しています。課税売上割合95%未満、非課税売上、個別対応方式・一括比例配分方式が関係する場合は、本則が過大に有利に出る可能性があります。';
+  }else{
+    notice.textContent = `本則の仕入控除を${(ratio * 100).toFixed(1).replace(/\.0$/,'')}%で概算しています。実際の課税売上割合や控除方式とは一致しない場合があります。`;
+  }
+}
+
+function renderProjection(calc){
+  const periods = projectionPeriods(calc.ctx);
+  $('projectionRows').innerHTML = periods.map(period => {
+    const projection = calculateProjectionMethods(calc, period);
+    const bestLabel = projection.best ? METHOD_LABELS[projection.best.key] : '入力待ち';
+    const amount = projection.best ? yen(projection.best.amount) : '-';
+    return `
+      <tr>
+        <td>${escapeHtml(period.label)}</td>
+        <td>${escapeHtml(bestLabel)}</td>
+        <td class="num">${escapeHtml(amount)}</td>
+        <td>${escapeHtml(projection.specials)}</td>
+      </tr>
+    `;
+  }).join('') || '<tr><td colspan="4">課税期間を入力してください</td></tr>';
 }
 
 function renderSummary(calc){
@@ -982,6 +1093,7 @@ function renderEligibilityNotice(calc){
 function buildSummaryText(calc){
   const lines = [];
   lines.push('消費税 課税方式判定ツール');
+  lines.push(`制度時点: ${LAW_BASIS_LABEL}`);
   lines.push(`課税期間: ${calc.ctx.start || '-'} から ${calc.ctx.end || '-'}`);
   lines.push(`入力金額: ${calc.ctx.amountMode === 'included' ? '税込' : '税抜'}`);
   lines.push(`税率モード: ${calc.ctx.taxScenarioLabel}`);
@@ -1003,12 +1115,19 @@ function buildSummaryText(calc){
   calc.methods.forEach(method => {
     lines.push(`${METHOD_LABELS[method.key]}: ${method.eligible ? `候補 / ${yen(method.amount)}` : '適用不可'} / ${method.reason}`);
   });
+  lines.push('');
+  lines.push('4期見通し（同額前提）');
+  projectionPeriods(calc.ctx).forEach(period => {
+    const projection = calculateProjectionMethods(calc, period);
+    lines.push(`${period.label}: ${projection.best ? METHOD_LABELS[projection.best.key] + ' / ' + yen(projection.best.amount) : '入力待ち'} / ${projection.specials}`);
+  });
   return lines.join('\n');
 }
 
 function downloadCsv(calc){
   const rows = [
     ['項目','値'],
+    ['制度時点', LAW_BASIS_LABEL],
     ['課税期間開始', calc.ctx.start],
     ['課税期間終了', calc.ctx.end],
     ['入力金額', calc.ctx.amountMode === 'included' ? '税込' : '税抜'],
@@ -1033,6 +1152,17 @@ function downloadCsv(calc){
   ];
   calc.methods.forEach(method => {
     rows.push([METHOD_LABELS[method.key], method.eligible ? '候補' : '要件外', method.eligible ? Math.round(method.amount) : '適用不可', method.reason]);
+  });
+  rows.push([]);
+  rows.push(['4期見通し','最有利見込み','概算納付額','使える特例']);
+  projectionPeriods(calc.ctx).forEach(period => {
+    const projection = calculateProjectionMethods(calc, period);
+    rows.push([
+      period.label,
+      projection.best ? METHOD_LABELS[projection.best.key] : '入力待ち',
+      projection.best ? Math.round(projection.best.amount) : '',
+      projection.specials
+    ]);
   });
   rows.push([]);
   rows.push(['免税事業者仕入区分','10%仕入',`${taxRateLabel(calc.ctx.reducedRate)}対象仕入`,'仕入税額','控除割合','控除対象税額']);
@@ -1125,9 +1255,11 @@ function update(){
   renderSalesTax(calc.sales.rows);
   renderPeriodInlineNotice(calc);
   renderTaxScenarioNotice(calc);
+  renderRegularCreditNotice(calc);
   renderSummary(calc);
   renderHero(calc);
   renderMethodCards(calc);
+  renderProjection(calc);
   renderEligibilityNotice(calc);
   saveState();
   return calc;

@@ -243,17 +243,26 @@
             </span>
           </label>
           <label class="check-row">
-            <input type="checkbox" id="baseUnder10m" checked>
             <span>
-              <span class="check-label">基準期間の課税売上高が1,000万円以下</span>
-              <small>2割特例・3割特例の主な売上要件です。</small>
+              <span class="check-label">基準期間の課税売上高（税抜）</span>
+              <input type="text" inputmode="numeric" class="money js-amount" id="baseTaxableSales" placeholder="例: 9,000,000">
+              <small>2割特例・3割特例は1,000万円以下、簡易課税は5,000万円以下かを自動判定します。</small>
             </span>
           </label>
           <label class="check-row">
-            <input type="checkbox" id="specificUnder10m" checked>
             <span>
-              <span class="check-label">特定期間の課税売上高が1,000万円以下、または給与等支払額で判定して免税点制度の適用が制限されない</span>
-              <small>2割特例・3割特例の可否確認用です。</small>
+              <span class="check-label">特定期間の判定（税抜）</span>
+              <div class="grid two">
+                <div>
+                  <label for="specificTaxableSales" class="mini">特定期間の課税売上高</label>
+                  <input type="text" inputmode="numeric" class="money js-amount" id="specificTaxableSales" placeholder="例: 8,000,000">
+                </div>
+                <div>
+                  <label for="specificPayrollAmount" class="mini">特定期間の給与等支払額</label>
+                  <input type="text" inputmode="numeric" class="money js-amount" id="specificPayrollAmount" placeholder="例: 8,000,000">
+                </div>
+              </div>
+              <small>課税売上高または給与等支払額のいずれかで1,000万円以下なら、免税点制度の適用が制限されないものとして判定します。</small>
             </span>
           </label>
           <label class="check-row">
@@ -261,13 +270,6 @@
             <span>
               <span class="check-label">課税期間短縮・高額資産等による適用除外に該当しない</span>
               <small>チェックを外すと2割特例・3割特例は候補から外します。</small>
-            </span>
-          </label>
-          <label class="check-row">
-            <input type="checkbox" id="simpleBaseUnder50m" checked>
-            <span>
-              <span class="check-label">基準期間の課税売上高が5,000万円以下</span>
-              <small>簡易課税制度の売上要件です。</small>
             </span>
           </label>
           <label class="check-row">
@@ -389,6 +391,7 @@
           <h2>判定結果</h2>
           <button type="button" class="btn danger no-print" id="resetBtn">リセット</button>
         </div>
+        <div class="notice warn" id="storageNotice" style="display:none;margin-bottom:10px"></div>
         <div id="resultHero" class="result-hero"></div>
         <div class="summary-list" id="taxSummary"></div>
       </section>
@@ -424,7 +427,7 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r2</span> ｜
+    <span>r3</span> ｜
     <span id="footerDate"></span>
     <div>
       参考：
@@ -440,7 +443,8 @@
 <script>
 'use strict';
 
-const STORAGE_KEY = 'shohizeiKazeiHoushiki.v1';
+const STORAGE_KEY = 'shohizeiKazeiHoushiki.v3';
+const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2'];
 const TODAY_LABEL = '2026-06-09';
 const BUSINESS_TYPES = [
   { key:'type1', name:'第1種', detail:'卸売業', deemed:0.90 },
@@ -487,6 +491,19 @@ function formatInput(value){
   const n = parseNumber(value);
   if(!n) return '';
   return n.toLocaleString('ja-JP', { maximumFractionDigits:0 });
+}
+
+function hasAmountInput(id){
+  const el = $(id);
+  return !!el && /[0-9０-９]/.test(String(el.value || ''));
+}
+
+function amountValue(id){
+  return parseNumber($(id)?.value || '');
+}
+
+function formatCtxAmount(value, entered){
+  return entered ? yen(value) : '未入力';
 }
 
 function formatAmountLive(input){
@@ -546,17 +563,41 @@ function renderSalesRows(){
 }
 
 function getContext(){
+  const start = $('periodStart').value;
+  const end = $('periodEnd').value;
+  const entity = document.querySelector('input[name="entityType"]:checked')?.value || 'individual';
+  const baseTaxableSales = amountValue('baseTaxableSales');
+  const specificTaxableSales = amountValue('specificTaxableSales');
+  const specificPayrollAmount = amountValue('specificPayrollAmount');
+  const baseSalesEntered = hasAmountInput('baseTaxableSales');
+  const specificSalesEntered = hasAmountInput('specificTaxableSales');
+  const specificPayrollEntered = hasAmountInput('specificPayrollAmount');
+  const specificSalesOk = specificSalesEntered && specificTaxableSales <= 10000000;
+  const specificPayrollOk = specificPayrollEntered && specificPayrollAmount <= 10000000;
+  const startYear = start.slice(0, 4);
+  const individualCalendarYear = entity !== 'individual' || (
+    !!startYear && start === `${startYear}-01-01` && end === `${startYear}-12-31`
+  );
+
   return {
-    start: $('periodStart').value,
-    end: $('periodEnd').value,
-    entity: document.querySelector('input[name="entityType"]:checked')?.value || 'individual',
+    start,
+    end,
+    entity,
     amountMode: document.querySelector('input[name="amountMode"]:checked')?.value || 'included',
     invoiceRegistered: $('invoiceRegistered').checked,
     invoiceTransition: $('invoiceTransition').checked,
-    baseUnder10m: $('baseUnder10m').checked,
-    specificUnder10m: $('specificUnder10m').checked,
+    baseTaxableSales,
+    baseSalesEntered,
+    baseUnder10m: baseSalesEntered && baseTaxableSales <= 10000000,
+    simpleBaseUnder50m: baseSalesEntered && baseTaxableSales <= 50000000,
+    specificTaxableSales,
+    specificSalesEntered,
+    specificPayrollAmount,
+    specificPayrollEntered,
+    specificInputEntered: specificSalesEntered || specificPayrollEntered,
+    specificUnder10m: specificSalesOk || specificPayrollOk,
+    individualCalendarYear,
     noSpecialExclusion: $('noSpecialExclusion').checked,
-    simpleBaseUnder50m: $('simpleBaseUnder50m').checked,
     simpleNoticeReady: $('simpleNoticeReady').checked
   };
 }
@@ -564,6 +605,24 @@ function getContext(){
 function periodIncludes(start, end, targetStart, targetEnd){
   if(!start || !end || start > end) return false;
   return start <= targetEnd && end >= targetStart;
+}
+
+function baseUnder10mReason(ctx){
+  return ctx.baseSalesEntered
+    ? '基準期間の課税売上高が1,000万円超です'
+    : '基準期間の課税売上高を入力してください';
+}
+
+function specificUnder10mReason(ctx){
+  return ctx.specificInputEntered
+    ? '特定期間の要件により免税点制度の適用が制限されます'
+    : '特定期間の課税売上高または給与等支払額を入力してください';
+}
+
+function simpleBaseUnder50mReason(ctx){
+  return ctx.baseSalesEntered
+    ? '基準期間の課税売上高が5,000万円超です'
+    : '基準期間の課税売上高を入力してください';
 }
 
 function getEligibility(ctx){
@@ -574,23 +633,26 @@ function getEligibility(ctx){
   }
   if(!ctx.invoiceRegistered) twoReasons.push('インボイス登録がありません');
   if(!ctx.invoiceTransition) twoReasons.push('インボイス登録を機に課税事業者となった期間ではありません');
-  if(!ctx.baseUnder10m) twoReasons.push('基準期間の課税売上高が1,000万円超です');
-  if(!ctx.specificUnder10m) twoReasons.push('特定期間の要件確認が必要です');
+  if(!ctx.baseUnder10m) twoReasons.push(baseUnder10mReason(ctx));
+  if(!ctx.specificUnder10m) twoReasons.push(specificUnder10mReason(ctx));
   if(!ctx.noSpecialExclusion) twoReasons.push('適用除外に該当する可能性があります');
 
   const threeReasons = [];
   if(ctx.entity !== 'individual') threeReasons.push('法人は対象外です');
+  if(ctx.entity === 'individual' && !ctx.individualCalendarYear){
+    threeReasons.push('個人事業者の課税期間が暦年（1月1日から12月31日）ではありません');
+  }
   if(!periodValid || !periodIncludes(ctx.start, ctx.end, '2027-01-01', '2028-12-31')){
     threeReasons.push('令和9年分・令和10年分ではありません');
   }
   if(!ctx.invoiceRegistered) threeReasons.push('インボイス登録がありません');
   if(!ctx.invoiceTransition) threeReasons.push('インボイス登録を機に課税事業者となった期間ではありません');
-  if(!ctx.baseUnder10m) threeReasons.push('基準期間の課税売上高が1,000万円超です');
-  if(!ctx.specificUnder10m) threeReasons.push('特定期間の要件確認が必要です');
+  if(!ctx.baseUnder10m) threeReasons.push(baseUnder10mReason(ctx));
+  if(!ctx.specificUnder10m) threeReasons.push(specificUnder10mReason(ctx));
   if(!ctx.noSpecialExclusion) threeReasons.push('適用除外に該当する可能性があります');
 
   const simpleReasons = [];
-  if(!ctx.simpleBaseUnder50m) simpleReasons.push('基準期間の課税売上高が5,000万円超です');
+  if(!ctx.simpleBaseUnder50m) simpleReasons.push(simpleBaseUnder50mReason(ctx));
   if(!ctx.simpleNoticeReady) simpleReasons.push('選択届出書が有効ではありません');
 
   return {
@@ -747,6 +809,9 @@ function renderSalesTax(rows){
 function renderSummary(calc){
   const taxableSalesRatio = calc.sales.totalAmount ? calc.sales.totalTax / calc.sales.totalAmount : 0;
   $('taxSummary').innerHTML = [
+    ['基準期間売上高', formatCtxAmount(calc.ctx.baseTaxableSales, calc.ctx.baseSalesEntered)],
+    ['特定期間売上高', formatCtxAmount(calc.ctx.specificTaxableSales, calc.ctx.specificSalesEntered)],
+    ['特定期間給与等', formatCtxAmount(calc.ctx.specificPayrollAmount, calc.ctx.specificPayrollEntered)],
     ['課税売上合計', yen(calc.sales.totalAmount).replace('円','')],
     ['売上税額', yen(calc.sales.totalTax)],
     ['課税仕入合計', yen(calc.purchases.totalAmount).replace('円','')],
@@ -837,6 +902,9 @@ function buildSummaryText(calc){
   lines.push('消費税 課税方式判定ツール');
   lines.push(`課税期間: ${calc.ctx.start || '-'} から ${calc.ctx.end || '-'}`);
   lines.push(`入力金額: ${calc.ctx.amountMode === 'included' ? '税込' : '税抜'}`);
+  lines.push(`基準期間売上高: ${formatCtxAmount(calc.ctx.baseTaxableSales, calc.ctx.baseSalesEntered)}`);
+  lines.push(`特定期間売上高: ${formatCtxAmount(calc.ctx.specificTaxableSales, calc.ctx.specificSalesEntered)}`);
+  lines.push(`特定期間給与等: ${formatCtxAmount(calc.ctx.specificPayrollAmount, calc.ctx.specificPayrollEntered)}`);
   lines.push(`課税売上合計: ${yen(calc.sales.totalAmount)}`);
   lines.push(`売上税額: ${yen(calc.sales.totalTax)}`);
   lines.push(`課税仕入合計: ${yen(calc.purchases.totalAmount)}`);
@@ -860,6 +928,9 @@ function downloadCsv(calc){
     ['課税期間開始', calc.ctx.start],
     ['課税期間終了', calc.ctx.end],
     ['入力金額', calc.ctx.amountMode === 'included' ? '税込' : '税抜'],
+    ['基準期間売上高', calc.ctx.baseSalesEntered ? Math.round(calc.ctx.baseTaxableSales) : '未入力'],
+    ['特定期間売上高', calc.ctx.specificSalesEntered ? Math.round(calc.ctx.specificTaxableSales) : '未入力'],
+    ['特定期間給与等', calc.ctx.specificPayrollEntered ? Math.round(calc.ctx.specificPayrollAmount) : '未入力'],
     ['課税売上合計', Math.round(calc.sales.totalAmount)],
     ['売上税額', Math.round(calc.sales.totalTax)],
     ['課税仕入合計', Math.round(calc.purchases.totalAmount)],
@@ -906,14 +977,15 @@ function downloadCsv(calc){
 
 function saveState(){
   const ids = [
-    'periodStart','periodEnd','invoiceRegistered','invoiceTransition','baseUnder10m','specificUnder10m',
-    'noSpecialExclusion','simpleBaseUnder50m','simpleNoticeReady','purchase10','purchase8',
+    'periodStart','periodEnd','invoiceRegistered','invoiceTransition','baseTaxableSales',
+    'specificTaxableSales','specificPayrollAmount','noSpecialExclusion','simpleNoticeReady','purchase10','purchase8',
     ...getExemptPurchaseInputIds(),
     'creditPercent','regularAdjustment'
   ];
   const data = {};
   ids.forEach(id => {
     const el = $(id);
+    if(!el) return;
     data[id] = el.type === 'checkbox' ? el.checked : el.value;
   });
   data.entityType = document.querySelector('input[name="entityType"]:checked')?.value || 'individual';
@@ -923,6 +995,19 @@ function saveState(){
     data[type.key + 'Sale8'] = $(type.key + 'Sale8').value;
   });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function handleLegacyStorage(){
+  const hasCurrent = !!localStorage.getItem(STORAGE_KEY);
+  const legacyKeys = LEGACY_STORAGE_KEYS.filter(key => localStorage.getItem(key));
+  if(!legacyKeys.length) return;
+  legacyKeys.forEach(key => localStorage.removeItem(key));
+  if(hasCurrent) return;
+  const notice = $('storageNotice');
+  if(notice){
+    notice.style.display = '';
+    notice.textContent = '保存データの形式を更新したため、旧版の入力値をリセットしました。基準期間・特定期間・免税事業者仕入を入力し直してください。';
+  }
 }
 
 function restoreState(){
@@ -959,12 +1044,14 @@ function update(){
 
 function resetAll(){
   localStorage.removeItem(STORAGE_KEY);
+  LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+  $('storageNotice').style.display = 'none';
   document.querySelectorAll('.js-amount').forEach(input => { input.value = ''; });
   $('periodStart').value = '2026-01-01';
   $('periodEnd').value = '2026-12-31';
   $('entityIndividual').checked = true;
   $('modeTaxIncluded').checked = true;
-  ['invoiceRegistered','invoiceTransition','baseUnder10m','specificUnder10m','noSpecialExclusion','simpleBaseUnder50m','simpleNoticeReady'].forEach(id => {
+  ['invoiceRegistered','invoiceTransition','noSpecialExclusion','simpleNoticeReady'].forEach(id => {
     $(id).checked = true;
   });
   $('creditPercent').value = '100';
@@ -1008,6 +1095,7 @@ function init(){
   $('copyYear').textContent = '2026';
   $('footerDate').textContent = `最終更新日: ${TODAY_LABEL}`;
   $('lastUpdatedLabel').textContent = TODAY_LABEL;
+  handleLegacyStorage();
   restoreState();
   bindEvents();
   update();

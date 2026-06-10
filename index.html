@@ -151,6 +151,7 @@
   .major-warning{border-width:2px;font-size:13px;font-weight:800}
   .major-warning strong{display:block;color:#5f3402;font-size:14px;margin-bottom:4px}
   .inline-warning{margin-top:6px;font-weight:800}
+  .is-hidden{display:none!important}
   .notice ul{margin:6px 0 0 18px;padding:0}
   .notice li{margin:3px 0}
   .footer{
@@ -239,6 +240,14 @@
           <label for="taxScenarioFood1">試算（食料品1％）</label>
         </div>
         <div class="notice warn" id="taxScenarioNotice" style="display:none;margin-top:8px"></div>
+
+        <h3>表示モード</h3>
+        <div class="segmented">
+          <input type="radio" name="viewMode" id="viewModeSingle" value="single" checked>
+          <label for="viewModeSingle">単期比較</label>
+          <input type="radio" name="viewMode" id="viewModeProjection" value="projection">
+          <label for="viewModeProjection">4期見通し</label>
+        </div>
 
         <h3>特例・簡易課税の判定条件</h3>
         <div class="checks">
@@ -419,7 +428,7 @@
         <div class="method-grid" id="methodCards"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel is-hidden" id="projectionPanel">
         <div class="panel-title">
           <h2>4期見通し</h2>
           <span class="mini">同額前提の概算</span>
@@ -429,6 +438,7 @@
             <thead>
               <tr>
                 <th>課税期間</th>
+                <th class="num">基準期間売上高</th>
                 <th>最有利見込み</th>
                 <th class="num">納付見込</th>
                 <th>使える特例</th>
@@ -438,7 +448,7 @@
           </table>
         </div>
         <div class="notice warn" style="margin-top:8px">
-          現在の入力値が4期続く前提の簡易シミュレーションです。売上構成、仕入、設備投資、簡易課税の2年継続適用、3割特例終了後の着地は必ず別途確認してください。
+          現在の入力値が4期続く前提の簡易シミュレーションです。3期目以降の基準期間売上高には、現在の課税売上合計を税抜換算して反映します。2期目の基準期間は未入力のため、現在入力した基準期間売上高を仮置きします。各期の単独比較であり、簡易課税の2年継続適用を前提にした選択順序の最適化ではありません。
         </div>
       </section>
 
@@ -470,7 +480,7 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r7</span> ｜
+    <span>r8</span> ｜
     <span id="footerDate"></span>
     <div>制度時点：2026年6月10日（国税庁 令和8年度税制改正特集ベース）</div>
     <div>
@@ -604,6 +614,11 @@ function taxScenarioConfig(key){
   return TAX_SCENARIOS[key] || TAX_SCENARIOS.current;
 }
 
+function viewModeKey(){
+  const key = document.querySelector('input[name="viewMode"]:checked')?.value || 'single';
+  return key === 'projection' ? 'projection' : 'single';
+}
+
 function taxRateLabel(rate){
   return `${rate}%`;
 }
@@ -616,6 +631,12 @@ function taxFromAmount(amount, rate){
   const mode = document.querySelector('input[name="amountMode"]:checked')?.value || 'included';
   if(mode === 'excluded') return amount * (rate / 100);
   return amount * (rate / (100 + rate));
+}
+
+function taxableBaseFromAmount(amount, rate){
+  const mode = document.querySelector('input[name="amountMode"]:checked')?.value || 'included';
+  if(mode === 'excluded') return amount;
+  return amount - taxFromAmount(amount, rate);
 }
 
 function renderSalesRows(){
@@ -657,6 +678,7 @@ function getContext(){
     end,
     entity,
     amountMode: document.querySelector('input[name="amountMode"]:checked')?.value || 'included',
+    viewMode: viewModeKey(),
     taxScenario: scenarioKey,
     taxScenarioLabel: scenario.label,
     reducedRate: scenario.reducedRate,
@@ -711,6 +733,38 @@ function projectionPeriods(ctx){
     end:dateAddYears(ctx.end, index),
     label:`${dateAddYears(ctx.start, index)}〜${dateAddYears(ctx.end, index)}`
   }));
+}
+
+function projectionBaseForIndex(calc, index){
+  if(index >= 2){
+    return {
+      value:calc.sales.totalTaxableBase,
+      entered:calc.sales.totalAmount > 0 || calc.sales.totalTaxableBase > 0,
+      label:'現在期売上を反映'
+    };
+  }
+  if(index === 1){
+    return {
+      value:calc.ctx.baseTaxableSales,
+      entered:calc.ctx.baseSalesEntered,
+      label:'仮置き'
+    };
+  }
+  return {
+    value:calc.ctx.baseTaxableSales,
+    entered:calc.ctx.baseSalesEntered,
+    label:'入力値'
+  };
+}
+
+function contextWithProjectionBase(ctx, base){
+  return {
+    ...ctx,
+    baseTaxableSales:base.value,
+    baseSalesEntered:base.entered,
+    baseUnder10m:base.entered && base.value <= 10000000,
+    simpleBaseUnder50m:base.entered && base.value <= 50000000
+  };
 }
 
 function baseUnder10mReason(ctx){
@@ -785,6 +839,7 @@ function getEligibility(ctx){
 
 function collectSales(ctx){
   let totalAmount = 0;
+  let totalTaxableBase = 0;
   let totalTax = 0;
   let deemedCredit = 0;
   const rows = BUSINESS_TYPES.map(type => {
@@ -792,14 +847,18 @@ function collectSales(ctx){
     const amount8 = parseNumber($(type.key + 'Sale8').value);
     const tax10 = taxFromAmount(amount10, 10);
     const tax8 = taxFromAmount(amount8, ctx.reducedRate);
+    const taxableBase10 = taxableBaseFromAmount(amount10, 10);
+    const taxableBase8 = taxableBaseFromAmount(amount8, ctx.reducedRate);
     const rowTax = tax10 + tax8;
     const rowAmount = amount10 + amount8;
+    const rowTaxableBase = taxableBase10 + taxableBase8;
     totalAmount += rowAmount;
+    totalTaxableBase += rowTaxableBase;
     totalTax += rowTax;
     deemedCredit += rowTax * type.deemed;
-    return { ...type, amount10, amount8, tax10, tax8, rowTax, rowAmount };
+    return { ...type, amount10, amount8, taxableBase10, taxableBase8, tax10, tax8, rowTax, rowAmount, rowTaxableBase };
   });
-  return { rows, totalAmount, totalTax, deemedCredit };
+  return { rows, totalAmount, totalTaxableBase, totalTax, deemedCredit };
 }
 
 function exemptPurchaseInputId(bucketKey, rate){
@@ -920,8 +979,9 @@ function calculate(){
   return { ctx, eligibility, sales, purchases, creditablePurchaseTax, regularCredit, methods, valid, sorted, best: sorted[0] || null };
 }
 
-function calculateProjectionMethods(calc, period){
-  const ctx = { ...calc.ctx, start:period.start, end:period.end };
+function calculateProjectionMethods(calc, period, index){
+  const base = projectionBaseForIndex(calc, index);
+  const ctx = contextWithProjectionBase({ ...calc.ctx, start:period.start, end:period.end }, base);
   const eligibility = getEligibility(ctx);
   const amounts = {
     regular:calc.methods.find(method => method.key === 'regular')?.amount || 0,
@@ -943,7 +1003,7 @@ function calculateProjectionMethods(calc, period){
     eligibility.special3.ok ? '3割' : '',
     eligibility.simplified.ok ? '簡易' : ''
   ].filter(Boolean).join('・') || '本則のみ';
-  return { eligibility, best:sorted[0] || null, specials };
+  return { eligibility, best:sorted[0] || null, specials, base };
 }
 
 function renderSalesTax(rows){
@@ -979,19 +1039,25 @@ function renderRegularCreditNotice(calc){
 
 function renderProjection(calc){
   const periods = projectionPeriods(calc.ctx);
-  $('projectionRows').innerHTML = periods.map(period => {
-    const projection = calculateProjectionMethods(calc, period);
+  $('projectionRows').innerHTML = periods.map((period, index) => {
+    const projection = calculateProjectionMethods(calc, period, index);
     const bestLabel = projection.best ? METHOD_LABELS[projection.best.key] : '入力待ち';
     const amount = projection.best ? yen(projection.best.amount) : '-';
+    const baseText = projection.base.entered ? `${yen(projection.base.value).replace('円','')}（${projection.base.label}）` : '未入力';
     return `
       <tr>
         <td>${escapeHtml(period.label)}</td>
+        <td class="num">${escapeHtml(baseText)}</td>
         <td>${escapeHtml(bestLabel)}</td>
         <td class="num">${escapeHtml(amount)}</td>
         <td>${escapeHtml(projection.specials)}</td>
       </tr>
     `;
-  }).join('') || '<tr><td colspan="4">課税期間を入力してください</td></tr>';
+  }).join('') || '<tr><td colspan="5">課税期間を入力してください</td></tr>';
+}
+
+function renderViewMode(calc){
+  $('projectionPanel').classList.toggle('is-hidden', calc.ctx.viewMode !== 'projection');
 }
 
 function renderSummary(calc){
@@ -1115,12 +1181,15 @@ function buildSummaryText(calc){
   calc.methods.forEach(method => {
     lines.push(`${METHOD_LABELS[method.key]}: ${method.eligible ? `候補 / ${yen(method.amount)}` : '適用不可'} / ${method.reason}`);
   });
-  lines.push('');
-  lines.push('4期見通し（同額前提）');
-  projectionPeriods(calc.ctx).forEach(period => {
-    const projection = calculateProjectionMethods(calc, period);
-    lines.push(`${period.label}: ${projection.best ? METHOD_LABELS[projection.best.key] + ' / ' + yen(projection.best.amount) : '入力待ち'} / ${projection.specials}`);
-  });
+  if(calc.ctx.viewMode === 'projection'){
+    lines.push('');
+    lines.push('4期見通し（同額前提）');
+    projectionPeriods(calc.ctx).forEach((period, index) => {
+      const projection = calculateProjectionMethods(calc, period, index);
+      const baseText = projection.base.entered ? `${yen(projection.base.value)}（${projection.base.label}）` : '未入力';
+      lines.push(`${period.label}: ${projection.best ? METHOD_LABELS[projection.best.key] + ' / ' + yen(projection.best.amount) : '入力待ち'} / ${projection.specials} / 基準期間売上高 ${baseText}`);
+    });
+  }
   return lines.join('\n');
 }
 
@@ -1153,17 +1222,21 @@ function downloadCsv(calc){
   calc.methods.forEach(method => {
     rows.push([METHOD_LABELS[method.key], method.eligible ? '候補' : '要件外', method.eligible ? Math.round(method.amount) : '適用不可', method.reason]);
   });
-  rows.push([]);
-  rows.push(['4期見通し','最有利見込み','概算納付額','使える特例']);
-  projectionPeriods(calc.ctx).forEach(period => {
-    const projection = calculateProjectionMethods(calc, period);
-    rows.push([
-      period.label,
-      projection.best ? METHOD_LABELS[projection.best.key] : '入力待ち',
-      projection.best ? Math.round(projection.best.amount) : '',
-      projection.specials
-    ]);
-  });
+  if(calc.ctx.viewMode === 'projection'){
+    rows.push([]);
+    rows.push(['4期見通し','基準期間売上高','基準期間メモ','最有利見込み','概算納付額','使える特例']);
+    projectionPeriods(calc.ctx).forEach((period, index) => {
+      const projection = calculateProjectionMethods(calc, period, index);
+      rows.push([
+        period.label,
+        projection.base.entered ? Math.round(projection.base.value) : '未入力',
+        projection.base.label,
+        projection.best ? METHOD_LABELS[projection.best.key] : '入力待ち',
+        projection.best ? Math.round(projection.best.amount) : '',
+        projection.specials
+      ]);
+    });
+  }
   rows.push([]);
   rows.push(['免税事業者仕入区分','10%仕入',`${taxRateLabel(calc.ctx.reducedRate)}対象仕入`,'仕入税額','控除割合','控除対象税額']);
   calc.purchases.exemptBuckets.forEach(bucket => {
@@ -1207,6 +1280,7 @@ function saveState(){
   data.entityType = document.querySelector('input[name="entityType"]:checked')?.value || 'individual';
   data.amountMode = document.querySelector('input[name="amountMode"]:checked')?.value || 'included';
   data.taxScenario = taxScenarioKey();
+  data.viewMode = viewModeKey();
   BUSINESS_TYPES.forEach(type => {
     data[type.key + 'Sale10'] = $(type.key + 'Sale10').value;
     data[type.key + 'Sale8'] = $(type.key + 'Sale8').value;
@@ -1233,7 +1307,7 @@ function restoreState(){
   try{
     const data = JSON.parse(raw);
     Object.entries(data).forEach(([id, value]) => {
-      if(id === 'entityType' || id === 'amountMode' || id === 'taxScenario') return;
+      if(id === 'entityType' || id === 'amountMode' || id === 'taxScenario' || id === 'viewMode') return;
       const el = $(id);
       if(!el) return;
       if(el.type === 'checkbox') el.checked = !!value;
@@ -1245,6 +1319,8 @@ function restoreState(){
     if(mode) mode.checked = true;
     const scenario = document.querySelector(`input[name="taxScenario"][value="${data.taxScenario}"]`);
     if(scenario) scenario.checked = true;
+    const viewMode = document.querySelector(`input[name="viewMode"][value="${data.viewMode}"]`);
+    if(viewMode) viewMode.checked = true;
   }catch(error){
     console.warn('設定の復元に失敗しました', error);
   }
@@ -1256,6 +1332,7 @@ function update(){
   renderPeriodInlineNotice(calc);
   renderTaxScenarioNotice(calc);
   renderRegularCreditNotice(calc);
+  renderViewMode(calc);
   renderSummary(calc);
   renderHero(calc);
   renderMethodCards(calc);
@@ -1275,6 +1352,7 @@ function resetAll(){
   $('entityIndividual').checked = true;
   $('modeTaxIncluded').checked = true;
   $('taxScenarioCurrent').checked = true;
+  $('viewModeSingle').checked = true;
   ['invoiceRegistered','invoiceTransition','noSpecialExclusion','simpleNoticeReady'].forEach(id => {
     $(id).checked = true;
   });

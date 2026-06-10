@@ -439,6 +439,7 @@
               <tr>
                 <th>課税期間</th>
                 <th class="num">基準期間売上高</th>
+                <th>免税仕入控除率</th>
                 <th>最有利見込み</th>
                 <th class="num">納付見込</th>
                 <th>使える特例</th>
@@ -448,7 +449,7 @@
           </table>
         </div>
         <div class="notice warn" style="margin-top:8px">
-          現在の入力値が4期続く前提の簡易シミュレーションです。3期目以降の基準期間売上高には、現在の課税売上合計を税抜換算して反映します。2期目の基準期間は未入力のため、現在入力した基準期間売上高を仮置きします。各期の単独比較であり、簡易課税の2年継続適用を前提にした選択順序の最適化ではありません。
+          現在の入力値が4期続く前提の簡易シミュレーションです。3期目以降の基準期間売上高には、現在の課税売上合計を税抜換算して反映します。免税事業者仕入の控除割合は、2期目以降、各期の開始日に応じた割合へ置き換えて本則税額を再計算します。2期目の基準期間は未入力のため、現在入力した基準期間売上高を仮置きします。各期の単独比較であり、簡易課税の2年継続適用を前提にした選択順序の最適化ではありません。
         </div>
       </section>
 
@@ -480,7 +481,7 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r8</span> ｜
+    <span>r9</span> ｜
     <span id="footerDate"></span>
     <div>制度時点：2026年6月10日（国税庁 令和8年度税制改正特集ベース）</div>
     <div>
@@ -767,6 +768,38 @@ function contextWithProjectionBase(ctx, base){
   };
 }
 
+function exemptPurchaseProjectionRatio(start){
+  if(!start || start < '2023-10-01') return { ratio:1, label:'100%' };
+  if(start < '2026-10-01') return { ratio:0.80, label:'80%' };
+  if(start < '2028-10-01') return { ratio:0.70, label:'70%' };
+  if(start < '2030-10-01') return { ratio:0.50, label:'50%' };
+  if(start < '2031-10-01') return { ratio:0.30, label:'30%' };
+  return { ratio:0, label:'0%' };
+}
+
+function calculateProjectionRegular(calc, ctx, index){
+  const currentRegular = calc.methods.find(method => method.key === 'regular')?.amount || 0;
+  const hasExemptPurchase = Math.round(calc.purchases.exemptTax) !== 0 || calc.purchases.exemptTotalAmount !== 0;
+  if(index === 0 || !hasExemptPurchase){
+    return {
+      amount:currentRegular,
+      exemptRatioLabel:hasExemptPurchase ? '入力値' : 'なし',
+      exemptCreditableTax:calc.purchases.exemptCreditableTax,
+      regularCredit:calc.regularCredit
+    };
+  }
+  const projectionRatio = exemptPurchaseProjectionRatio(ctx.start);
+  const exemptCreditableTax = calc.purchases.exemptTax * projectionRatio.ratio;
+  const creditablePurchaseTax = calc.purchases.invoiceTax + exemptCreditableTax;
+  const regularCredit = creditablePurchaseTax * calc.purchases.creditRatio;
+  return {
+    amount:calc.sales.totalTax - regularCredit + calc.purchases.adjustment,
+    exemptRatioLabel:`${projectionRatio.label}（期首判定）`,
+    exemptCreditableTax,
+    regularCredit
+  };
+}
+
 function baseUnder10mReason(ctx){
   return ctx.baseSalesEntered
     ? '基準期間の課税売上高が1,000万円超です'
@@ -983,9 +1016,10 @@ function calculateProjectionMethods(calc, period, index){
   const base = projectionBaseForIndex(calc, index);
   const ctx = contextWithProjectionBase({ ...calc.ctx, start:period.start, end:period.end }, base);
   const eligibility = getEligibility(ctx);
+  const projectedRegular = calculateProjectionRegular(calc, ctx, index);
   const amounts = {
-    regular:calc.methods.find(method => method.key === 'regular')?.amount || 0,
-    simplified:calc.methods.find(method => method.key === 'simplified')?.amount || 0,
+    regular:projectedRegular.amount,
+    simplified:calc.sales.totalTax - calc.sales.deemedCredit,
     special2:calc.sales.totalTax * 0.20,
     special3:calc.sales.totalTax * 0.30
   };
@@ -1003,7 +1037,7 @@ function calculateProjectionMethods(calc, period, index){
     eligibility.special3.ok ? '3割' : '',
     eligibility.simplified.ok ? '簡易' : ''
   ].filter(Boolean).join('・') || '本則のみ';
-  return { eligibility, best:sorted[0] || null, specials, base };
+  return { eligibility, best:sorted[0] || null, specials, base, projectedRegular };
 }
 
 function renderSalesTax(rows){
@@ -1048,12 +1082,13 @@ function renderProjection(calc){
       <tr>
         <td>${escapeHtml(period.label)}</td>
         <td class="num">${escapeHtml(baseText)}</td>
+        <td>${escapeHtml(projection.projectedRegular.exemptRatioLabel)}</td>
         <td>${escapeHtml(bestLabel)}</td>
         <td class="num">${escapeHtml(amount)}</td>
         <td>${escapeHtml(projection.specials)}</td>
       </tr>
     `;
-  }).join('') || '<tr><td colspan="5">課税期間を入力してください</td></tr>';
+  }).join('') || '<tr><td colspan="6">課税期間を入力してください</td></tr>';
 }
 
 function renderViewMode(calc){
@@ -1187,7 +1222,7 @@ function buildSummaryText(calc){
     projectionPeriods(calc.ctx).forEach((period, index) => {
       const projection = calculateProjectionMethods(calc, period, index);
       const baseText = projection.base.entered ? `${yen(projection.base.value)}（${projection.base.label}）` : '未入力';
-      lines.push(`${period.label}: ${projection.best ? METHOD_LABELS[projection.best.key] + ' / ' + yen(projection.best.amount) : '入力待ち'} / ${projection.specials} / 基準期間売上高 ${baseText}`);
+      lines.push(`${period.label}: ${projection.best ? METHOD_LABELS[projection.best.key] + ' / ' + yen(projection.best.amount) : '入力待ち'} / ${projection.specials} / 基準期間売上高 ${baseText} / 免税仕入控除率 ${projection.projectedRegular.exemptRatioLabel}`);
     });
   }
   return lines.join('\n');
@@ -1224,13 +1259,14 @@ function downloadCsv(calc){
   });
   if(calc.ctx.viewMode === 'projection'){
     rows.push([]);
-    rows.push(['4期見通し','基準期間売上高','基準期間メモ','最有利見込み','概算納付額','使える特例']);
+    rows.push(['4期見通し','基準期間売上高','基準期間メモ','免税仕入控除率','最有利見込み','概算納付額','使える特例']);
     projectionPeriods(calc.ctx).forEach((period, index) => {
       const projection = calculateProjectionMethods(calc, period, index);
       rows.push([
         period.label,
         projection.base.entered ? Math.round(projection.base.value) : '未入力',
         projection.base.label,
+        projection.projectedRegular.exemptRatioLabel,
         projection.best ? METHOD_LABELS[projection.best.key] : '入力待ち',
         projection.best ? Math.round(projection.best.amount) : '',
         projection.specials

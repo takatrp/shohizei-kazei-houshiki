@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>消費税 課税方式判定ツール</title>
-<meta name="description" content="本則課税、簡易課税、2割特例、3割特例の消費税等の概算納付額を比較するツール。">
+  <title>消費税課税方式検討ツール（所内での一次試算用）</title>
+  <meta name="description" content="本則課税、簡易課税、2割特例、3割特例の消費税等の概算納付額を比較する、所内での一次試算用ツール。">
 <link rel="icon" type="image/png" href="forstaff.png">
 <link rel="shortcut icon" type="image/png" href="forstaff.png">
 <link rel="apple-touch-icon" href="forstaff.png">
@@ -182,11 +182,11 @@
   <header class="masthead">
     <div class="brand">
       <a href="https://takatrp.github.io/tool-portal/" target="_blank" rel="noopener" aria-label="松本会計ツールポータル">
-        <img src="forstaff.png" alt="消費税 課税方式判定ツール アイコン">
+        <img src="forstaff.png" alt="消費税課税方式検討ツール（所内での一次試算用） アイコン">
       </a>
       <div class="brand-title">
-        <h1>消費税 課税方式判定ツール</h1>
-        <p class="subhead">本則課税・簡易課税・2割特例・3割特例の概算比較</p>
+        <h1>消費税課税方式検討ツール（所内での一次試算用）</h1>
+        <p class="subhead">本則課税・簡易課税・2割特例・3割特例の概算比較を行う、所内で検討を始めるための一次試算ツールです。申告判断や顧問先への確定提案の前に、届出状況・帳簿・個別事情を必ず確認してください。</p>
       </div>
     </div>
     <div class="head-actions no-print">
@@ -481,7 +481,7 @@
     <a href="https://www.matsumoto-kaikei.or.jp/" target="_blank" rel="noopener license">税理士法人松本会計事務所</a> ｜
     <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="license noopener">CC BY-NC-SA 4.0</a> ｜
     <a href="/tool-portal/terms.html" target="_blank" rel="noopener">利用条件</a> ｜
-    <span>r9</span> ｜
+    <span>r10</span> ｜
     <span id="footerDate"></span>
     <div>制度時点：2026年6月10日（国税庁 令和8年度税制改正特集ベース）</div>
     <div>
@@ -1193,7 +1193,7 @@ function renderEligibilityNotice(calc){
 
 function buildSummaryText(calc){
   const lines = [];
-  lines.push('消費税 課税方式判定ツール');
+  lines.push('消費税課税方式検討ツール（所内での一次試算用）');
   lines.push(`制度時点: ${LAW_BASIS_LABEL}`);
   lines.push(`課税期間: ${calc.ctx.start || '-'} から ${calc.ctx.end || '-'}`);
   lines.push(`入力金額: ${calc.ctx.amountMode === 'included' ? '税込' : '税抜'}`);

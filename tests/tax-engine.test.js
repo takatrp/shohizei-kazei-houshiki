@@ -324,6 +324,24 @@ test('簡易課税の届出確認だけが未了でも2年拘束中の本則移�
   assert.match(result.reason, /選択可能/);
 });
 
+test('現在期の届出可を将来期の新規届出へ自動流用しない', () => {
+  const periods = [
+    routePeriod('1期', { regular:0, simplified:1000 }),
+    routePeriod('2期', { regular:100, simplified:0 }),
+    routePeriod('3期', { regular:100, simplified:0 }),
+    routePeriod('4期', { regular:100, simplified:0 })
+  ];
+  periods[0].noticeReady = 'yes';
+  periods.slice(1).forEach(period => { period.noticeReady = 'unknown'; });
+  const result = optimizeFourPeriodRoutes({
+    initialElectionStatus:'none',
+    noticeReady:'yes',
+    periods
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.bestRoute.map(step => step.method), ['regular','regular','regular','regular']);
+});
+
 test('届出有効中でも本則で高額資産を取得した後は簡易課税へ復帰させない', () => {
   const first = routePeriod('1期', { regular:0, simplified:1 }, { highValueAssetTrigger:true });
   first.methods.find(method => method.key === 'simplified').eligible = false;

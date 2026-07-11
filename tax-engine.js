@@ -245,6 +245,7 @@
 
   function transitionRouteState(state, period, method, noticeReady){
     const key = method.key;
+    const effectiveNoticeReady = period.noticeReady ?? noticeReady;
     const simplifiedUnavailablePreservesElection = period.simplifiedUnavailablePreservesElection === true;
     const context = { newElection:false, discontinue:false, preserveElection:false };
     let election = state.election;
@@ -253,7 +254,7 @@
     if(key === 'simplified'){
       if(state.assetRestriction > 0) return null;
       if(!election){
-        if(noticeReady !== 'yes') return null;
+        if(effectiveNoticeReady !== 'yes') return null;
         election = true;
         binding = 1;
         context.newElection = true;

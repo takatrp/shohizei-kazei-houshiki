@@ -449,7 +449,7 @@
           <div class="check-row">
             <span>
               <span class="check-label">簡易課税制度選択届出書が当該課税期間に有効、又は適用可能な期限内に提出できる</span>
-              <small>通常の提出期限と、インボイス登録時や2割特例後の移行措置による期限を区別して確認してください。4期試算では、この回答を将来期の新規届出可否にも安全側で引き継ぎます。</small>
+              <small>通常の提出期限と、インボイス登録時や2割特例後の移行措置による期限を区別して確認してください。4期試算では、将来期の新規届出をこの回答だけで自動的に「可」とはしません。</small>
               <span class="segmented" style="margin-top:6px">
                 <input type="radio" name="simpleNoticeReadyState" id="simpleNoticeReadyUnknown" value="unknown" checked><label for="simpleNoticeReadyUnknown">未確認</label>
                 <input type="radio" name="simpleNoticeReadyState" id="simpleNoticeReadyYes" value="yes"><label for="simpleNoticeReadyYes">はい・確認済み</label>
@@ -735,6 +735,18 @@ const EXEMPT_PURCHASE_BUCKETS = [
 
 const $ = id => document.getElementById(id);
 
+function storageGet(key){
+  try{ return localStorage.getItem(key); }catch(error){ return null; }
+}
+
+function storageSet(key, value){
+  try{ localStorage.setItem(key, value); return true; }catch(error){ return false; }
+}
+
+function storageRemove(key){
+  try{ localStorage.removeItem(key); return true; }catch(error){ return false; }
+}
+
 function escapeHtml(value){
   return String(value).replace(/[&<>"']/g, ch => ({
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -902,12 +914,14 @@ function getContext(){
     else if(!creditPercentState.valid) inputErrors.push(`${creditPercentState.label}: ${creditPercentState.error}`);
   }
   if(advancedMode){
-    [
-      [nonTaxableSalesState, '非課税売上等'],
-      [taxableOnlyPurchaseTaxState, '課税売上対応の仕入税額'],
-      [commonPurchaseTaxState, '共通対応の仕入税額'],
-      [highAssetAmountState, '高額資産の税抜取得価額等']
-    ].filter(([state]) => !state.valid).forEach(([state, label]) => inputErrors.push(`${label}: ${state.error}`));
+    if(!nonTaxableSalesState.valid) inputErrors.push(`非課税売上等: ${nonTaxableSalesState.error}`);
+    if($('regularDetailMethod').value === 'individual'){
+      if(!taxableOnlyPurchaseTaxState.valid) inputErrors.push(`課税売上対応の仕入税額: ${taxableOnlyPurchaseTaxState.error}`);
+      if(!commonPurchaseTaxState.valid) inputErrors.push(`共通対応の仕入税額: ${commonPurchaseTaxState.error}`);
+    }
+    if(selectedValue('highAssetState', CONFIRMATION.UNKNOWN) === CONFIRMATION.YES && !highAssetAmountState.valid){
+      inputErrors.push(`高額資産の税抜取得価額等: ${highAssetAmountState.error}`);
+    }
   }
 
   return {
@@ -1251,6 +1265,17 @@ function regularMethodLabel(ctx, regular){
     : regular.appliedMethod === 'individual' ? '個別対応方式' : '一括比例配分方式';
 }
 
+function assessHighAssetForMethod(ctx, methodKey){
+  return assessHighValueAsset({
+    hasAcquisition:ctx.advancedMode ? ctx.highAssetState : CONFIRMATION.NO,
+    amountEntered:ctx.highAssetAmountEntered,
+    amount:ctx.highAssetAmount,
+    assetType:ctx.highAssetType,
+    selfConstructed:ctx.highAssetSelfConstructed,
+    acquisitionMethod:methodKey
+  });
+}
+
 function calculate(){
   const ctx = getContext();
   const sales = collectSales(ctx);
@@ -1261,6 +1286,11 @@ function calculate(){
   const creditablePurchaseTax = purchases.invoiceTax + purchases.exemptCreditableTax;
   const regularEligibilityOverride = detailedRegularEligibility(ctx, regular, creditablePurchaseTax);
   if(regularEligibilityOverride) eligibility.regular = regularEligibilityOverride;
+  const highAssetRegular = assessHighAssetForMethod(ctx, 'regular');
+  const highAssetSpecial3 = assessHighAssetForMethod(ctx, 'special3');
+  if(ctx.advancedMode && ctx.highAssetState === CONFIRMATION.YES && highAssetSpecial3.status === 'unknown' && eligibility.special3.eligibility === ELIGIBILITY.ELIGIBLE){
+    eligibility.special3 = { eligibility:ELIGIBILITY.UNKNOWN, reasons:[highAssetSpecial3.reason] };
+  }
   const regularCredit = regular.regularCredit;
   const calcLike = { ctx, sales, purchases };
   const regularAmount = declarationRoundedAmount(calcLike, 'regular', regularCredit, regular.amount);
@@ -1312,14 +1342,6 @@ function calculate(){
   const smallDifference = difference !== null && (
     difference < 10000 || (Math.abs(best.amount) > 0 && difference < Math.abs(best.amount) * 0.01)
   );
-  const highAssetRegular = assessHighValueAsset({
-    hasAcquisition:ctx.advancedMode ? ctx.highAssetState : CONFIRMATION.NO,
-    amountEntered:ctx.highAssetAmountEntered,
-    amount:ctx.highAssetAmount,
-    assetType:ctx.highAssetType,
-    selfConstructed:ctx.highAssetSelfConstructed,
-    acquisitionMethod:'regular'
-  });
   return {
     ctx, eligibility, sales, purchases, creditablePurchaseTax, regularCredit, methods, valid, sorted, best,
     regular, highAssetRegular, unknownMethods, unconfirmedItems, inputErrors, hasComparisonInput, salesEntryRequired, comparisonReady, smallDifference
@@ -1371,11 +1393,17 @@ function calculateProjectionPlan(calc){
   const projections = periods.map((period, index) => calculateProjectionMethods(calc, period, index));
   const routePeriods = projections.map((projection, index) => ({
     label:projection.period.label,
-    methods:projection.methods.map(method => ({
-      key:method.key,
-      amount:method.amount,
-      eligible:method.include
-    })),
+    methods:projection.methods.map(method => {
+      const assetAssessment = index === 0
+        ? assessHighAssetForMethod(calc.ctx, method.key)
+        : { status:'clear' };
+      return {
+        key:method.key,
+        amount:method.amount,
+        eligible:method.include && assetAssessment.status !== 'unknown'
+      };
+    }),
+    noticeReady:index === 0 ? calc.ctx.simpleNoticeReady : CONFIRMATION.UNKNOWN,
     simplifiedUnavailablePreservesElection:projection.base.entered && projection.base.value > 50000000,
     highValueAssetTrigger:index === 0 && calc.highAssetRegular.status === 'restricted'
   }));
@@ -1799,7 +1827,7 @@ function downloadCsv(calc){
 function saveState(){
   const enabled = $('saveToDevice').checked;
   if(!enabled){
-    localStorage.removeItem(STORAGE_KEY);
+    storageRemove(STORAGE_KEY);
     $('saveStatus').textContent = '保存しません';
     return;
   }
@@ -1823,14 +1851,14 @@ function saveState(){
     data[type.key + 'Sale8'] = $(type.key + 'Sale8').value;
   });
   const serialized = serializeStateIfEnabled(enabled, data);
-  if(serialized) localStorage.setItem(STORAGE_KEY, serialized);
-  $('saveStatus').textContent = 'この端末に保存中';
+  const saved = serialized ? storageSet(STORAGE_KEY, serialized) : false;
+  $('saveStatus').textContent = saved ? 'この端末に保存中' : 'この環境では保存できません';
 }
 
 function handleLegacyStorage(){
-  const legacyKeys = LEGACY_STORAGE_KEYS.filter(key => localStorage.getItem(key));
+  const legacyKeys = LEGACY_STORAGE_KEYS.filter(key => storageGet(key));
   if(!legacyKeys.length) return;
-  legacyKeys.forEach(key => localStorage.removeItem(key));
+  legacyKeys.forEach(key => storageRemove(key));
   const notice = $('storageNotice');
   if(notice){
     notice.style.display = '';
@@ -1839,12 +1867,12 @@ function handleLegacyStorage(){
 }
 
 function restoreState(){
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = storageGet(STORAGE_KEY);
   if(!raw) return;
   try{
     const data = JSON.parse(raw);
     if(!data.saveEnabled){
-      localStorage.removeItem(STORAGE_KEY);
+      storageRemove(STORAGE_KEY);
       return;
     }
     $('saveToDevice').checked = true;
@@ -1885,8 +1913,8 @@ function update(){
 }
 
 function resetAll(){
-  localStorage.removeItem(STORAGE_KEY);
-  LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+  storageRemove(STORAGE_KEY);
+  LEGACY_STORAGE_KEYS.forEach(key => storageRemove(key));
   $('storageNotice').style.display = 'none';
   document.querySelectorAll('.js-amount').forEach(input => { input.value = ''; });
   $('periodStart').value = '2026-01-01';

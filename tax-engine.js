@@ -245,9 +245,7 @@
 
   function transitionRouteState(state, period, method, noticeReady){
     const key = method.key;
-    const simplifiedEligible = period.methods.some(candidate => (
-      candidate.key === 'simplified' && isEligibleRouteMethod(candidate)
-    ));
+    const simplifiedUnavailablePreservesElection = period.simplifiedUnavailablePreservesElection === true;
     const context = { newElection:false, discontinue:false, preserveElection:false };
     let election = state.election;
     let binding = Math.max(0, state.binding - 1);
@@ -261,8 +259,8 @@
         context.newElection = true;
       }
     }else if(key === 'regular' && election){
-      if(simplifiedEligible && state.binding > 0) return null;
-      if(simplifiedEligible){
+      if(state.binding > 0 && !simplifiedUnavailablePreservesElection) return null;
+      if(!simplifiedUnavailablePreservesElection){
         election = false;
         binding = 0;
         context.discontinue = true;

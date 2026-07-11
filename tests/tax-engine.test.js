@@ -275,6 +275,7 @@ test('新規の簡易課税選択は現在期と次期の2期を拘束する', (
 test('5000万円超で簡易課税が使えない期も届出効力を保って次期に復活する', () => {
   const unavailableSimplified = routePeriod('1期', { regular:100, simplified:1 });
   unavailableSimplified.methods.find(method => method.key === 'simplified').eligible = false;
+  unavailableSimplified.simplifiedUnavailablePreservesElection = true;
   const result = optimizeFourPeriodRoutes({
     initialElectionStatus:'second',
     noticeReady:'no',
@@ -304,6 +305,23 @@ test('高額資産取得後2期は簡易の新規選択と2割・3割特例を�
   assert.equal(result.ok, true);
   assert.deepEqual(result.bestRoute.map(step => step.method), ['regular', 'regular', 'regular', 'simplified']);
   assert.equal(result.cumulative, 201);
+});
+
+test('簡易課税の届出確認だけが未了でも2年拘束中の本則移行を許可しない', () => {
+  const unavailable = routePeriod('1期', { regular:1, simplified:10 });
+  unavailable.methods.find(method => method.key === 'simplified').eligible = false;
+  const result = optimizeFourPeriodRoutes({
+    initialElectionStatus:'first',
+    noticeReady:'no',
+    periods:[
+      unavailable,
+      routePeriod('2期', { regular:1, simplified:10 }),
+      routePeriod('3期', { regular:1, simplified:10 }),
+      routePeriod('4期', { regular:1, simplified:10 })
+    ]
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /選択可能/);
 });
 
 test('届出有効中でも本則で高額資産を取得した後は簡易課税へ復帰させない', () => {

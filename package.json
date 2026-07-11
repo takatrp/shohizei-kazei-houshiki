@@ -1,0 +1,9 @@
+{
+  "name": "shohizei-kazei-houshiki",
+  "version": "11.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "build": "node scripts/validate-static.js"
+  }
+}

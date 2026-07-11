@@ -66,6 +66,7 @@
   .release-banner summary{cursor:pointer;font-weight:900}
   .release-banner ul{margin:6px 0 0 18px;padding:0}
   .tool-layout{display:grid;grid-template-columns:1fr;gap:10px}
+  .input-col,.results-col,.panel{min-width:0}
   @media(min-width:1024px){
     .tool-layout{grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);align-items:start}
     .results-col{position:sticky;top:12px}
@@ -105,7 +106,7 @@
   .check-row input{margin-top:3px;flex:0 0 auto}
   .check-row .check-label{margin:0}
   .check-row small{display:block;color:var(--muted);font-size:11px;line-height:1.45;margin-top:2px}
-  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{border-bottom:1px solid var(--line);padding:6px 7px;vertical-align:middle}
   th{background:#f0f6f8;color:#173845;font-size:12px;text-align:left;white-space:nowrap}

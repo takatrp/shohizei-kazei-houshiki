@@ -98,7 +98,15 @@
     const taxableSalesRatio = totalSales > 0
       ? Math.min(1, Math.max(0, taxableSales / totalSales))
       : 0;
-    const fullCreditEligible = taxableSales <= 500000000 && taxableSalesRatio + Number.EPSILON >= 0.95;
+    const suppliedPeriodMonths = finiteNumber(input.periodMonths, 12);
+    const periodMonths = suppliedPeriodMonths > 0 && suppliedPeriodMonths < 12
+      ? suppliedPeriodMonths
+      : 12;
+    const annualizedTaxableSales = periodMonths < 12
+      ? taxableSales * 12 / periodMonths
+      : taxableSales;
+    const fullCreditEligible = annualizedTaxableSales <= 500000000
+      && taxableSalesRatio + Number.EPSILON >= 0.95;
 
     let regularCredit;
     let appliedMethod;
@@ -119,6 +127,8 @@
       amount:salesTax - regularCredit + adjustment,
       regularCredit,
       taxableSalesRatio,
+      periodMonths,
+      annualizedTaxableSales,
       fullCreditEligible,
       appliedMethod
     };
@@ -201,7 +211,13 @@
     }
 
     if(amount < threshold){
-      return highValueAssessment('clear', `取得価額が判定基準の${threshold.toLocaleString('ja-JP')}円未満です。`);
+      const fixedAssetCaveat = input.assetType === 'fixed' && amount >= 1000000
+        ? ' ただし、課税事業者選択後2年以内や新設法人等が取得する100万円以上の調整対象固定資産には、別途3年間の制限が生じる場合があります。'
+        : '';
+      return highValueAssessment(
+        'clear',
+        `取得価額が高額特定資産の判定基準${threshold.toLocaleString('ja-JP')}円未満です。${fixedAssetCaveat}`
+      );
     }
     if(input.acquisitionMethod === 'regular'){
       return highValueAssessment(
@@ -220,7 +236,13 @@
   }
 
   function routeStateKey(state){
-    return `${state.election ? 1 : 0}|${state.binding}|${state.assetRestriction}`;
+    return [
+      state.election ? 1 : 0,
+      state.simplifiedApplied ? 1 : 0,
+      state.binding,
+      state.assetRestriction,
+      state.previousMethod || ''
+    ].join('|');
   }
 
   function isEligibleRouteMethod(method){
@@ -229,40 +251,66 @@
 
   function routeAction(methodKey, context){
     if(methodKey === 'regular'){
-      if(context.discontinue) return '簡易課税の不適用届出を行い、本則課税を適用';
+      if(context.discontinue) return '課税期間の初日の前日までに簡易課税制度選択不適用届出書を提出し、本則課税を適用';
       if(context.preserveElection) return '簡易課税の届出効力を維持し、本則課税を適用';
       return '本則課税を適用';
     }
     if(methodKey === 'simplified'){
-      return context.newElection
-        ? '簡易課税制度選択届出書を提出し、簡易課税を適用'
-        : '有効な届出により簡易課税を適用';
+      if(context.newElection){
+        return context.relaxedElectionDeadline
+          ? '直前期の2割・3割特例後の経過措置により、当期の確定申告期限までに簡易課税制度選択届出書を提出して簡易課税を適用'
+          : '課税期間の初日の前日までに簡易課税制度選択届出書を提出して簡易課税を適用';
+      }
+      return '有効な届出により簡易課税を適用';
     }
     if(methodKey === 'special2') return '2割特例を適用（簡易課税の届出状態は維持）';
     if(methodKey === 'special3') return '3割特例を適用（簡易課税の届出状態は維持）';
     return `${methodKey}を適用`;
   }
 
-  function transitionRouteState(state, period, method, noticeReady){
+  function futureElectionAction(methodKey){
+    if(methodKey === 'special2' || methodKey === 'special3'){
+      return '翌期の確定申告期限までに簡易課税制度選択届出書を提出する計画を反映';
+    }
+    return '翌期の課税期間の初日の前日までに簡易課税制度選択届出書を提出する計画を反映';
+  }
+
+  function transitionRouteStates(state, period, method, noticeReady){
     const key = method.key;
-    const effectiveNoticeReady = period.noticeReady ?? noticeReady;
+    const effectiveNoticeReady = noticeReady;
+    const futureElectionReady = period.futureElectionReady ?? CONFIRMATION.UNKNOWN;
+    const discontinuanceReady = period.discontinuanceReady ?? CONFIRMATION.UNKNOWN;
     const simplifiedUnavailablePreservesElection = period.simplifiedUnavailablePreservesElection === true;
-    const context = { newElection:false, discontinue:false, preserveElection:false };
+    const context = {
+      newElection:false,
+      relaxedElectionDeadline:false,
+      discontinue:false,
+      preserveElection:false
+    };
     let election = state.election;
+    let simplifiedApplied = state.simplifiedApplied;
     let binding = Math.max(0, state.binding - 1);
 
     if(key === 'simplified'){
-      if(state.assetRestriction > 0) return null;
+      if(state.assetRestriction > 0) return [];
       if(!election){
-        if(effectiveNoticeReady !== 'yes') return null;
+        const relaxedElectionDeadline = (state.previousMethod === 'special2' || state.previousMethod === 'special3')
+          && futureElectionReady === CONFIRMATION.YES;
+        if(effectiveNoticeReady !== CONFIRMATION.YES && !relaxedElectionDeadline) return [];
         election = true;
-        binding = 1;
         context.newElection = true;
+        context.relaxedElectionDeadline = relaxedElectionDeadline;
+      }
+      if(!simplifiedApplied){
+        simplifiedApplied = true;
+        binding = 1;
       }
     }else if(key === 'regular' && election){
-      if(state.binding > 0 && !simplifiedUnavailablePreservesElection) return null;
+      if(state.binding > 0 && !simplifiedUnavailablePreservesElection) return [];
       if(!simplifiedUnavailablePreservesElection){
+        if(discontinuanceReady !== CONFIRMATION.YES) return [];
         election = false;
+        simplifiedApplied = false;
         binding = 0;
         context.discontinue = true;
       }else{
@@ -270,20 +318,38 @@
       }
     }
 
-    if((key === 'special2' || key === 'special3') && state.assetRestriction > 0) return null;
+    if((key === 'special2' || key === 'special3') && state.assetRestriction > 0) return [];
 
     const highValueAssetTriggered = key === 'regular' && period.highValueAssetTrigger === true;
     if(highValueAssetTriggered){
       election = false;
+      simplifiedApplied = false;
       binding = 0;
     }
     const assetRestriction = highValueAssetTriggered
       ? 2
       : Math.max(0, state.assetRestriction - 1);
-    return {
-      state:{ election, binding, assetRestriction },
-      action:routeAction(key, context) + (highValueAssetTriggered ? '。高額資産取得による簡易課税届出の制限を反映' : '')
-    };
+    const action = routeAction(key, context)
+      + (highValueAssetTriggered ? '。高額資産取得による簡易課税届出の制限を反映' : '');
+    const transitions = [{
+      state:{ election, simplifiedApplied, binding, assetRestriction, previousMethod:key },
+      action
+    }];
+
+    if(!election && !highValueAssetTriggered && assetRestriction === 0
+      && futureElectionReady === CONFIRMATION.YES){
+      transitions.push({
+        state:{
+          election:true,
+          simplifiedApplied:false,
+          binding:0,
+          assetRestriction,
+          previousMethod:key
+        },
+        action:`${action}。${futureElectionAction(key)}`
+      });
+    }
+    return transitions;
   }
 
   function optimizeFourPeriodRoutes(input = {}){
@@ -302,10 +368,10 @@
     }
 
     const initialStates = {
-      none:{ election:false, binding:0, assetRestriction:0 },
-      first:{ election:true, binding:2, assetRestriction:0 },
-      second:{ election:true, binding:1, assetRestriction:0 },
-      free:{ election:true, binding:0, assetRestriction:0 }
+      none:{ election:false, simplifiedApplied:false, binding:0, assetRestriction:0, previousMethod:'' },
+      first:{ election:true, simplifiedApplied:true, binding:2, assetRestriction:0, previousMethod:'simplified' },
+      second:{ election:true, simplifiedApplied:true, binding:1, assetRestriction:0, previousMethod:'simplified' },
+      free:{ election:true, simplifiedApplied:true, binding:0, assetRestriction:0, previousMethod:'simplified' }
     };
     const initialState = initialStates[input.initialElectionStatus];
     if(!initialState) return emptyResult('簡易課税制度選択届出書の状態が不正です。');
@@ -315,27 +381,31 @@
       { state:initialState, cumulative:0, route:[] }
     ]]);
 
-    for(const period of input.periods){
+    for(const [periodIndex, period] of input.periods.entries()){
       if(!period || !Array.isArray(period.methods)) return emptyResult('各期の課税方式候補が必要です。');
       const nextCandidates = new Map();
       candidates.forEach(candidate => {
         period.methods.filter(isEligibleRouteMethod).forEach(method => {
-          const transition = transitionRouteState(candidate.state, period, method, input.noticeReady);
-          if(!transition) return;
-          const amount = finiteNumber(method.amount);
-          const next = {
-            state:transition.state,
-            cumulative:candidate.cumulative + amount,
-            route:[...candidate.route, {
-              label:String(period.label ?? ''),
-              action:transition.action,
-              method:method.key,
-              amount
-            }]
-          };
-          const stateKey = routeStateKey(next.state);
-          const current = nextCandidates.get(stateKey);
-          if(!current || next.cumulative < current.cumulative) nextCandidates.set(stateKey, next);
+          const currentNoticeReady = periodIndex === 0
+            ? (period.noticeReady ?? input.noticeReady)
+            : CONFIRMATION.UNKNOWN;
+          const transitions = transitionRouteStates(candidate.state, period, method, currentNoticeReady);
+          transitions.forEach(transition => {
+            const amount = finiteNumber(method.amount);
+            const next = {
+              state:transition.state,
+              cumulative:candidate.cumulative + amount,
+              route:[...candidate.route, {
+                label:String(period.label ?? ''),
+                action:transition.action,
+                method:method.key,
+                amount
+              }]
+            };
+            const stateKey = routeStateKey(next.state);
+            const current = nextCandidates.get(stateKey);
+            if(!current || next.cumulative < current.cumulative) nextCandidates.set(stateKey, next);
+          });
         });
       });
       if(nextCandidates.size === 0) return emptyResult('選択可能な4期経路がありません。');

@@ -7,6 +7,20 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r13',
+      date:'2026-07-11',
+      title:'4期最適化の届出経路と判定前提を改善',
+      category:'calculation',
+      recalcRecommended:true,
+      changes:Object.freeze([
+        '2割・3割適用中に将来の簡易課税選択届出を行う経路を4期最適化へ追加',
+        '当期の簡易課税不適用届出と将来届出の期限確認を分離',
+        '1年未満の課税期間における5億円判定用課税売上高の年換算を追加',
+        '調整対象固定資産100万円以上の別途制限と期首棚卸資産調整の注意を追加',
+        '消費税率の前提を標準10％・軽減8％と明示'
+      ])
+    }),
+    Object.freeze({
       version:'r12',
       date:'2026-07-11',
       title:'詳細試算と4期累計最適化を追加',

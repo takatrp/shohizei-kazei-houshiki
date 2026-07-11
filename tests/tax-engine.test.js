@@ -144,6 +144,24 @@ test('課税売上割合95％未満または5億円超では指定した控除�
   assert.equal(over500m.appliedMethod, 'individual');
 });
 
+test('1年未満の課税期間は課税売上高を年換算して5億円判定を行う', () => {
+  const result = calculateDetailedRegular({
+    salesTax:1000,
+    purchaseTax:800,
+    adjustment:0,
+    method:'individual',
+    taxableSales:200000000,
+    totalSales:200000000,
+    taxableOnlyTax:300,
+    commonTax:200,
+    periodMonths:3
+  });
+  assert.equal(result.periodMonths, 3);
+  assert.equal(result.annualizedTaxableSales, 800000000);
+  assert.equal(result.fullCreditEligible, false);
+  assert.equal(result.appliedMethod, 'individual');
+});
+
 test('個別対応方式の区分税額と異常入力を仕入税額の範囲内に収める', () => {
   const result = calculateDetailedRegular({
     salesTax:-100, purchaseTax:500, adjustment:-50, method:'individual',
@@ -254,6 +272,21 @@ test('高額資産は取得方式と未確認・自己建設を安全側で判�
   assert.equal(assessHighValueAsset({ ...base, amount:-1, acquisitionMethod:'regular' }).status, 'unknown');
 });
 
+test('100万円以上1000万円未満の固定資産は高額特定資産に該当しなくても別制度の留保を示す', () => {
+  const result = assessHighValueAsset({
+    hasAcquisition:'yes',
+    amountEntered:true,
+    amount:5000000,
+    assetType:'fixed',
+    selfConstructed:false,
+    acquisitionMethod:'regular'
+  });
+  assert.equal(result.status, 'clear');
+  assert.match(result.reason, /100万円以上/);
+  assert.match(result.reason, /新設法人/);
+  assert.match(result.reason, /3年間/);
+});
+
 test('新規の簡易課税選択は現在期と次期の2期を拘束する', () => {
   const result = optimizeFourPeriodRoutes({
     initialElectionStatus:'none',
@@ -261,7 +294,7 @@ test('新規の簡易課税選択は現在期と次期の2期を拘束する', (
     periods:[
       routePeriod('1期', { regular:100, simplified:10 }),
       routePeriod('2期', { regular:0, simplified:20 }),
-      routePeriod('3期', { regular:30, simplified:200 }),
+      routePeriod('3期', { regular:30, simplified:200 }, { discontinuanceReady:'yes' }),
       routePeriod('4期', { regular:40, simplified:200 })
     ]
   });
@@ -270,6 +303,68 @@ test('新規の簡易課税選択は現在期と次期の2期を拘束する', (
   assert.equal(result.cumulative, 100);
   assert.match(result.bestRoute[0].action, /選択届出書/);
   assert.match(result.bestRoute[2].action, /不適用届出/);
+});
+
+test('2割特例期に将来届出を計画し3割特例後に簡易課税へ移る100万円経路を認識する', () => {
+  const result = optimizeFourPeriodRoutes({
+    initialElectionStatus:'none',
+    noticeReady:'yes',
+    periods:[
+      routePeriod('令和8年', {
+        regular:500000,
+        simplified:300000,
+        special2:200000
+      }, { futureElectionReady:'yes' }),
+      routePeriod('令和9年', {
+        regular:500000,
+        simplified:300000,
+        special3:250000
+      }),
+      routePeriod('令和10年', {
+        regular:500000,
+        simplified:300000,
+        special3:250000
+      }),
+      routePeriod('令和11年', {
+        regular:500000,
+        simplified:300000
+      })
+    ]
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.bestRoute.map(step => step.method), [
+    'special2', 'special3', 'special3', 'simplified'
+  ]);
+  assert.equal(result.cumulative, 1000000);
+  assert.match(result.bestRoute[0].action, /翌期の確定申告期限まで/);
+});
+
+test('届出有効かつ2年継続済みでも当期の不適用届出確認なしに本則へ移さない', () => {
+  const periods = [
+    routePeriod('1期', { regular:0, simplified:100 }),
+    routePeriod('2期', { regular:0, simplified:100 }),
+    routePeriod('3期', { regular:0, simplified:100 }),
+    routePeriod('4期', { regular:0, simplified:100 })
+  ];
+  const notFiled = optimizeFourPeriodRoutes({
+    initialElectionStatus:'free',
+    noticeReady:'no',
+    periods
+  });
+  assert.equal(notFiled.ok, true);
+  assert.equal(notFiled.bestRoute[0].method, 'simplified');
+
+  periods[0].discontinuanceReady = 'yes';
+  const filed = optimizeFourPeriodRoutes({
+    initialElectionStatus:'free',
+    noticeReady:'no',
+    periods
+  });
+  assert.equal(filed.ok, true);
+  assert.deepEqual(filed.bestRoute.map(step => step.method), [
+    'regular', 'regular', 'regular', 'regular'
+  ]);
+  assert.match(filed.bestRoute[0].action, /初日の前日まで/);
 });
 
 test('5000万円超で簡易課税が使えない期も届出効力を保って次期に復活する', () => {
@@ -298,7 +393,9 @@ test('高額資産取得後2期は簡易の新規選択と2割・3割特例を�
     periods:[
       routePeriod('1期', { regular:0 }, { highValueAssetTrigger:true }),
       routePeriod('2期', { regular:100, simplified:1, special2:0, special3:0 }),
-      routePeriod('3期', { regular:100, simplified:1, special2:0, special3:0 }),
+      routePeriod('3期', { regular:100, simplified:1, special2:0, special3:0 }, {
+        futureElectionReady:'yes'
+      }),
       routePeriod('4期', { regular:100, simplified:1, special2:50, special3:50 })
     ]
   });
@@ -343,7 +440,10 @@ test('現在期の届出可を将来期の新規届出へ自動流用しない',
 });
 
 test('届出有効中でも本則で高額資産を取得した後は簡易課税へ復帰させない', () => {
-  const first = routePeriod('1期', { regular:0, simplified:1 }, { highValueAssetTrigger:true });
+  const first = routePeriod('1期', { regular:0, simplified:1 }, {
+    highValueAssetTrigger:true,
+    discontinuanceReady:'yes'
+  });
   first.methods.find(method => method.key === 'simplified').eligible = false;
   const result = optimizeFourPeriodRoutes({
     initialElectionStatus:'free',
@@ -351,7 +451,7 @@ test('届出有効中でも本則で高額資産を取得した後は簡易課�
     periods:[
       first,
       routePeriod('2期', { regular:100, simplified:1 }),
-      routePeriod('3期', { regular:100, simplified:1 }),
+      routePeriod('3期', { regular:100, simplified:1 }, { futureElectionReady:'yes' }),
       routePeriod('4期', { regular:100, simplified:1 })
     ]
   });
@@ -367,7 +467,7 @@ test('2割・3割特例は簡易届出を維持しながら拘束期間を経過
     periods:[
       routePeriod('1期', { regular:100, simplified:20, special2:5 }),
       routePeriod('2期', { regular:100, simplified:20, special3:5 }),
-      routePeriod('3期', { regular:1, simplified:20 }),
+      routePeriod('3期', { regular:1, simplified:20 }, { discontinuanceReady:'yes' }),
       routePeriod('4期', { regular:1, simplified:20 })
     ]
   });
@@ -485,7 +585,7 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r12');
+  assert.equal(release.APP_META.version, 'r13');
 });
 
 test('4期表示に最有利見込みを使わず、出力関数に版数と未確認事項がある', () => {

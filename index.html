@@ -275,10 +275,10 @@
           <label for="modeTaxExcluded">税抜</label>
         </div>
 
-        <h3>税率モード</h3>
+        <h3>消費税率の前提</h3>
         <div class="segmented">
           <input type="radio" name="taxScenario" id="taxScenarioCurrent" value="current" checked>
-          <label for="taxScenarioCurrent">現行（軽8％）</label>
+          <label for="taxScenarioCurrent">現行税率（標準10％・軽減8％）</label>
         </div>
         <details class="policy-simulation" id="policySimulationDetails">
           <summary>未施行の政策試算</summary>
@@ -308,16 +308,35 @@
         <div class="advanced-fields is-hidden" id="advancedFields">
           <div class="panel-subsection">
             <h3 style="margin-top:0">4期試算の届出状況</h3>
-            <div class="field">
-              <label for="simpleElectionStatus">簡易課税制度選択届出書の現在位置</label>
-              <select id="simpleElectionStatus" class="compact-select">
-                <option value="unknown">未確認</option>
-                <option value="none">届出なし</option>
-                <option value="first">今期が簡易課税の適用初年度</option>
-                <option value="second">今期が2年継続の2年目</option>
-                <option value="free">届出は有効・2年継続済み</option>
-              </select>
-              <div class="mini">届出なしから簡易課税を選ぶ経路は、上の「届出書が有効・期限内提出可」が「はい」の場合だけ比較します。</div>
+            <div class="grid two">
+              <div class="field">
+                <label for="simpleElectionStatus">簡易課税制度選択届出書の現在位置</label>
+                <select id="simpleElectionStatus" class="compact-select">
+                  <option value="unknown">未確認</option>
+                  <option value="none">届出なし</option>
+                  <option value="first">今期が簡易課税の適用初年度</option>
+                  <option value="second">今期が2年継続の2年目</option>
+                  <option value="free">届出は有効・2年継続済み</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="futureElectionPlan">将来期の届出計画</label>
+                <select id="futureElectionPlan" class="compact-select">
+                  <option value="unknown">計画を未確認</option>
+                  <option value="yes">必要な届出を期限内提出する</option>
+                  <option value="no">新たな届出は行わない</option>
+                </select>
+                <div class="mini">選択・不適用届出を期限内に行う計画として、2割・3割適用中に翌期以後の簡易課税届出を出す経路も比較します。</div>
+              </div>
+              <div class="field is-hidden" id="currentDiscontinuanceField">
+                <label for="currentDiscontinuanceReady">今期から本則へ戻る不適用届出</label>
+                <select id="currentDiscontinuanceReady" class="compact-select">
+                  <option value="unknown">前期末までの提出を未確認</option>
+                  <option value="yes">前期末までに提出済み</option>
+                  <option value="no">提出していない</option>
+                </select>
+                <div class="mini">今期から本則課税とするには、原則として今期開始日の前日までの提出が必要です。</div>
+              </div>
             </div>
           </div>
           <div class="panel-subsection">
@@ -345,7 +364,7 @@
                 <input type="text" inputmode="numeric" class="money js-amount" id="commonPurchaseTax" placeholder="0">
               </div>
             </div>
-            <div class="mini">課税売上高5億円以下かつ課税売上割合95％以上なら全額控除を自動適用します。それ以外で「自動」のままの場合は、本則課税を要確認として扱います。一括比例配分方式を選んだ4期試算は、4期を通じて同方式を継続する前提です。</div>
+            <div class="mini">課税売上高5億円以下かつ課税売上割合95％以上なら全額控除を自動適用します。1年未満の課税期間は課税売上高を年換算します。それ以外で「自動」のままの場合は、本則課税を要確認として扱います。一括比例配分方式を選んだ4期試算は、4期を通じて同方式を継続する前提です。</div>
           </div>
           <div class="panel-subsection">
             <h3 style="margin-top:0">高額特定資産等の判定補助</h3>
@@ -449,7 +468,7 @@
           <div class="check-row">
             <span>
               <span class="check-label">簡易課税制度選択届出書が当該課税期間に有効、又は適用可能な期限内に提出できる</span>
-              <small>通常の提出期限と、インボイス登録時や2割特例後の移行措置による期限を区別して確認してください。4期試算では、将来期の新規届出をこの回答だけで自動的に「可」とはしません。</small>
+              <small>当期に簡易課税を適用できる届出状況を回答してください。将来期の提出計画は、詳細試算の「将来期の届出計画」で別に指定します。</small>
               <span class="segmented" style="margin-top:6px">
                 <input type="radio" name="simpleNoticeReadyState" id="simpleNoticeReadyUnknown" value="unknown" checked><label for="simpleNoticeReadyUnknown">未確認</label>
                 <input type="radio" name="simpleNoticeReadyState" id="simpleNoticeReadyYes" value="yes"><label for="simpleNoticeReadyYes">はい・確認済み</label>
@@ -574,6 +593,7 @@
             <label for="regularAdjustment">本則課税の個別調整額</label>
             <input type="text" inputmode="numeric" class="money js-amount" id="regularAdjustment" placeholder="0">
             <div class="mini">納付増はプラス、控除増・還付増はマイナスで入力</div>
+            <div class="mini">免税事業者から課税事業者となった期は、期首棚卸資産の仕入税額控除調整（消法36①）を確認し、必要な控除増額を反映してください。</div>
           </div>
         </div>
       </section>
@@ -623,7 +643,7 @@
           </table>
         </div>
         <div class="notice warn" style="margin-top:8px">
-          現在の売上・仕入構成が4期続くと仮定した一次試算です。3期目以降の基準期間売上高には現在の課税売上合計を反映し、将来期の免税事業者仕入は期間内に均等発生すると仮定して控除割合を日数按分します。実際の届出期限、過去の適用履歴、資産取得時期は必ず原資料で確認してください。
+          現在の売上・仕入構成が4期続くと仮定した一次試算です。3期目以降の基準期間売上高には現在の課税売上合計を反映し、将来期の免税事業者仕入は期間内に均等発生すると仮定して控除割合を日数按分します。特定期間、適用除外、課税売上割合・控除方式等の確認状態は4期共通の仮定です。実際の届出期限、過去の適用履歴、資産取得時期は必ず原資料で確認してください。
         </div>
       </section>
 
@@ -694,8 +714,8 @@ const {
   sanitizeCsvCell,
   serializeStateIfEnabled
 } = ShohizeiTaxEngine;
-const STORAGE_KEY = 'shohizeiKazeiHoushiki.v12';
-const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2', 'shohizeiKazeiHoushiki.v3', 'shohizeiKazeiHoushiki.v11'];
+const STORAGE_KEY = 'shohizeiKazeiHoushiki.v13';
+const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2', 'shohizeiKazeiHoushiki.v3', 'shohizeiKazeiHoushiki.v11', 'shohizeiKazeiHoushiki.v12'];
 const BUSINESS_TYPES = [
   { key:'type1', name:'第1種', detail:'卸売業', deemed:0.90 },
   { key:'type2', name:'第2種', detail:'小売業・飲食料品農林漁業', deemed:0.80 },
@@ -714,12 +734,12 @@ const METHOD_LABELS = {
 
 const TAX_SCENARIOS = {
   current: {
-    label:'現行税率（10％・軽8％）',
+    label:'現行税率（標準10％・軽減8％）',
     reducedRate:8,
-    notice:'現行の軽減税率8％で計算します。'
+    notice:'標準税率10％・軽減税率8％で計算します。'
   },
   food1: {
-    label:'試算：食料品等1％',
+    label:'政策試算（標準10％・食料品等1％）',
     reducedRate:1,
     notice:'未施行の議論段階の試算です。軽8％対象欄に入力した売上・仕入を1％として計算します。外食、対象品目、経過措置、返品、レジ・会計処理などは個別確認してください。'
   }
@@ -953,6 +973,8 @@ function getContext(){
     regularCreditConfirmed,
     advancedMode,
     simpleElectionStatus:$('simpleElectionStatus').value || 'unknown',
+    futureElectionPlan:$('futureElectionPlan').value || CONFIRMATION.UNKNOWN,
+    currentDiscontinuanceReady:$('currentDiscontinuanceReady').value || CONFIRMATION.UNKNOWN,
     regularDetailMethod:$('regularDetailMethod').value || 'auto',
     nonTaxableSales:nonTaxableSalesState.value,
     nonTaxableSalesEntered:nonTaxableSalesState.entered,
@@ -982,6 +1004,14 @@ function dateAddYears(value, years){
     String(date.getMonth() + 1).padStart(2, '0'),
     String(date.getDate()).padStart(2, '0')
   ].join('-');
+}
+
+function periodMonthsForAnnualization(start, end){
+  if(!start || !end || start > end) return 12;
+  const [startYear, startMonth, startDay] = start.split('-').map(Number);
+  const [endYear, endMonth, endDay] = end.split('-').map(Number);
+  const completeMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
+  return Math.max(1, completeMonths + (endDay >= startDay ? 1 : 0));
 }
 
 function projectionPeriods(ctx){
@@ -1056,7 +1086,7 @@ function calculateProjectionRegular(calc, ctx, index){
 }
 
 function individualCalendarYearReason(){
-  return '個人事業者で暦年以外の課税期間が入力されています。課税期間短縮等に該当するものとして2割特例・3割特例は候補から外します。';
+  return '個人事業者で暦年以外の課税期間が入力されています。開業年を含め、個人の課税期間は原則として1月1日から12月31日で入力してください。課税期間短縮等に該当するものとして2割特例・3割特例は候補から外します。';
 }
 
 function getEligibility(ctx){
@@ -1207,6 +1237,7 @@ function calculateRegularForContext(ctx, sales, purchases, exemptCreditableTax =
     method:ctx.regularDetailMethod,
     taxableSales:sales.totalTaxableBase,
     totalSales,
+    periodMonths:periodMonthsForAnnualization(ctx.start, ctx.end),
     taxableOnlyTax:ctx.taxableOnlyPurchaseTax,
     commonTax:ctx.commonPurchaseTax
   });
@@ -1404,6 +1435,8 @@ function calculateProjectionPlan(calc){
       };
     }),
     noticeReady:index === 0 ? calc.ctx.simpleNoticeReady : CONFIRMATION.UNKNOWN,
+    futureElectionReady:calc.ctx.futureElectionPlan,
+    discontinuanceReady:index === 0 ? calc.ctx.currentDiscontinuanceReady : calc.ctx.futureElectionPlan,
     simplifiedUnavailablePreservesElection:projection.base.entered && projection.base.value > 50000000,
     highValueAssetTrigger:index === 0 && calc.highAssetRegular.status === 'restricted'
   }));
@@ -1476,10 +1509,18 @@ function renderProjection(calc){
     $('projectionRows').innerHTML = '';
     return;
   }
+  const routeScopeNotes = [];
+  if(calc.ctx.futureElectionPlan === CONFIRMATION.UNKNOWN){
+    routeScopeNotes.push('将来期の届出計画が未確認のため、新たな届出を要する経路は比較対象外です。');
+  }
+  if(calc.ctx.simpleElectionStatus === 'free' && calc.ctx.currentDiscontinuanceReady !== CONFIRMATION.YES){
+    routeScopeNotes.push('今期の不適用届出が提出済みと確認できないため、今期から本則へ戻る経路は比較対象外です。');
+  }
   $('projectionRouteSummary').innerHTML = `
-    <strong>4期累計の最少経路</strong>
+    <strong>確認済み届出条件内の4期累計最少経路</strong>
     <div class="route-total">${escapeHtml(yen(plan.optimized.cumulative))}</div>
     <div class="mini">確認済み条件内で選択できる届出経路を比較しています。要確認方式は順位から除外します。</div>
+    ${routeScopeNotes.map(note => `<div class="mini">${escapeHtml(note)}</div>`).join('')}
   `;
   let cumulative = 0;
   $('projectionRows').innerHTML = plan.optimized.bestRoute.map((step, index) => {
@@ -1509,6 +1550,7 @@ function renderAdvancedMode(calc){
   const showIndividual = calc.ctx.advancedMode && calc.ctx.regularDetailMethod === 'individual';
   document.querySelectorAll('.detail-individual-field').forEach(el => el.classList.toggle('is-hidden', !showIndividual));
   $('highAssetFields').classList.toggle('is-hidden', !calc.ctx.advancedMode || calc.ctx.highAssetState !== CONFIRMATION.YES);
+  $('currentDiscontinuanceField').classList.toggle('is-hidden', !calc.ctx.advancedMode || calc.ctx.simpleElectionStatus !== 'free');
 }
 
 function renderHighAssetNotice(calc){
@@ -1528,7 +1570,7 @@ function renderHighAssetNotice(calc){
 function renderSummary(calc){
   const taxableSalesRatio = calc.sales.totalAmount ? calc.sales.totalTax / calc.sales.totalAmount : 0;
   $('taxSummary').innerHTML = [
-    ['税率モード', calc.ctx.taxScenarioLabel],
+    ['消費税率の前提', calc.ctx.taxScenarioLabel],
     ['版・更新日', `${APP_META.version} / ${APP_META.updatedAt}`],
     ['軽8％対象税率', taxRateLabel(calc.ctx.reducedRate)],
     ['基準期間売上高', formatCtxAmount(calc.ctx.baseTaxableSales, calc.ctx.baseSalesEntered)],
@@ -1650,7 +1692,7 @@ function renderMethodCards(calc){
 function renderEligibilityNotice(calc){
   const messages = [];
   if(calc.ctx.taxScenario !== 'current'){
-    messages.push('税率モード: 食料品等1％は未施行の議論段階にある試算です。現行申告用の判定ではありません。');
+    messages.push('消費税率の前提: 食料品等1％は未施行の議論段階にある試算です。現行申告用の判定ではありません。');
   }
   if(!calc.eligibility.periodValid) messages.push('課税期間の開始日と終了日を確認してください。');
   calc.methods.filter(method => method.eligibility !== ELIGIBILITY.ELIGIBLE).forEach(method => {
@@ -1662,6 +1704,7 @@ function renderEligibilityNotice(calc){
   if(calc.salesEntryRequired) messages.unshift('課税売上が未入力です。売上ゼロの場合は、いずれかの売上欄に0を入力してください。');
   if(calc.smallDifference) messages.push('方式間の差が小さいため、端数処理、課税売上割合、個別取引、届出状況を反映した精密計算が必要です。');
   messages.push('免税事業者等からの課税仕入に係る1事業者ごとの年間・事業年度1億円超の制限は自動判定していません。');
+  messages.push('免税事業者から課税事業者となった期は、期首棚卸資産の仕入税額控除調整（消法36①）を確認してください。');
   if(!messages.length){
     messages.push('適用要件の入力内容を反映しています。申告判断前に帳簿・届出・個別事情を確認してください。');
   }
@@ -1740,8 +1783,11 @@ function buildAssumptionRows(calc){
     ['簡易課税届出', confirmationLabel(calc.ctx.simpleNoticeReady)],
     ['試算モード', calc.ctx.advancedMode ? '詳細試算' : '通常試算'],
     ['簡易課税届出の現在位置', calc.ctx.advancedMode ? simpleElectionLabel(calc.ctx.simpleElectionStatus) : '詳細試算未使用'],
+    ['将来期の届出計画', calc.ctx.advancedMode ? confirmationLabel(calc.ctx.futureElectionPlan) : '詳細試算未使用'],
+    ['今期の不適用届出', calc.ctx.advancedMode && calc.ctx.simpleElectionStatus === 'free' ? confirmationLabel(calc.ctx.currentDiscontinuanceReady) : '対象外'],
     ['本則計算', regularMethodLabel(calc.ctx, calc.regular)],
     ['課税売上割合', calc.ctx.advancedMode && calc.regular.taxableSalesRatio !== null ? `${(calc.regular.taxableSalesRatio * 100).toFixed(2)}％` : '通常試算では未計算'],
+    ['5億円判定用の課税売上高', calc.ctx.advancedMode && calc.regular.annualizedTaxableSales !== undefined ? yen(calc.regular.annualizedTaxableSales) : '通常試算では未計算'],
     ['高額特定資産等', calc.ctx.advancedMode ? calc.highAssetRegular.reason : '詳細試算未使用'],
     ['端数処理', calc.ctx.advancedMode && calc.ctx.declarationRounding ? '申告書段階の端数処理を反映' : '概算'],
     ['本則個別調整額', yen(calc.purchases.adjustment)],
@@ -1833,7 +1879,7 @@ function saveState(){
   }
   const ids = [
     'periodStart','periodEnd','baseTaxableSales','specificTaxableSales','specificPayrollAmount','purchase10','purchase8',
-    ...getExemptPurchaseInputIds(), 'creditPercent','regularAdjustment','simpleElectionStatus','regularDetailMethod',
+    ...getExemptPurchaseInputIds(), 'creditPercent','regularAdjustment','simpleElectionStatus','futureElectionPlan','currentDiscontinuanceReady','regularDetailMethod',
     'nonTaxableSales','taxableOnlyPurchaseTax','commonPurchaseTax','highAssetAmount','highAssetType'
   ];
   const data = { saveEnabled:true };
@@ -1932,6 +1978,8 @@ function resetAll(){
   $('declarationRounding').checked = false;
   $('highAssetSelfConstructed').checked = false;
   $('simpleElectionStatus').value = 'unknown';
+  $('futureElectionPlan').value = 'unknown';
+  $('currentDiscontinuanceReady').value = 'unknown';
   $('regularDetailMethod').value = 'auto';
   $('highAssetType').value = 'unknown';
   $('saveToDevice').checked = false;

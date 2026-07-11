@@ -11,8 +11,8 @@
   gtag('js', new Date());
   gtag('config', 'G-TJ8VVCWREX');
 </script>
-  <title>消費税課税方式検討ツール</title>
-  <meta name="description" content="本則課税、簡易課税、2割特例、3割特例を比較する、税理士等の専門家向け一次試算ツール。">
+  <title>消費税課税方式検討ツール（所内での一次試算用）</title>
+  <meta name="description" content="本則課税、簡易課税、2割特例、3割特例を比較する、所内での一次試算専用ツール。">
 <link rel="icon" type="image/png" href="forstaff.png">
 <link rel="shortcut icon" type="image/png" href="forstaff.png">
 <link rel="apple-touch-icon" href="forstaff.png">
@@ -54,7 +54,7 @@
   .brand{display:flex;align-items:center;gap:10px;min-width:0}
   .brand img{width:44px;height:44px;object-fit:contain;border-radius:8px;flex:0 0 auto}
   .brand-title{min-width:0}
-  h1{margin:0;font-size:clamp(18px,2.2vw,24px);line-height:1.22;letter-spacing:0;font-weight:900;color:#0f2f3a}
+  h1{margin:0;font-size:22px;line-height:1.22;letter-spacing:0;font-weight:900;color:#0f2f3a}
   .subhead{margin:2px 0 0;color:var(--muted);font-size:12px}
   .audience-label{display:inline-block;font-weight:950;color:var(--brand-700);margin-right:5px}
   .head-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -181,6 +181,14 @@
   .save-state{font-size:11px;font-weight:900;color:var(--muted);margin-top:4px}
   .policy-simulation{margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fbfdfe}
   .policy-simulation summary{cursor:pointer;font-size:12px;font-weight:900;color:#6f3f04}
+  .advanced-toggle{margin-top:8px;border:2px solid var(--brand);background:var(--brand-100)}
+  .advanced-fields{margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+  .advanced-fields .panel-subsection{padding:8px 0;border-bottom:1px solid var(--line)}
+  .advanced-fields .panel-subsection:last-child{border-bottom:0}
+  .advanced-result{margin-top:8px}
+  .route-total{font-size:18px;font-weight:950;color:#0f2f3a;font-variant-numeric:tabular-nums}
+  .route-action{font-size:11px;color:var(--muted);min-width:180px}
+  .compact-select{min-height:34px}
   @media(max-width:640px){
     .wrap{padding:10px}
     .masthead{align-items:flex-start;flex-direction:column}
@@ -188,6 +196,7 @@
     .head-actions .btn{flex:1}
     th,td{padding:8px 6px}
     .sales-table input{min-width:96px}
+    h1{font-size:18px}
   }
   @media print{
     body{background:#fff}
@@ -210,7 +219,7 @@
         <img src="forstaff.png" alt="消費税課税方式検討ツール アイコン">
       </a>
       <div class="brand-title">
-        <h1>消費税課税方式検討ツール</h1>
+        <h1>消費税課税方式検討ツール（所内での一次試算用）</h1>
         <p class="subhead"><span class="audience-label">税理士等の専門家向け一次試算</span>本則課税・簡易課税・2割特例・3割特例を概算比較します。表示結果は届出状況、帳簿、課税売上割合、資産取得、個別事情等を確認する前の概算であり、申告判断や確定提案を代替するものではありません。</p>
       </div>
     </div>
@@ -285,7 +294,96 @@
           <input type="radio" name="viewMode" id="viewModeSingle" value="single" checked>
           <label for="viewModeSingle">単期比較</label>
           <input type="radio" name="viewMode" id="viewModeProjection" value="projection">
-          <label for="viewModeProjection">4期・各期単独比較</label>
+          <label for="viewModeProjection">4期・累計最適化</label>
+        </div>
+
+        <label class="check-row advanced-toggle">
+          <input type="checkbox" id="advancedMode">
+          <span>
+            <span class="check-label">詳細試算を使う</span>
+            <small>4期の届出経路、本則の課税売上割合・用途区分、高額資産、申告書段階の端数処理を確認します。該当する項目だけ入力してください。</small>
+          </span>
+        </label>
+        <div class="advanced-fields is-hidden" id="advancedFields">
+          <div class="panel-subsection">
+            <h3 style="margin-top:0">4期試算の届出状況</h3>
+            <div class="field">
+              <label for="simpleElectionStatus">簡易課税制度選択届出書の現在位置</label>
+              <select id="simpleElectionStatus" class="compact-select">
+                <option value="unknown">未確認</option>
+                <option value="none">届出なし</option>
+                <option value="first">今期が簡易課税の適用初年度</option>
+                <option value="second">今期が2年継続の2年目</option>
+                <option value="free">届出は有効・2年継続済み</option>
+              </select>
+              <div class="mini">届出なしから簡易課税を選ぶ経路は、上の「届出書が有効・期限内提出可」が「はい」の場合だけ比較します。</div>
+            </div>
+          </div>
+          <div class="panel-subsection">
+            <h3 style="margin-top:0">本則課税の精密計算</h3>
+            <div class="grid two">
+              <div class="field">
+                <label for="regularDetailMethod">仕入控除税額の計算方法</label>
+                <select id="regularDetailMethod" class="compact-select">
+                  <option value="auto">自動（全額控除要件を判定）</option>
+                  <option value="individual">個別対応方式</option>
+                  <option value="proportional">一括比例配分方式</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="nonTaxableSales">非課税売上等（税抜）</label>
+                <input type="text" inputmode="numeric" class="money js-amount" id="nonTaxableSales" placeholder="0">
+                <div class="mini">課税売上割合の分母に加算する金額</div>
+              </div>
+              <div class="field detail-individual-field is-hidden">
+                <label for="taxableOnlyPurchaseTax">課税売上対応の仕入税額</label>
+                <input type="text" inputmode="numeric" class="money js-amount" id="taxableOnlyPurchaseTax" placeholder="0">
+              </div>
+              <div class="field detail-individual-field is-hidden">
+                <label for="commonPurchaseTax">共通対応の仕入税額</label>
+                <input type="text" inputmode="numeric" class="money js-amount" id="commonPurchaseTax" placeholder="0">
+              </div>
+            </div>
+            <div class="mini">課税売上高5億円以下かつ課税売上割合95％以上なら全額控除を自動適用します。それ以外で「自動」のままの場合は、本則課税を要確認として扱います。一括比例配分方式を選んだ4期試算は、4期を通じて同方式を継続する前提です。</div>
+          </div>
+          <div class="panel-subsection">
+            <h3 style="margin-top:0">高額特定資産等の判定補助</h3>
+            <div class="segmented">
+              <input type="radio" name="highAssetState" id="highAssetUnknown" value="unknown" checked><label for="highAssetUnknown">未確認</label>
+              <input type="radio" name="highAssetState" id="highAssetNo" value="no"><label for="highAssetNo">取得なし</label>
+              <input type="radio" name="highAssetState" id="highAssetYes" value="yes"><label for="highAssetYes">取得あり</label>
+            </div>
+            <div class="grid two is-hidden" id="highAssetFields" style="margin-top:8px">
+              <div class="field">
+                <label for="highAssetAmount">一取引単位の税抜取得価額等</label>
+                <input type="text" inputmode="numeric" class="money js-amount" id="highAssetAmount" placeholder="例: 10,000,000">
+              </div>
+              <div class="field">
+                <label for="highAssetType">資産区分</label>
+                <select id="highAssetType" class="compact-select">
+                  <option value="unknown">未確認</option>
+                  <option value="fixed">調整対象固定資産</option>
+                  <option value="inventory">棚卸資産</option>
+                  <option value="gold">金・白金の地金等</option>
+                  <option value="other">上記以外</option>
+                </select>
+              </div>
+              <label class="check-row full-field">
+                <input type="checkbox" id="highAssetSelfConstructed">
+                <span><span class="check-label">自己建設高額特定資産等に該当する可能性がある</span><small>該当時は累計額・完成時期等の個別確認が必要なため、自動確定せず「要確認」にします。</small></span>
+              </label>
+            </div>
+            <div class="notice warn advanced-result" id="highAssetNotice"></div>
+          </div>
+          <div class="panel-subsection">
+            <label class="check-row">
+              <input type="checkbox" id="declarationRounding">
+              <span>
+                <span class="check-label">申告書段階の端数処理を反映する</span>
+                <small>税率別課税標準の1,000円未満、国税・地方税の納付額の100円未満を切り捨てます。返品・貸倒れ・中間納付等は「本則課税の個別調整額」等で別途確認してください。</small>
+              </span>
+            </label>
+          </div>
         </div>
 
         <h3>特例・簡易課税の判定条件</h3>
@@ -349,7 +447,7 @@
           <div class="check-row">
             <span>
               <span class="check-label">簡易課税制度選択届出書が当該課税期間に有効、又は適用可能な期限内に提出できる</span>
-              <small>通常の提出期限と、インボイス登録時や2割特例後の移行措置による期限を区別して確認してください。</small>
+              <small>通常の提出期限と、インボイス登録時や2割特例後の移行措置による期限を区別して確認してください。4期試算では、この回答を将来期の新規届出可否にも安全側で引き継ぎます。</small>
               <span class="segmented" style="margin-top:6px">
                 <input type="radio" name="simpleNoticeReadyState" id="simpleNoticeReadyUnknown" value="unknown" checked><label for="simpleNoticeReadyUnknown">未確認</label>
                 <input type="radio" name="simpleNoticeReadyState" id="simpleNoticeReadyYes" value="yes"><label for="simpleNoticeReadyYes">はい・確認済み</label>
@@ -503,27 +601,27 @@
 
       <section class="panel is-hidden" id="projectionPanel">
         <div class="panel-title">
-          <h2>4期・各期単独比較</h2>
-          <span class="mini">各期を独立して比較</span>
+          <h2>4期・累計最適化</h2>
+          <span class="mini">届出経路と2年継続を反映</span>
         </div>
+        <div id="projectionRouteSummary" class="notice warn" style="margin-bottom:8px"></div>
         <div class="table-wrap">
           <table aria-label="複数年見通し">
             <thead>
               <tr>
                 <th>課税期間</th>
-                <th class="num">基準期間売上高</th>
-                <th>免税仕入控除率</th>
-                <th>各期単独で最少の方式</th>
+                <th>選択方式</th>
                 <th class="num">納付見込</th>
-                <th>使える特例</th>
-                <th>注意</th>
+                <th>届出・経路</th>
+                <th class="num">累計</th>
+                <th>計算前提</th>
               </tr>
             </thead>
             <tbody id="projectionRows"></tbody>
           </table>
         </div>
         <div class="notice warn" style="margin-top:8px">
-          各期を独立して比較した概算です。現在の入力値が4期続くと仮定し、3期目以降の基準期間売上高には現在の課税売上合計を税抜換算して反映します。将来期の免税事業者仕入は期間内に均等発生すると仮定し、経過措置期間との重複日数で控除割合を按分します。届出期限、簡易課税の原則2年継続、前期の選択による翌期の拘束を反映した累計最適化ではありません。
+          現在の売上・仕入構成が4期続くと仮定した一次試算です。3期目以降の基準期間売上高には現在の課税売上合計を反映し、将来期の免税事業者仕入は期間内に均等発生すると仮定して控除割合を日数按分します。実際の届出期限、過去の適用履歴、資産取得時期は必ず原資料で確認してください。
         </div>
       </section>
 
@@ -583,14 +681,19 @@ const {
   taxFromAmount:engineTaxFromAmount,
   taxableBaseFromAmount:engineTaxableBaseFromAmount,
   calculateRegularAmount,
+  calculateDetailedRegular,
   calculateSimplifiedTax,
+  calculateNationalSalesTax,
+  calculateDeclarationAmount,
+  assessHighValueAsset,
+  optimizeFourPeriodRoutes,
   weightedExemptPurchaseRatio,
   calculateEligibility,
   sanitizeCsvCell,
   serializeStateIfEnabled
 } = ShohizeiTaxEngine;
-const STORAGE_KEY = 'shohizeiKazeiHoushiki.v11';
-const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2', 'shohizeiKazeiHoushiki.v3'];
+const STORAGE_KEY = 'shohizeiKazeiHoushiki.v12';
+const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2', 'shohizeiKazeiHoushiki.v3', 'shohizeiKazeiHoushiki.v11'];
 const BUSINESS_TYPES = [
   { key:'type1', name:'第1種', detail:'卸売業', deemed:0.90 },
   { key:'type2', name:'第2種', detail:'小売業・飲食料品農林漁業', deemed:0.80 },
@@ -761,6 +864,11 @@ function getContext(){
   const specificPayrollState = amountState('specificPayrollAmount');
   const creditMode = selectedValue('creditMode', 'unknown');
   const creditPercentState = amountState('creditPercent', { min:0, max:100 });
+  const advancedMode = $('advancedMode').checked;
+  const nonTaxableSalesState = amountState('nonTaxableSales');
+  const taxableOnlyPurchaseTaxState = amountState('taxableOnlyPurchaseTax');
+  const commonPurchaseTaxState = amountState('commonPurchaseTax');
+  const highAssetAmountState = amountState('highAssetAmount');
   const baseTaxableSales = baseState.value;
   const specificTaxableSales = specificSalesState.value;
   const specificPayrollAmount = specificPayrollState.value;
@@ -791,6 +899,14 @@ function getContext(){
     if(!creditPercentState.entered) inputErrors.push('本則で控除できる仕入税額割合: 概算率を入力してください');
     else if(!creditPercentState.valid) inputErrors.push(`${creditPercentState.label}: ${creditPercentState.error}`);
   }
+  if(advancedMode){
+    [
+      [nonTaxableSalesState, '非課税売上等'],
+      [taxableOnlyPurchaseTaxState, '課税売上対応の仕入税額'],
+      [commonPurchaseTaxState, '共通対応の仕入税額'],
+      [highAssetAmountState, '高額資産の税抜取得価額等']
+    ].filter(([state]) => !state.valid).forEach(([state, label]) => inputErrors.push(`${label}: ${state.error}`));
+  }
 
   return {
     start,
@@ -819,6 +935,21 @@ function getContext(){
     creditPercent:creditPercentState.value,
     creditPercentEntered:creditPercentState.entered,
     regularCreditConfirmed,
+    advancedMode,
+    simpleElectionStatus:$('simpleElectionStatus').value || 'unknown',
+    regularDetailMethod:$('regularDetailMethod').value || 'auto',
+    nonTaxableSales:nonTaxableSalesState.value,
+    nonTaxableSalesEntered:nonTaxableSalesState.entered,
+    taxableOnlyPurchaseTax:taxableOnlyPurchaseTaxState.value,
+    taxableOnlyPurchaseTaxEntered:taxableOnlyPurchaseTaxState.entered,
+    commonPurchaseTax:commonPurchaseTaxState.value,
+    commonPurchaseTaxEntered:commonPurchaseTaxState.entered,
+    highAssetState:selectedValue('highAssetState', CONFIRMATION.UNKNOWN),
+    highAssetAmount:highAssetAmountState.value,
+    highAssetAmountEntered:highAssetAmountState.entered,
+    highAssetType:$('highAssetType').value || 'unknown',
+    highAssetSelfConstructed:$('highAssetSelfConstructed').checked,
+    declarationRounding:$('declarationRounding').checked,
     inputErrors
   };
 }
@@ -891,23 +1022,20 @@ function calculateProjectionRegular(calc, ctx, index){
       amount:currentRegular,
       exemptRatioLabel:hasExemptPurchase ? '入力値' : 'なし',
       exemptCreditableTax:calc.purchases.exemptCreditableTax,
-      regularCredit:calc.regularCredit
+      regularCredit:calc.regularCredit,
+      detail:calc.regular
     };
   }
   const projectionRatio = weightedExemptPurchaseRatio(ctx.start, ctx.end);
   const exemptCreditableTax = calc.purchases.exemptTax * projectionRatio.ratio;
-  const regular = calculateRegularAmount({
-    salesTax:calc.sales.totalTax,
-    invoiceTax:calc.purchases.invoiceTax,
-    exemptCreditableTax,
-    creditRatio:calc.purchases.creditRatio,
-    adjustment:calc.purchases.adjustment
-  });
+  const regular = calculateRegularForContext(ctx, calc.sales, calc.purchases, exemptCreditableTax);
+  const amount = declarationRoundedAmount({ ctx, sales:calc.sales, purchases:calc.purchases }, 'regular', regular.regularCredit, regular.amount);
   return {
-    amount:regular.amount,
+    amount,
     exemptRatioLabel:`${(projectionRatio.ratio * 100).toFixed(1)}％（期間内均等発生・日数按分）`,
     exemptCreditableTax,
-    regularCredit:regular.regularCredit
+    regularCredit:regular.regularCredit,
+    detail:regular
   };
 }
 
@@ -1035,25 +1163,104 @@ function collectPurchases(ctx){
   };
 }
 
+function calculateRegularForContext(ctx, sales, purchases, exemptCreditableTax = purchases.exemptCreditableTax){
+  const purchaseTax = purchases.invoiceTax + exemptCreditableTax;
+  if(!ctx.advancedMode){
+    return {
+      ...calculateRegularAmount({
+        salesTax:sales.totalTax,
+        invoiceTax:purchases.invoiceTax,
+        exemptCreditableTax,
+        creditRatio:purchases.creditRatio,
+        adjustment:purchases.adjustment
+      }),
+      appliedMethod:'estimate',
+      taxableSalesRatio:null,
+      fullCreditEligible:null
+    };
+  }
+  const totalSales = sales.totalTaxableBase + ctx.nonTaxableSales;
+  return calculateDetailedRegular({
+    salesTax:sales.totalTax,
+    purchaseTax,
+    adjustment:purchases.adjustment,
+    method:ctx.regularDetailMethod,
+    taxableSales:sales.totalTaxableBase,
+    totalSales,
+    taxableOnlyTax:ctx.taxableOnlyPurchaseTax,
+    commonTax:ctx.commonPurchaseTax
+  });
+}
+
+function detailedRegularEligibility(ctx, regular, purchaseTax){
+  if(!ctx.advancedMode) return null;
+  if(regular.fullCreditEligible) return { eligibility:ELIGIBILITY.ELIGIBLE, reasons:[] };
+  if(ctx.regularDetailMethod === 'auto'){
+    return { eligibility:ELIGIBILITY.UNKNOWN, reasons:['全額控除要件を満たさないため、個別対応方式または一括比例配分方式を選択してください'] };
+  }
+  if(ctx.regularDetailMethod === 'individual'){
+    if(!ctx.taxableOnlyPurchaseTaxEntered || !ctx.commonPurchaseTaxEntered){
+      return { eligibility:ELIGIBILITY.UNKNOWN, reasons:['個別対応方式の課税売上対応・共通対応の仕入税額が未入力です'] };
+    }
+    if(ctx.taxableOnlyPurchaseTax + ctx.commonPurchaseTax > purchaseTax + 1){
+      return { eligibility:ELIGIBILITY.UNKNOWN, reasons:['用途区分した仕入税額が入力済みの控除対象仕入税額を超えています'] };
+    }
+  }
+  return { eligibility:ELIGIBILITY.ELIGIBLE, reasons:[] };
+}
+
+function declarationRoundedAmount(calcLike, methodKey, regularCredit, unroundedAmount){
+  const ctx = calcLike.ctx;
+  if(!ctx.advancedMode || !ctx.declarationRounding || ctx.taxScenario !== 'current') return unroundedAmount;
+  const sales = calcLike.sales;
+  const nationalSales = calculateNationalSalesTax({
+    taxableBase10:sales.rows.reduce((sum, row) => sum + row.taxableBase10, 0),
+    taxableBaseReduced:sales.rows.reduce((sum, row) => sum + row.taxableBase8, 0)
+  });
+  let nationalCredit = 0;
+  let nationalAdjustment = 0;
+  if(methodKey === 'regular'){
+    nationalCredit = regularCredit * 0.78;
+    nationalAdjustment = calcLike.purchases.adjustment * 0.78;
+  }else if(methodKey === 'simplified'){
+    const ratio = sales.totalTax ? sales.simplified.deemedCredit / sales.totalTax : 0;
+    nationalCredit = nationalSales.total * ratio;
+  }else if(methodKey === 'special2'){
+    nationalCredit = nationalSales.total * 0.80;
+  }else if(methodKey === 'special3'){
+    nationalCredit = nationalSales.total * 0.70;
+  }
+  return calculateDeclarationAmount({
+    nationalSalesTax:nationalSales.total,
+    nationalCredit,
+    nationalAdjustment
+  }).total;
+}
+
+function regularMethodLabel(ctx, regular){
+  if(!ctx.advancedMode) return creditModeLabel(ctx);
+  if(ctx.regularDetailMethod === 'auto' && !regular.fullCreditEligible) return '詳細方式未確定';
+  return regular.appliedMethod === 'full'
+    ? '全額控除'
+    : regular.appliedMethod === 'individual' ? '個別対応方式' : '一括比例配分方式';
+}
+
 function calculate(){
   const ctx = getContext();
-  const eligibility = getEligibility(ctx);
   const sales = collectSales(ctx);
   const purchases = collectPurchases(ctx);
+  const eligibility = getEligibility(ctx);
   const inputErrors = [...ctx.inputErrors, ...sales.errors, ...purchases.errors];
-  const regular = calculateRegularAmount({
-    salesTax:sales.totalTax,
-    invoiceTax:purchases.invoiceTax,
-    exemptCreditableTax:purchases.exemptCreditableTax,
-    creditRatio:purchases.creditRatio,
-    adjustment:purchases.adjustment
-  });
-  const creditablePurchaseTax = regular.creditablePurchaseTax;
+  const regular = calculateRegularForContext(ctx, sales, purchases);
+  const creditablePurchaseTax = purchases.invoiceTax + purchases.exemptCreditableTax;
+  const regularEligibilityOverride = detailedRegularEligibility(ctx, regular, creditablePurchaseTax);
+  if(regularEligibilityOverride) eligibility.regular = regularEligibilityOverride;
   const regularCredit = regular.regularCredit;
-  const regularAmount = regular.amount;
-  const simplifiedAmount = sales.simplified.amount;
-  const special2Amount = sales.totalTax * 0.20;
-  const special3Amount = sales.totalTax * 0.30;
+  const calcLike = { ctx, sales, purchases };
+  const regularAmount = declarationRoundedAmount(calcLike, 'regular', regularCredit, regular.amount);
+  const simplifiedAmount = declarationRoundedAmount(calcLike, 'simplified', 0, sales.simplified.amount);
+  const special2Amount = declarationRoundedAmount(calcLike, 'special2', 0, sales.totalTax * 0.20);
+  const special3Amount = declarationRoundedAmount(calcLike, 'special3', 0, sales.totalTax * 0.30);
   const hasComparisonInput = sales.anyEntered || purchases.anyEntered;
   const salesEntryRequired = !sales.anyEntered && purchases.anyEntered;
   const comparisonReady = sales.anyEntered && inputErrors.length === 0;
@@ -1074,9 +1281,11 @@ function calculate(){
   const methods = [
     buildMethod(
       'regular', regularAmount, eligibility.regular,
-      ctx.creditMode === 'unknown'
-        ? '仕入控除率 100％（参考仮定）'
-        : `仕入控除率 ${(purchases.creditRatio * 100).toFixed(1).replace(/\.0$/,'')}％`,
+      ctx.advancedMode
+        ? `${regularMethodLabel(ctx, regular)}${regular.taxableSalesRatio === null ? '' : `・課税売上割合 ${(regular.taxableSalesRatio * 100).toFixed(2)}％`}`
+        : ctx.creditMode === 'unknown'
+          ? '仕入控除率 100％（参考仮定）'
+          : `仕入控除率 ${(purchases.creditRatio * 100).toFixed(1).replace(/\.0$/,'')}％`,
       `売上税額 ${yen(sales.totalTax)} - 仕入控除 ${yen(regularCredit)}（免税事業者仕入 ${calcExemptCreditLabel(purchases)}）+ 調整 ${yen(purchases.adjustment)}`
     ),
     buildMethod(
@@ -1097,9 +1306,17 @@ function calculate(){
   const smallDifference = difference !== null && (
     difference < 10000 || (Math.abs(best.amount) > 0 && difference < Math.abs(best.amount) * 0.01)
   );
+  const highAssetRegular = assessHighValueAsset({
+    hasAcquisition:ctx.advancedMode ? ctx.highAssetState : CONFIRMATION.NO,
+    amountEntered:ctx.highAssetAmountEntered,
+    amount:ctx.highAssetAmount,
+    assetType:ctx.highAssetType,
+    selfConstructed:ctx.highAssetSelfConstructed,
+    acquisitionMethod:'regular'
+  });
   return {
     ctx, eligibility, sales, purchases, creditablePurchaseTax, regularCredit, methods, valid, sorted, best,
-    unknownMethods, unconfirmedItems, inputErrors, hasComparisonInput, salesEntryRequired, comparisonReady, smallDifference
+    regular, highAssetRegular, unknownMethods, unconfirmedItems, inputErrors, hasComparisonInput, salesEntryRequired, comparisonReady, smallDifference
   };
 }
 
@@ -1108,11 +1325,18 @@ function calculateProjectionMethods(calc, period, index){
   const ctx = contextWithProjectionBase({ ...calc.ctx, start:period.start, end:period.end }, base);
   const eligibility = getEligibility(ctx);
   const projectedRegular = calculateProjectionRegular(calc, ctx, index);
+  const regularEligibilityOverride = detailedRegularEligibility(
+    ctx,
+    projectedRegular.detail,
+    calc.purchases.invoiceTax + projectedRegular.exemptCreditableTax
+  );
+  if(regularEligibilityOverride) eligibility.regular = regularEligibilityOverride;
+  const projectionLike = { ctx, sales:calc.sales, purchases:calc.purchases };
   const amounts = {
     regular:projectedRegular.amount,
-    simplified:calc.sales.simplified.amount,
-    special2:calc.sales.totalTax * 0.20,
-    special3:calc.sales.totalTax * 0.30
+    simplified:declarationRoundedAmount(projectionLike, 'simplified', 0, calc.sales.simplified.amount),
+    special2:declarationRoundedAmount(projectionLike, 'special2', 0, calc.sales.totalTax * 0.20),
+    special3:declarationRoundedAmount(projectionLike, 'special3', 0, calc.sales.totalTax * 0.30)
   };
   const comparisonReady = calc.sales.anyEntered && calc.inputErrors.length === 0;
   const methods = [
@@ -1133,7 +1357,27 @@ function calculateProjectionMethods(calc, period, index){
   if(methods.some(method => method.eligibility === ELIGIBILITY.UNKNOWN)) warnings.push('要確認方式は順位から除外しています。');
   if(best?.key === 'simplified') warnings.push('簡易課税を選択した場合、原則として2年間の継続適用が必要です。翌期の本則課税への変更可否は別途確認してください。');
   const warning = warnings.join(' ');
-  return { eligibility, best, specials, base, projectedRegular, warning };
+  return { eligibility, methods, best, specials, base, projectedRegular, warning, period };
+}
+
+function calculateProjectionPlan(calc){
+  const periods = projectionPeriods(calc.ctx);
+  const projections = periods.map((period, index) => calculateProjectionMethods(calc, period, index));
+  const routePeriods = projections.map((projection, index) => ({
+    label:projection.period.label,
+    methods:projection.methods.map(method => ({
+      key:method.key,
+      amount:method.amount,
+      eligible:method.include
+    })),
+    highValueAssetTrigger:index === 0 && calc.highAssetRegular.status === 'restricted'
+  }));
+  const optimized = optimizeFourPeriodRoutes({
+    periods:routePeriods,
+    initialElectionStatus:calc.ctx.advancedMode ? calc.ctx.simpleElectionStatus : 'unknown',
+    noticeReady:calc.ctx.simpleNoticeReady
+  });
+  return { periods, projections, optimized };
 }
 
 function renderSalesTax(rows){
@@ -1168,6 +1412,13 @@ function renderRegularCreditNotice(calc){
   const ratio = calc.purchases.creditRatio;
   const mode = calc.ctx.creditMode;
   $('creditPercent').disabled = mode !== 'estimate';
+  if(calc.ctx.advancedMode){
+    const detailedRatio = calc.regular.taxableSalesRatio;
+    notice.textContent = calc.regular.fullCreditEligible
+      ? `詳細試算では、課税売上割合${(detailedRatio * 100).toFixed(2)}％・課税売上高5億円以下として全額控除を適用します。`
+      : `詳細試算を優先します。課税売上割合は${(detailedRatio * 100).toFixed(2)}％です。個別対応方式または一括比例配分方式の選択内容を確認してください。`;
+    return;
+  }
   if(mode === 'unknown'){
     notice.textContent = '仕入控除率は未確認です。参考額は仮に100％控除として表示しますが、本則課税は「要確認」となり順位に含めません。';
   }else if(mode === 'confirmed'){
@@ -1178,28 +1429,65 @@ function renderRegularCreditNotice(calc){
 }
 
 function renderProjection(calc){
-  const periods = projectionPeriods(calc.ctx);
-  $('projectionRows').innerHTML = periods.map((period, index) => {
-    const projection = calculateProjectionMethods(calc, period, index);
-    const bestLabel = projection.best ? METHOD_LABELS[projection.best.key] : '入力待ち';
-    const amount = projection.best ? yen(projection.best.amount) : '-';
+  if(calc.ctx.viewMode !== 'projection') return;
+  const plan = calculateProjectionPlan(calc);
+  if(!calc.ctx.advancedMode){
+    $('projectionRouteSummary').innerHTML = '<strong>詳細試算をオンにしてください。</strong><br>届出の現在位置を確認してから、4期の累計経路を計算します。';
+    $('projectionRows').innerHTML = '';
+    return;
+  }
+  if(!plan.optimized.ok){
+    $('projectionRouteSummary').innerHTML = `<strong>4期経路を確定できません。</strong><br>${escapeHtml(plan.optimized.reason || '届出状況と適用条件を確認してください。')}`;
+    $('projectionRows').innerHTML = '';
+    return;
+  }
+  $('projectionRouteSummary').innerHTML = `
+    <strong>4期累計の最少経路</strong>
+    <div class="route-total">${escapeHtml(yen(plan.optimized.cumulative))}</div>
+    <div class="mini">確認済み条件内で選択できる届出経路を比較しています。要確認方式は順位から除外します。</div>
+  `;
+  let cumulative = 0;
+  $('projectionRows').innerHTML = plan.optimized.bestRoute.map((step, index) => {
+    cumulative += step.amount;
+    const projection = plan.projections[index];
     const baseText = projection.base.entered ? `${yen(projection.base.value).replace('円','')}（${projection.base.label}）` : '未入力';
+    const assumptions = `基準期間 ${baseText} / 免税仕入控除率 ${projection.projectedRegular.exemptRatioLabel}`;
     return `
       <tr>
-        <td>${escapeHtml(period.label)}</td>
-        <td class="num">${escapeHtml(baseText)}</td>
-        <td>${escapeHtml(projection.projectedRegular.exemptRatioLabel)}</td>
-        <td>${escapeHtml(bestLabel)}</td>
-        <td class="num">${escapeHtml(amount)}</td>
-        <td>${escapeHtml(projection.specials)}</td>
-        <td>${escapeHtml(projection.warning || '')}</td>
+        <td>${escapeHtml(step.label || plan.periods[index].label)}</td>
+        <td><strong>${escapeHtml(METHOD_LABELS[step.method] || step.method)}</strong></td>
+        <td class="num">${escapeHtml(yen(step.amount))}</td>
+        <td class="route-action">${escapeHtml(step.action || '届出状態を維持')}</td>
+        <td class="num">${escapeHtml(yen(cumulative))}</td>
+        <td>${escapeHtml(assumptions)}</td>
       </tr>
     `;
-  }).join('') || '<tr><td colspan="7">課税期間を入力してください</td></tr>';
+  }).join('');
 }
 
 function renderViewMode(calc){
   $('projectionPanel').classList.toggle('is-hidden', calc.ctx.viewMode !== 'projection');
+}
+
+function renderAdvancedMode(calc){
+  $('advancedFields').classList.toggle('is-hidden', !calc.ctx.advancedMode);
+  const showIndividual = calc.ctx.advancedMode && calc.ctx.regularDetailMethod === 'individual';
+  document.querySelectorAll('.detail-individual-field').forEach(el => el.classList.toggle('is-hidden', !showIndividual));
+  $('highAssetFields').classList.toggle('is-hidden', !calc.ctx.advancedMode || calc.ctx.highAssetState !== CONFIRMATION.YES);
+}
+
+function renderHighAssetNotice(calc){
+  const notice = $('highAssetNotice');
+  if(!calc.ctx.advancedMode){
+    notice.textContent = '';
+    return;
+  }
+  const assessment = calc.highAssetRegular;
+  const prefix = assessment.status === 'restricted'
+    ? '制限あり: '
+    : assessment.status === 'unknown' ? '要確認: ' : '判定結果: ';
+  notice.className = `notice advanced-result ${assessment.status === 'restricted' ? 'bad' : 'warn'}`;
+  notice.textContent = prefix + assessment.reason;
 }
 
 function renderSummary(calc){
@@ -1218,8 +1506,9 @@ function renderSummary(calc){
     ['免税事業者仕入', yen(calc.purchases.exemptTotalAmount).replace('円','')],
     ['免税仕入控除税額', yen(calc.purchases.exemptCreditableTax)],
     ['控除対象仕入税額', yen(calc.creditablePurchaseTax)],
-    ['本則控除率', calc.ctx.creditMode === 'unknown' ? '100%（参考仮定）' : (calc.purchases.creditRatio * 100).toFixed(1).replace(/\.0$/,'') + '%'],
-    ['本則控除率確認', calc.ctx.creditMode === 'confirmed' ? '100％確認済み' : calc.ctx.creditMode === 'estimate' ? '概算率入力' : '未確認'],
+    ['本則計算', calc.ctx.advancedMode ? regularMethodLabel(calc.ctx, calc.regular) : (calc.ctx.creditMode === 'unknown' ? '100%（参考仮定）' : (calc.purchases.creditRatio * 100).toFixed(1).replace(/\.0$/,'') + '%')],
+    ['課税売上割合', calc.ctx.advancedMode && calc.regular.taxableSalesRatio !== null ? (calc.regular.taxableSalesRatio * 100).toFixed(2) + '%' : '-'],
+    ['端数処理', calc.ctx.advancedMode && calc.ctx.declarationRounding ? '申告書段階を反映' : '概算（円表示時に丸め）'],
     ['簡易課税計算', calc.sales.simplified.methodLabel],
     ['売上税額率', taxableSalesRatio ? (taxableSalesRatio * 100).toFixed(2) + '%' : '-']
   ].map(([k,v]) => `
@@ -1342,7 +1631,7 @@ function renderEligibilityNotice(calc){
     messages.push('適用要件の入力内容を反映しています。申告判断前に帳簿・届出・個別事情を確認してください。');
   }
   $('eligibilityNotice').innerHTML = '<ul>' + messages.map(message => `<li>${escapeHtml(message)}</li>`).join('') + '</ul>';
-  $('limitationsNotice').innerHTML = '<strong>未対応事項</strong><ul>' + DEFERRED_LIMITATIONS.map(message => `<li>${escapeHtml(message)}</li>`).join('') + '</ul>';
+  $('limitationsNotice').innerHTML = '<strong>要個別確認事項</strong><ul>' + DEFERRED_LIMITATIONS.map(message => `<li>${escapeHtml(message)}</li>`).join('') + '</ul>';
 }
 
 function renderPrintAssumptions(calc){
@@ -1369,11 +1658,13 @@ function renderReleaseHistory(){
     ${latest.recalcRecommended ? '<p><strong>計算結果に影響する更新です。旧版で試算した案件は再試算してください。</strong></p>' : ''}
   `;
   $('releaseHistory').innerHTML = `
-    <p><strong>${escapeHtml(latest.version)}｜${escapeHtml(latest.date)}｜${escapeHtml(latest.title)}</strong></p>
-    <ul>${latest.changes.map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>
-    <p><strong>未対応</strong></p>
+    ${RELEASE_HISTORY.map(release => `
+      <p><strong>${escapeHtml(release.version)}｜${escapeHtml(release.date)}｜${escapeHtml(release.title)}</strong></p>
+      <ul>${release.changes.map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>
+    `).join('')}
+    <p><strong>要個別確認</strong></p>
     <ul>${DEFERRED_LIMITATIONS.map(message => `<li>${escapeHtml(message)}</li>`).join('')}</ul>
-    <p>更新履歴は${escapeHtml(latest.version)}から記録しています。</p>
+    <p>更新履歴はr11から記録しています。</p>
   `;
 }
 
@@ -1381,6 +1672,16 @@ function creditModeLabel(ctx){
   if(ctx.creditMode === 'confirmed') return '100％控除であることを確認済み';
   if(ctx.creditMode === 'estimate') return `概算控除率 ${(ctx.creditRatio * 100).toFixed(1).replace(/\.0$/,'')}％`;
   return '未確認（参考額は100％控除を仮定）';
+}
+
+function simpleElectionLabel(value){
+  return ({
+    none:'届出なし',
+    first:'今期が適用初年度',
+    second:'今期が2年目',
+    free:'届出有効・2年継続済み',
+    unknown:'未確認'
+  })[value] || '未確認';
 }
 
 function buildAssumptionRows(calc){
@@ -1402,7 +1703,12 @@ function buildAssumptionRows(calc){
     ['特定期間売上高', formatCtxAmount(calc.ctx.specificTaxableSales, calc.ctx.specificSalesEntered)],
     ['特定期間給与等', formatCtxAmount(calc.ctx.specificPayrollAmount, calc.ctx.specificPayrollEntered)],
     ['簡易課税届出', confirmationLabel(calc.ctx.simpleNoticeReady)],
-    ['本則控除率', creditModeLabel(calc.ctx)],
+    ['試算モード', calc.ctx.advancedMode ? '詳細試算' : '通常試算'],
+    ['簡易課税届出の現在位置', calc.ctx.advancedMode ? simpleElectionLabel(calc.ctx.simpleElectionStatus) : '詳細試算未使用'],
+    ['本則計算', regularMethodLabel(calc.ctx, calc.regular)],
+    ['課税売上割合', calc.ctx.advancedMode && calc.regular.taxableSalesRatio !== null ? `${(calc.regular.taxableSalesRatio * 100).toFixed(2)}％` : '通常試算では未計算'],
+    ['高額特定資産等', calc.ctx.advancedMode ? calc.highAssetRegular.reason : '詳細試算未使用'],
+    ['端数処理', calc.ctx.advancedMode && calc.ctx.declarationRounding ? '申告書段階の端数処理を反映' : '概算'],
     ['本則個別調整額', yen(calc.purchases.adjustment)],
     ['簡易課税の採用計算', calc.sales.simplified.methodLabel],
     ['未確認事項', calc.unconfirmedItems.length ? calc.unconfirmedItems.join(' / ') : 'なし'],
@@ -1423,14 +1729,15 @@ function buildSummaryText(calc){
   }
   if(calc.ctx.viewMode === 'projection'){
     lines.push('');
-    lines.push('4期・各期単独比較');
-    lines.push('各期を独立して比較し、届出期限・簡易課税の2年継続・前期選択による拘束を反映した累計最適化ではありません。');
+    lines.push('4期・累計最適化');
     lines.push('将来期の免税事業者仕入は期間内均等発生を仮定し、日数按分します。');
-    projectionPeriods(calc.ctx).forEach((period, index) => {
-      const projection = calculateProjectionMethods(calc, period, index);
-      const baseText = projection.base.entered ? `${yen(projection.base.value)}（${projection.base.label}）` : '未入力';
-      lines.push(`${period.label}: ${projection.best ? METHOD_LABELS[projection.best.key] + ' / ' + yen(projection.best.amount) : '要件確認'} / ${projection.specials} / 基準期間売上高 ${baseText} / 免税仕入控除率 ${projection.projectedRegular.exemptRatioLabel}${projection.warning ? ' / ' + projection.warning : ''}`);
-    });
+    const plan = calculateProjectionPlan(calc);
+    if(plan.optimized.ok){
+      lines.push(`4期累計: ${yen(plan.optimized.cumulative)}`);
+      plan.optimized.bestRoute.forEach(step => lines.push(`${step.label}: ${METHOD_LABELS[step.method] || step.method} / ${yen(step.amount)} / ${step.action}`));
+    }else{
+      lines.push(`経路未確定: ${plan.optimized.reason}`);
+    }
   }
   return lines.join('\n');
 }
@@ -1442,21 +1749,18 @@ function buildCsvText(calc){
   });
   if(calc.ctx.viewMode === 'projection'){
     rows.push([]);
-    rows.push(['4期・各期単独比較','基準期間売上高','基準期間メモ','免税仕入控除率','各期単独で最少の方式','概算額','使える特例','注意']);
-    projectionPeriods(calc.ctx).forEach((period, index) => {
-      const projection = calculateProjectionMethods(calc, period, index);
-      rows.push([
-        period.label,
-        projection.base.entered ? Math.round(projection.base.value) : '未入力',
-        projection.base.label,
-        projection.projectedRegular.exemptRatioLabel,
-        projection.best ? METHOD_LABELS[projection.best.key] : '要件確認',
-        projection.best ? Math.round(projection.best.amount) : '',
-        projection.specials,
-        projection.warning
-      ]);
-    });
-    rows.push(['計算仮定','各期を独立比較。届出期限、簡易課税の2年継続、前期選択の拘束を反映した累計最適化ではありません。免税事業者仕入は将来期に均等発生すると仮定し日数按分。']);
+    rows.push(['4期・累計最適化','選択方式','概算額','届出・経路','累計']);
+    const plan = calculateProjectionPlan(calc);
+    if(plan.optimized.ok){
+      let cumulative = 0;
+      plan.optimized.bestRoute.forEach(step => {
+        cumulative += step.amount;
+        rows.push([step.label, METHOD_LABELS[step.method] || step.method, Math.round(step.amount), step.action, Math.round(cumulative)]);
+      });
+    }else{
+      rows.push(['経路未確定', plan.optimized.reason]);
+    }
+    rows.push(['計算仮定','届出経路と簡易課税の2年継続を反映。現在の売上・仕入構成が4期続くと仮定。免税事業者仕入は将来期に均等発生すると仮定し日数按分。']);
   }
   rows.push([]);
   rows.push(['免税事業者仕入区分','10%仕入',`${taxRateLabel(calc.ctx.reducedRate)}対象仕入`,'仕入税額','控除割合','控除対象税額']);
@@ -1494,7 +1798,8 @@ function saveState(){
   }
   const ids = [
     'periodStart','periodEnd','baseTaxableSales','specificTaxableSales','specificPayrollAmount','purchase10','purchase8',
-    ...getExemptPurchaseInputIds(), 'creditPercent','regularAdjustment'
+    ...getExemptPurchaseInputIds(), 'creditPercent','regularAdjustment','simpleElectionStatus','regularDetailMethod',
+    'nonTaxableSales','taxableOnlyPurchaseTax','commonPurchaseTax','highAssetAmount','highAssetType'
   ];
   const data = { saveEnabled:true };
   ids.forEach(id => {
@@ -1502,7 +1807,8 @@ function saveState(){
     if(!el) return;
     data[id] = el.value;
   });
-  ['entityType','amountMode','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode'].forEach(name => {
+  ['advancedMode','declarationRounding','highAssetSelfConstructed'].forEach(id => { data[id] = $(id).checked; });
+  ['entityType','amountMode','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState'].forEach(name => {
     data[name] = selectedValue(name);
   });
   BUSINESS_TYPES.forEach(type => {
@@ -1536,12 +1842,13 @@ function restoreState(){
     }
     $('saveToDevice').checked = true;
     Object.entries(data).forEach(([id, value]) => {
-      if(id === 'saveEnabled' || ['entityType','amountMode','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode'].includes(id)) return;
+      if(id === 'saveEnabled' || ['advancedMode','declarationRounding','highAssetSelfConstructed','entityType','amountMode','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState'].includes(id)) return;
       const el = $(id);
       if(!el) return;
       el.value = value;
     });
-    ['entityType','amountMode','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode'].forEach(name => {
+    ['advancedMode','declarationRounding','highAssetSelfConstructed'].forEach(id => { if(typeof data[id] === 'boolean') $(id).checked = data[id]; });
+    ['entityType','amountMode','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState'].forEach(name => {
       const option = document.querySelector(`input[name="${name}"][value="${data[name]}"]`);
       if(option) option.checked = true;
     });
@@ -1556,7 +1863,9 @@ function update(){
   renderSalesTax(calc.sales.rows);
   renderPeriodInlineNotice(calc);
   renderTaxScenarioNotice(calc);
+  renderAdvancedMode(calc);
   renderRegularCreditNotice(calc);
+  renderHighAssetNotice(calc);
   renderViewMode(calc);
   renderSummary(calc);
   renderHero(calc);
@@ -1579,11 +1888,17 @@ function resetAll(){
   $('modeTaxIncluded').checked = true;
   $('taxScenarioCurrent').checked = true;
   $('viewModeSingle').checked = true;
-  ['invoiceRegisteredUnknown','invoiceTransitionUnknown','noSpecialExclusionUnknown','simpleNoticeReadyUnknown','creditModeUnknown'].forEach(id => {
+  ['invoiceRegisteredUnknown','invoiceTransitionUnknown','noSpecialExclusionUnknown','simpleNoticeReadyUnknown','creditModeUnknown','highAssetUnknown'].forEach(id => {
     $(id).checked = true;
   });
   $('creditPercent').value = '';
   $('creditPercent').disabled = true;
+  $('advancedMode').checked = false;
+  $('declarationRounding').checked = false;
+  $('highAssetSelfConstructed').checked = false;
+  $('simpleElectionStatus').value = 'unknown';
+  $('regularDetailMethod').value = 'auto';
+  $('highAssetType').value = 'unknown';
   $('saveToDevice').checked = false;
   $('saveStatus').textContent = '保存しません';
   update();

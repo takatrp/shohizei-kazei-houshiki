@@ -80,6 +80,283 @@
     };
   }
 
+  function finiteNumber(value, fallback = 0){
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  function nonNegativeNumber(value){
+    return Math.max(0, finiteNumber(value));
+  }
+
+  function calculateDetailedRegular(input = {}){
+    const salesTax = nonNegativeNumber(input.salesTax);
+    const purchaseTax = nonNegativeNumber(input.purchaseTax);
+    const adjustment = finiteNumber(input.adjustment);
+    const taxableSales = nonNegativeNumber(input.taxableSales);
+    const totalSales = nonNegativeNumber(input.totalSales);
+    const taxableSalesRatio = totalSales > 0
+      ? Math.min(1, Math.max(0, taxableSales / totalSales))
+      : 0;
+    const fullCreditEligible = taxableSales <= 500000000 && taxableSalesRatio + Number.EPSILON >= 0.95;
+
+    let regularCredit;
+    let appliedMethod;
+    if(fullCreditEligible){
+      regularCredit = purchaseTax;
+      appliedMethod = 'full';
+    }else if(input.method === 'individual'){
+      const individualCredit = nonNegativeNumber(input.taxableOnlyTax)
+        + nonNegativeNumber(input.commonTax) * taxableSalesRatio;
+      regularCredit = Math.min(purchaseTax, individualCredit);
+      appliedMethod = 'individual';
+    }else{
+      regularCredit = Math.min(purchaseTax, purchaseTax * taxableSalesRatio);
+      appliedMethod = 'proportional';
+    }
+
+    return {
+      amount:salesTax - regularCredit + adjustment,
+      regularCredit,
+      taxableSalesRatio,
+      fullCreditEligible,
+      appliedMethod
+    };
+  }
+
+  function truncateBySign(value, positiveUnit){
+    if(value >= 0) return Math.floor(value / positiveUnit) * positiveUnit;
+    const magnitude = Math.floor(Math.abs(value));
+    return magnitude === 0 ? 0 : -magnitude;
+  }
+
+  function calculateDeclarationAmount(input = {}){
+    const rawNational = nonNegativeNumber(input.nationalSalesTax)
+      - nonNegativeNumber(input.nationalCredit)
+      + finiteNumber(input.nationalAdjustment);
+    const nationalAmount = truncateBySign(rawNational, 100);
+    const rawLocal = Math.abs(nationalAmount) * 22 / 78;
+    const localMagnitude = nationalAmount >= 0
+      ? Math.floor(rawLocal / 100) * 100
+      : Math.floor(rawLocal);
+    const localAmount = nationalAmount < 0 ? -localMagnitude : localMagnitude;
+    return {
+      rawNational,
+      nationalAmount,
+      localAmount,
+      total:nationalAmount + localAmount
+    };
+  }
+
+  function calculateNationalSalesTax(input = {}){
+    const taxableBase10 = Math.floor(nonNegativeNumber(input.taxableBase10) / 1000) * 1000;
+    const taxableBaseReduced = Math.floor(nonNegativeNumber(input.taxableBaseReduced) / 1000) * 1000;
+    const suppliedReducedRate = finiteNumber(input.reducedNationalRate, 6.24);
+    const reducedRate = suppliedReducedRate > 1 ? suppliedReducedRate / 100 : Math.max(0, suppliedReducedRate);
+    const nationalTax10 = Math.floor(taxableBase10 * 0.078);
+    const nationalTaxReduced = Math.floor(taxableBaseReduced * reducedRate);
+    return {
+      taxableBase10,
+      taxableBaseReduced,
+      nationalTax10,
+      nationalTaxReduced,
+      total:nationalTax10 + nationalTaxReduced
+    };
+  }
+
+  function highValueAssessment(status, reason, restrictionPeriods = 0){
+    return {
+      status,
+      restrictionPeriods,
+      simplifiedNoticeRestricted:status === 'restricted',
+      reason
+    };
+  }
+
+  function assessHighValueAsset(input = {}){
+    if(input.hasAcquisition === 'no'){
+      return highValueAssessment('clear', '高額資産の取得はありません。');
+    }
+    if(input.hasAcquisition !== 'yes'){
+      return highValueAssessment('unknown', '高額資産の取得有無が未確認です。');
+    }
+    if(input.selfConstructed){
+      return highValueAssessment('unknown', '自己建設資産は取得時期と金額の個別確認が必要です。');
+    }
+    if(!input.amountEntered){
+      return highValueAssessment('unknown', '取得価額が未入力です。');
+    }
+
+    const amount = Number(input.amount);
+    if(!Number.isFinite(amount) || amount < 0){
+      return highValueAssessment('unknown', '取得価額を0円以上の数値で確認してください。');
+    }
+    let threshold;
+    if(input.assetType === 'gold') threshold = 2000000;
+    else if(input.assetType === 'inventory' || input.assetType === 'fixed') threshold = 10000000;
+    else if(input.assetType === 'other'){
+      return highValueAssessment('clear', '高額特定資産または調整対象固定資産の判定対象外です。');
+    }else{
+      return highValueAssessment('unknown', '資産区分が未確認です。');
+    }
+
+    if(amount < threshold){
+      return highValueAssessment('clear', `取得価額が判定基準の${threshold.toLocaleString('ja-JP')}円未満です。`);
+    }
+    if(input.acquisitionMethod === 'regular'){
+      return highValueAssessment(
+        'restricted',
+        '一般課税で高額資産を取得するため、翌2期は簡易課税等の選択制限を確認してください。',
+        2
+      );
+    }
+    if(input.acquisitionMethod === 'simplified' || input.acquisitionMethod === 'special2'){
+      return highValueAssessment('clear', '簡易課税または2割特例の適用期の取得として制限対象外です。');
+    }
+    if(input.acquisitionMethod === 'special3'){
+      return highValueAssessment('unknown', '3割特例適用期の高額資産取得は個別確認が必要です。');
+    }
+    return highValueAssessment('unknown', '取得時の課税方式が未確認のため、安全側で要確認とします。');
+  }
+
+  function routeStateKey(state){
+    return `${state.election ? 1 : 0}|${state.binding}|${state.assetRestriction}`;
+  }
+
+  function isEligibleRouteMethod(method){
+    return method && (method.eligible === true || method.eligible === ELIGIBILITY.ELIGIBLE);
+  }
+
+  function routeAction(methodKey, context){
+    if(methodKey === 'regular'){
+      if(context.discontinue) return '簡易課税の不適用届出を行い、本則課税を適用';
+      if(context.preserveElection) return '簡易課税の届出効力を維持し、本則課税を適用';
+      return '本則課税を適用';
+    }
+    if(methodKey === 'simplified'){
+      return context.newElection
+        ? '簡易課税制度選択届出書を提出し、簡易課税を適用'
+        : '有効な届出により簡易課税を適用';
+    }
+    if(methodKey === 'special2') return '2割特例を適用（簡易課税の届出状態は維持）';
+    if(methodKey === 'special3') return '3割特例を適用（簡易課税の届出状態は維持）';
+    return `${methodKey}を適用`;
+  }
+
+  function transitionRouteState(state, period, method, noticeReady){
+    const key = method.key;
+    const simplifiedEligible = period.methods.some(candidate => (
+      candidate.key === 'simplified' && isEligibleRouteMethod(candidate)
+    ));
+    const context = { newElection:false, discontinue:false, preserveElection:false };
+    let election = state.election;
+    let binding = Math.max(0, state.binding - 1);
+
+    if(key === 'simplified'){
+      if(state.assetRestriction > 0) return null;
+      if(!election){
+        if(noticeReady !== 'yes') return null;
+        election = true;
+        binding = 1;
+        context.newElection = true;
+      }
+    }else if(key === 'regular' && election){
+      if(simplifiedEligible && state.binding > 0) return null;
+      if(simplifiedEligible){
+        election = false;
+        binding = 0;
+        context.discontinue = true;
+      }else{
+        context.preserveElection = true;
+      }
+    }
+
+    if((key === 'special2' || key === 'special3') && state.assetRestriction > 0) return null;
+
+    const highValueAssetTriggered = key === 'regular' && period.highValueAssetTrigger === true;
+    if(highValueAssetTriggered){
+      election = false;
+      binding = 0;
+    }
+    const assetRestriction = highValueAssetTriggered
+      ? 2
+      : Math.max(0, state.assetRestriction - 1);
+    return {
+      state:{ election, binding, assetRestriction },
+      action:routeAction(key, context) + (highValueAssetTriggered ? '。高額資産取得による簡易課税届出の制限を反映' : '')
+    };
+  }
+
+  function optimizeFourPeriodRoutes(input = {}){
+    const emptyResult = reason => ({
+      ok:false,
+      bestRoute:[],
+      cumulative:null,
+      alternatives:[],
+      reason
+    });
+    if(input.initialElectionStatus === 'unknown'){
+      return emptyResult('簡易課税制度選択届出書の現在の状態が未確認です。');
+    }
+    if(!Array.isArray(input.periods) || input.periods.length !== 4){
+      return emptyResult('4期分の候補が必要です。');
+    }
+
+    const initialStates = {
+      none:{ election:false, binding:0, assetRestriction:0 },
+      first:{ election:true, binding:2, assetRestriction:0 },
+      second:{ election:true, binding:1, assetRestriction:0 },
+      free:{ election:true, binding:0, assetRestriction:0 }
+    };
+    const initialState = initialStates[input.initialElectionStatus];
+    if(!initialState) return emptyResult('簡易課税制度選択届出書の状態が不正です。');
+
+    let candidates = new Map([[
+      routeStateKey(initialState),
+      { state:initialState, cumulative:0, route:[] }
+    ]]);
+
+    for(const period of input.periods){
+      if(!period || !Array.isArray(period.methods)) return emptyResult('各期の課税方式候補が必要です。');
+      const nextCandidates = new Map();
+      candidates.forEach(candidate => {
+        period.methods.filter(isEligibleRouteMethod).forEach(method => {
+          const transition = transitionRouteState(candidate.state, period, method, input.noticeReady);
+          if(!transition) return;
+          const amount = finiteNumber(method.amount);
+          const next = {
+            state:transition.state,
+            cumulative:candidate.cumulative + amount,
+            route:[...candidate.route, {
+              label:String(period.label ?? ''),
+              action:transition.action,
+              method:method.key,
+              amount
+            }]
+          };
+          const stateKey = routeStateKey(next.state);
+          const current = nextCandidates.get(stateKey);
+          if(!current || next.cumulative < current.cumulative) nextCandidates.set(stateKey, next);
+        });
+      });
+      if(nextCandidates.size === 0) return emptyResult('選択可能な4期経路がありません。');
+      candidates = nextCandidates;
+    }
+
+    const ranked = [...candidates.values()].sort((a, b) => a.cumulative - b.cumulative);
+    const best = ranked[0];
+    return {
+      ok:true,
+      bestRoute:best.route,
+      cumulative:best.cumulative,
+      alternatives:ranked.slice(1).map(candidate => ({
+        route:candidate.route,
+        cumulative:candidate.cumulative
+      })),
+      reason:''
+    };
+  }
+
   function formatShare(share){
     return `${(share * 100).toFixed(1)}％`;
   }
@@ -307,6 +584,11 @@
     taxFromAmount,
     taxableBaseFromAmount,
     calculateRegularAmount,
+    calculateDetailedRegular,
+    calculateDeclarationAmount,
+    calculateNationalSalesTax,
+    assessHighValueAsset,
+    optimizeFourPeriodRoutes,
     calculateSimplifiedTax,
     weightedExemptPurchaseRatio,
     periodIncludes,

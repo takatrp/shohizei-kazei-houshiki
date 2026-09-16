@@ -7,6 +7,20 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r14',
+      date:'2026-09-16',
+      title:'TKC仕訳帳CSVからの入力に対応',
+      category:'calculation',
+      recalcRecommended:false,
+      changes:Object.freeze([
+        'TKC仕訳帳CSVを端末内だけで解析し、課税売上・課税仕入等を入力欄へ反映',
+        '借方・貸方、標準10％・軽減8％、免税事業者等仕入の控除割合を区分して集計',
+        '簡易課税の事業区分が未設定の売上は勘定科目ごとの確認後に反映',
+        '非課税売上と課税売上対応・共通対応の仕入税額を詳細試算へ連携',
+        'UTF-8 BOM、UTF-8、Shift_JISのCSVに対応'
+      ])
+    }),
+    Object.freeze({
       version:'r13',
       date:'2026-07-11',
       title:'4期最適化の届出経路と判定前提を改善',

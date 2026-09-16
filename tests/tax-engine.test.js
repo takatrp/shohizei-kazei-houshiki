@@ -585,7 +585,7 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r13');
+  assert.equal(release.APP_META.version, 'r14');
 });
 
 test('4期表示に最有利見込みを使わず、出力関数に版数と未確認事項がある', () => {

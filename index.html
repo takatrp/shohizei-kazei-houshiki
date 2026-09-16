@@ -180,6 +180,19 @@
   .print-only{display:none}
   .save-control{margin-top:10px}
   .save-state{font-size:11px;font-weight:900;color:var(--muted);margin-top:4px}
+  .file-input{
+    width:100%;border:1px dashed var(--line-strong);border-radius:8px;background:#fbfdfe;
+    padding:8px;color:#334155;
+  }
+  .import-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}
+  .import-summary > div{border:1px solid var(--line);border-radius:8px;padding:7px;background:#fff}
+  .import-summary .k{display:block;font-size:11px;color:var(--muted);font-weight:900}
+  .import-summary .v{display:block;font-weight:950;font-variant-numeric:tabular-nums;margin-top:2px}
+  .import-mapping{margin-top:8px}
+  .import-mapping-row{display:grid;grid-template-columns:minmax(140px,1fr) minmax(180px,.8fr);gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+  .import-mapping-row:last-child{border-bottom:0}
+  .import-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .import-actions .btn:disabled{opacity:.5;cursor:not-allowed}
   .policy-simulation{margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fbfdfe}
   .policy-simulation summary{cursor:pointer;font-size:12px;font-weight:900;color:#6f3f04}
   .advanced-toggle{margin-top:8px;border:2px solid var(--brand);background:var(--brand-100)}
@@ -195,6 +208,8 @@
     .masthead{align-items:flex-start;flex-direction:column}
     .head-actions{justify-content:flex-start;width:100%}
     .head-actions .btn{flex:1}
+    .import-summary{grid-template-columns:1fr}
+    .import-mapping-row{grid-template-columns:1fr}
     th,td{padding:8px 6px}
     .sales-table input{min-width:96px}
     h1{font-size:18px}
@@ -241,6 +256,38 @@
 
   <main class="tool-layout">
     <div class="input-col no-print">
+      <section class="panel" id="journalImportPanel">
+        <div class="panel-title">
+          <h2>仕訳帳CSVから入力</h2>
+          <span class="mini">TKC仕訳帳CSV</span>
+        </div>
+        <div class="field">
+          <label for="journalCsvFile">仕訳帳CSVファイル</label>
+          <input type="file" id="journalCsvFile" class="file-input" accept=".csv,text/csv">
+        </div>
+        <div class="notice" style="margin-top:8px">
+          CSVはこのブラウザ内だけで解析し、ファイル名、仕訳、取引先、金額を外部へ送信しません。解析後に内容を確認してから入力欄へ反映します。
+        </div>
+        <div class="notice" id="journalImportStatus" style="margin-top:8px">CSVを選択してください。</div>
+        <div id="journalImportPreview" class="is-hidden">
+          <div class="import-summary" id="journalImportSummary"></div>
+          <div class="import-mapping" id="journalImportMapping"></div>
+          <div id="journalImportWarnings" style="margin-top:8px"></div>
+          <label class="check-row" style="margin-top:8px">
+            <input type="checkbox" id="applyCsvDateRange">
+            <span>
+              <span class="check-label">CSVの取引日範囲を課税期間へ反映する</span>
+              <small>最初と最後の仕訳日です。正式な課税期間と一致することを確認してから選択してください。</small>
+            </span>
+          </label>
+          <div class="import-actions">
+            <button type="button" class="btn" id="applyJournalImportBtn" disabled>入力欄へ反映</button>
+            <button type="button" class="btn secondary" id="clearJournalImportBtn">選択を解除</button>
+          </div>
+          <div class="mini" style="margin-top:7px">反映すると、課税売上・課税仕入・免税事業者等仕入・詳細試算用の非課税売上等を現在の入力値へ上書きします。</div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-title">
           <h2>事業者・課税期間</h2>
@@ -692,6 +739,7 @@
 
 <script src="release-history.js"></script>
 <script src="tax-engine.js"></script>
+<script src="journal-csv.js"></script>
 <script>
 'use strict';
 
@@ -714,6 +762,12 @@ const {
   sanitizeCsvCell,
   serializeStateIfEnabled
 } = ShohizeiTaxEngine;
+const {
+  EXEMPT_RATIOS:CSV_EXEMPT_RATIOS,
+  decodeCsvBytes,
+  analyzeTkcJournalText,
+  resolveImportValues
+} = ShohizeiJournalCsv;
 const STORAGE_KEY = 'shohizeiKazeiHoushiki.v13';
 const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2', 'shohizeiKazeiHoushiki.v3', 'shohizeiKazeiHoushiki.v11', 'shohizeiKazeiHoushiki.v12'];
 const BUSINESS_TYPES = [
@@ -754,6 +808,8 @@ const EXEMPT_PURCHASE_BUCKETS = [
 ];
 
 const $ = id => document.getElementById(id);
+let pendingJournalImport = null;
+let journalImportMappings = {};
 
 function storageGet(key){
   try{ return localStorage.getItem(key); }catch(error){ return null; }
@@ -877,6 +933,160 @@ function renderSalesRows(){
       <td class="num" id="${type.key}Tax">0円</td>
     </tr>
   `).join('');
+}
+
+function sumRateAmounts(amounts){
+  return Number(amounts?.['10'] || 0) + Number(amounts?.['8'] || 0);
+}
+
+function importedTaxableSalesTotal(analysis){
+  const classified = BUSINESS_TYPES.reduce((sum, type) => sum + sumRateAmounts(analysis.salesByType[type.key]), 0);
+  const unclassified = analysis.unclassifiedSales.reduce((sum, group) => sum + sumRateAmounts(group.amounts), 0);
+  return classified + unclassified;
+}
+
+function importedExemptPurchaseTotal(analysis){
+  return CSV_EXEMPT_RATIOS.reduce((sum, ratio) => sum + sumRateAmounts(analysis.exemptPurchases[ratio]), 0);
+}
+
+function importBusinessOptions(selected){
+  return [
+    '<option value="">事業区分を選択</option>',
+    ...BUSINESS_TYPES.map(type => `<option value="${type.key}"${selected === type.key ? ' selected' : ''}>${type.name} ${type.detail}</option>`)
+  ].join('');
+}
+
+function renderJournalImport(){
+  const status = $('journalImportStatus');
+  const preview = $('journalImportPreview');
+  if(!pendingJournalImport){
+    status.className = 'notice';
+    status.textContent = 'CSVを選択してください。';
+    preview.classList.add('is-hidden');
+    return;
+  }
+
+  const { analysis, encoding, fileName, applied } = pendingJournalImport;
+  const resolved = resolveImportValues(analysis, journalImportMappings);
+  preview.classList.remove('is-hidden');
+  status.className = `notice ${resolved.ready ? '' : 'warn'}`.trim();
+  status.innerHTML = applied
+    ? `<strong>${escapeHtml(fileName)}</strong> の集計値を入力欄へ反映しました。`
+    : `<strong>${escapeHtml(fileName)}</strong> を${escapeHtml(encoding)}で解析しました。内容を確認して反映してください。`;
+
+  const dateLabel = analysis.dateRange.start && analysis.dateRange.end
+    ? `${analysis.dateRange.start}〜${analysis.dateRange.end}`
+    : '判定できません';
+  $('journalImportSummary').innerHTML = [
+    ['仕訳行数', `${analysis.rowCount.toLocaleString('ja-JP')}行`],
+    ['CSV内の取引日範囲', dateLabel],
+    ['課税売上（税込）', yen(importedTaxableSalesTotal(analysis))],
+    ['非課税売上等', yen(analysis.nonTaxableSales)],
+    ['インボイスあり課税仕入（税込）', yen(sumRateAmounts(analysis.invoicePurchases))],
+    ['免税事業者等仕入（税込）', yen(importedExemptPurchaseTotal(analysis))]
+  ].map(([key, value]) => `<div><span class="k">${escapeHtml(key)}</span><span class="v">${escapeHtml(value)}</span></div>`).join('');
+
+  $('journalImportMapping').innerHTML = analysis.unclassifiedSales.length ? `
+    <div class="notice warn">
+      <strong>簡易課税の事業区分を選択してください。</strong><br>
+      CSVの事業区分が空欄の課税売上です。勘定科目ごとに確認し、推測せず選択してください。
+      <div id="journalImportMappingRows">
+        ${analysis.unclassifiedSales.map(group => `
+          <div class="import-mapping-row">
+            <div><strong>${escapeHtml(group.accountName)}</strong><div class="mini">10％ ${escapeHtml(yen(group.amounts['10']))} / 軽8％ ${escapeHtml(yen(group.amounts['8']))}</div></div>
+            <select class="js-import-business" data-import-key="${escapeHtml(group.key)}">${importBusinessOptions(journalImportMappings[group.key])}</select>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  ` : '<div class="notice">簡易課税の事業区分はCSVから取得できました。</div>';
+
+  const messages = [];
+  if(analysis.errors.length){
+    messages.push(`<div class="notice bad"><strong>反映できない項目があります。</strong><ul>${analysis.errors.map(message => `<li>${escapeHtml(message)}</li>`).join('')}</ul></div>`);
+  }
+  if(analysis.unsupportedEntries.length){
+    messages.push(`<div class="notice warn"><strong>自動集計の対象外となった課税区分があります。</strong><ul>${analysis.unsupportedEntries.map(item => `<li>課税区分 ${escapeHtml(item.code)} ${escapeHtml(item.label)}: ${item.count.toLocaleString('ja-JP')}件</li>`).join('')}</ul></div>`);
+  }
+  messages.push(`
+    <div class="notice"${messages.length ? ' style="margin-top:8px"' : ''}>
+      CSVから自動判定しない項目: 事業者区分、基準期間・特定期間の課税売上高、給与等支払額、インボイス登録・免税事業者該当性、届出状況、特例の適用除外、高額資産、仕入控除方式。
+    </div>
+  `);
+  $('journalImportWarnings').innerHTML = messages.join('');
+  $('applyJournalImportBtn').disabled = !resolved.ready;
+}
+
+async function handleJournalCsvFile(){
+  const file = $('journalCsvFile').files?.[0];
+  journalImportMappings = {};
+  if(!file){
+    pendingJournalImport = null;
+    renderJournalImport();
+    return;
+  }
+  try{
+    const decoded = decodeCsvBytes(await file.arrayBuffer());
+    pendingJournalImport = {
+      fileName:file.name,
+      encoding:decoded.encoding,
+      analysis:analyzeTkcJournalText(decoded.text),
+      applied:false
+    };
+  }catch(error){
+    pendingJournalImport = null;
+    const status = $('journalImportStatus');
+    status.className = 'notice bad';
+    status.textContent = `CSVを解析できません: ${error.message || error}`;
+    $('journalImportPreview').classList.add('is-hidden');
+    return;
+  }
+  renderJournalImport();
+}
+
+function setImportedAmount(id, value){
+  $(id).value = formatInput(String(value));
+}
+
+function applyJournalImport(){
+  if(!pendingJournalImport) return;
+  const resolved = resolveImportValues(pendingJournalImport.analysis, journalImportMappings);
+  if(!resolved.ready){
+    renderJournalImport();
+    return;
+  }
+  const values = resolved.values;
+  $('modeTaxIncluded').checked = true;
+  $('taxScenarioCurrent').checked = true;
+  BUSINESS_TYPES.forEach(type => {
+    setImportedAmount(`${type.key}Sale10`, values.salesByType[type.key]['10']);
+    setImportedAmount(`${type.key}Sale8`, values.salesByType[type.key]['8']);
+  });
+  setImportedAmount('purchase10', values.invoicePurchases['10']);
+  setImportedAmount('purchase8', values.invoicePurchases['8']);
+  CSV_EXEMPT_RATIOS.forEach(ratio => {
+    setImportedAmount(`exemptPurchase${ratio}_10`, values.exemptPurchases[ratio]['10']);
+    setImportedAmount(`exemptPurchase${ratio}_8`, values.exemptPurchases[ratio]['8']);
+  });
+  setImportedAmount('nonTaxableSales', values.nonTaxableSales);
+  setImportedAmount('taxableOnlyPurchaseTax', values.taxableOnlyPurchaseTax);
+  setImportedAmount('commonPurchaseTax', values.commonPurchaseTax);
+  $('advancedMode').checked = true;
+  if($('applyCsvDateRange').checked && values.dateRange.start && values.dateRange.end){
+    $('periodStart').value = values.dateRange.start;
+    $('periodEnd').value = values.dateRange.end;
+  }
+  pendingJournalImport.applied = true;
+  update();
+  renderJournalImport();
+}
+
+function clearJournalImport(){
+  pendingJournalImport = null;
+  journalImportMappings = {};
+  $('journalCsvFile').value = '';
+  $('applyCsvDateRange').checked = false;
+  renderJournalImport();
 }
 
 function selectedValue(name, fallback = ''){
@@ -1984,17 +2194,20 @@ function resetAll(){
   $('highAssetType').value = 'unknown';
   $('saveToDevice').checked = false;
   $('saveStatus').textContent = '保存しません';
+  clearJournalImport();
   update();
 }
 
 function bindEvents(){
   document.addEventListener('input', event => {
+    if(event.target.closest && event.target.closest('#journalImportPanel')) return;
     if(event.target.classList && event.target.classList.contains('js-amount')){
       formatAmountLive(event.target);
     }
     if(event.target.matches('input,select')) update();
   });
   document.addEventListener('change', event => {
+    if(event.target.closest && event.target.closest('#journalImportPanel')) return;
     if(event.target.matches('input,select')) update();
   });
   document.addEventListener('blur', event => {
@@ -2003,6 +2216,14 @@ function bindEvents(){
       update();
     }
   }, true);
+  $('journalCsvFile').addEventListener('change', handleJournalCsvFile);
+  $('journalImportMapping').addEventListener('change', event => {
+    if(!event.target.classList.contains('js-import-business')) return;
+    journalImportMappings[event.target.dataset.importKey] = event.target.value;
+    renderJournalImport();
+  });
+  $('applyJournalImportBtn').addEventListener('click', applyJournalImport);
+  $('clearJournalImportBtn').addEventListener('click', clearJournalImport);
   $('resetBtn').addEventListener('click', resetAll);
   $('printBtn').addEventListener('click', () => window.print());
   $('downloadCsvBtn').addEventListener('click', () => downloadCsv(calculate()));
@@ -2021,6 +2242,7 @@ function bindEvents(){
 
 function init(){
   renderSalesRows();
+  renderJournalImport();
   renderReleaseHistory();
   $('copyYear').textContent = '2026';
   $('footerVersion').textContent = APP_META.version;

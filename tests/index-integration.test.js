@@ -8,6 +8,8 @@ const vm = require('node:vm');
 const engine = require('../tax-engine.js');
 const journal = require('../journal-csv.js');
 const switchDecision = require('../switch-decision.js');
+const taxRows = require('../tax-entry-rows.js');
+const { rowsFromJournalAnalysis } = require('../tax-entry-csv.js');
 const { DEFERRED_LIMITATIONS } = require('../release-history.js');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -199,6 +201,61 @@ test('[現行差額01] 同じ手入力から本則40000円対5000円・簡易160
   assert.equal(h.context.taxScenarioKey(), 'foodProposal');
   assert.equal(h.element('type2Sale8').value, '1,080,000');
   assert.equal(h.element('type2SaleFood1').value, '1,080,000');
+});
+
+test('[TKC行結合01] 行集計を従来計算入力へ渡すと食品1％の本則・簡易と現行差額が一致する', () => {
+  const h = currentRateComparisonHarness();
+  const legacy = h.context.buildCurrentRateComparison(h.context.calculate());
+  const aggregate = taxRows.aggregateTaxRows({
+    sales:[
+      {code:'1',businessType:'type2',rate:'8',amount:'1080000',foodAmount:'1080000'},
+      {code:'3',amount:'0'}
+    ],
+    purchases:[{code:'5',rate:'8',amount:'540000',foodAmount:'540000'}]
+  });
+  assert.deepEqual(aggregate.errors, []);
+  for(const [id, state] of Object.entries(aggregate.fields)) h.element(id).value = state.entered ? String(state.value) : '';
+  const fromRows = h.context.buildCurrentRateComparison(h.context.calculate());
+  for(const key of ['regular','simplified']){
+    const a = comparisonRow(legacy, key);
+    const b = comparisonRow(fromRows, key);
+    assert.equal(b.currentAmount, a.currentAmount, key);
+    assert.equal(b.proposalAmount, a.proposalAmount, key);
+    assert.equal(b.difference, a.difference, key);
+  }
+  assert.equal(comparisonRow(fromRows, 'regular').currentAmount, 40000);
+  assert.ok(Math.abs(comparisonRow(fromRows, 'regular').proposalAmount - 5000) < 1e-8);
+});
+
+test('[TKC行結合02] CSV再取込は手入力行を保ちCSV行だけ置換し課税区分を推測しない', () => {
+  const first = csv([csvRow({rate:'10',amount:1100000}),csvRow({side:'借方',code:'5',rate:'10',amount:110000})]);
+  const h = harness(first);
+  Object.assign(h.context, {
+    entryMode:'rows',
+    taxEntryRows:{sales:[{id:'manual-1',code:'3',amount:'0',source:'manual'}],purchases:[]},
+    rowCsvKnownZeros:{}, rowsFromJournalAnalysis,
+    newTaxEntry:side => taxRows.createTaxEntryRow(side,{id:`blank-${side}`}),
+    renderTaxEntryRows(){},
+    document:{...h.context.document, body:{dataset:{}}}
+  });
+  h.context.applyJournalImport();
+  assert.equal(h.context.taxEntryRows.sales.filter(row => row.source === 'manual').length, 1);
+  assert.equal(h.context.taxEntryRows.sales.find(row => row.source === 'csv').code, '1');
+  assert.equal(h.context.taxEntryRows.purchases.find(row => row.source === 'csv').code, '5');
+  const firstAggregate = taxRows.aggregateTaxRows(h.context.taxEntryRows);
+  assert.equal(firstAggregate.fields.type2Sale10.value, 1100000);
+  assert.equal(firstAggregate.fields.purchase10.value, 110000);
+  const second = csv([csvRow({rate:'10',amount:2200000}),csvRow({side:'借方',code:'7',rate:'10',amount:220000})]);
+  h.context.pendingJournalImport = {analysis:journal.analyzeTkcJournalText(second),sourceText:second,decisions:{},applied:false};
+  h.context.applyJournalImport();
+  assert.equal(h.context.taxEntryRows.sales.filter(row => row.source === 'manual').length, 1);
+  assert.equal(h.context.taxEntryRows.sales.filter(row => row.source === 'csv').length, 1);
+  assert.equal(h.context.taxEntryRows.purchases.filter(row => row.source === 'csv').length, 1);
+  assert.equal(h.context.taxEntryRows.purchases[0].code, '7');
+  const secondAggregate = taxRows.aggregateTaxRows(h.context.taxEntryRows);
+  assert.equal(secondAggregate.fields.type2Sale10.value, 2200000);
+  assert.equal(secondAggregate.fields.purchase10.value, 220000);
+  assert.equal(secondAggregate.fields.commonPurchaseTax.value, 20000);
 });
 
 test('[現行差額02] 税込据置・税抜入力・日数配分の変更を同じ価格前提と計算値で比較する', () => {
@@ -1779,4 +1836,17 @@ test('[A20] 現行税率へ戻しても非ゼロ・不正な1％予測値の不�
   assert.match(h.element('taxScenarioNotice').textContent, /保持/);
   assert.match(h.element('taxScenarioNotice').textContent, /現行税率の計算には含めていません/);
   assert.equal(h.element('type2SaleFood1').value, '不明');
+});
+
+test('[食品1％価格前提] 折りたたみ中も現在の売上・仕入前提を更新して表示する', () => {
+  const h = harness(csv([csvRow({ amount:1080000 })]));
+  const ctx = { ...h.ctx, proposalFoodClassificationState:'confirmed', proposalPurchaseClassificationState:'confirmed' };
+  h.context.renderTaxScenarioNotice({ ctx });
+  assert.equal(h.element('foodPriceBasisSummary').textContent, '現在：売上・仕入とも税抜価格据置');
+  assert.equal(h.element('foodPriceBasisDetails').open, false);
+  h.context.renderTaxScenarioNotice({ ctx:{ ...ctx, foodSalesPriceBasis:'grossFixed' } });
+  assert.equal(h.element('foodPriceBasisSummary').textContent, '現在：売上税込価格据置／仕入税抜価格据置');
+  assert.equal(h.element('foodPriceBasisDetails').open, false);
+  h.context.renderTaxScenarioNotice({ ctx:{ ...ctx, foodSalesPriceBasis:'grossFixed', foodPurchasePriceBasis:'grossFixed' } });
+  assert.equal(h.element('foodPriceBasisSummary').textContent, '現在：売上・仕入とも税込価格据置');
 });

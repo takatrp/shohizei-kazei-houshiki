@@ -73,7 +73,7 @@
   .input-col,.results-col,.panel{min-width:0}
   @media(min-width:1024px){
     .tool-layout{grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);align-items:start}
-    .results-col{position:sticky;top:12px}
+    .results-col{position:sticky;top:100px}
   }
   .panel{
     background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
@@ -87,6 +87,43 @@
   @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}}
   .full-field{grid-column:1/-1}
   .field label,.check-label{display:block;font-size:var(--font-body);font-weight:800;color:#334155;margin-bottom:5px}
+  .tkc-badge{display:inline-block;vertical-align:baseline;white-space:nowrap;margin-left:4px;padding:1px 6px;border:1px solid var(--line-strong);border-radius:999px;background:#f3f7f9;color:#526675;font-size:11px;font-weight:700;line-height:1.35}
+  .tkc-code-guide{color:var(--muted);font-size:var(--font-note);line-height:1.55}
+  .tkc-code-guide+.table-wrap{margin-top:6px}
+  .tkc-code-guide .tkc-item{display:inline-block;margin-right:10px}
+  .row-entry-only{display:none}
+  body[data-entry-mode="rows"] .row-entry-only{display:block}
+  body[data-entry-mode="rows"] .legacy-entry-only,
+  body[data-entry-mode="rows"] #regularBasicAmounts,
+  body[data-entry-mode="rows"] #exemptPurchaseFields,
+  body[data-entry-mode="rows"] #purchaseFood1Field,
+  body[data-entry-mode="rows"] #amountModeHeading,
+  body[data-entry-mode="rows"] #amountModeChoices{display:none!important}
+  .tkc-row-table{min-width:1200px;table-layout:fixed}
+  .tkc-row-table th,.tkc-row-table td{white-space:normal}
+  .tkc-row-table th:first-child,.tkc-row-table td:first-child{position:sticky;left:0;z-index:1;background:#fff;width:340px;white-space:nowrap}
+  .tkc-row-table th:first-child{background:#f0f6f8}
+  .tkc-row-table input{min-width:0}
+  .tkc-row-table .row-code{width:58px;display:inline-block;margin-right:5px}
+  .tkc-row-table .row-code-name{font-size:11px;color:var(--muted);vertical-align:middle;white-space:nowrap}
+  .food-exclusion-guide{grid-column:1/-1;white-space:nowrap;overflow-x:auto}
+  .price-basis-details{margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .price-basis-details>summary{cursor:pointer;font-weight:800}
+  .price-basis-details>summary .mini{font-weight:400;margin-left:8px}
+  .tkc-row-table .row-business{width:100%}
+  .tkc-row-table .row-rate{width:100%}
+  .tkc-row-table .row-amount{width:100%;text-align:right;font-variant-numeric:tabular-nums}
+  .tkc-row-table input:disabled,.tkc-row-table select:disabled{background:transparent!important;border-color:transparent!important;box-shadow:none!important;color:var(--muted);pointer-events:none;cursor:default;appearance:none}
+  .tkc-row-table input:disabled::placeholder{color:var(--muted);opacity:1}
+  .tkc-row-table .row-amount:disabled{text-align:center}
+  .tkc-row-table .row-ratio-period{display:block;font-size:11px;color:var(--muted);line-height:1.35;margin-top:2px}
+  .tkc-row-table .row-ratio-period.is-conflict{color:var(--bad);font-weight:700}
+  .tkc-row-table .row-source{font-size:11px;color:var(--muted)}
+  .tkc-row-table .row-error{display:block;font-size:11px;color:var(--bad);margin-top:3px}
+  .tkc-row-table tr.has-row-error td{background:var(--bad-bg)}
+  .tkc-row-table tr.has-row-error td:first-child{background:var(--bad-bg)}
+  .tkc-row-actions{display:flex;justify-content:space-between;gap:8px;margin-top:8px;align-items:center}
+  .tkc-row-actions .btn{min-height:32px}
   input[type="text"],input[type="number"],input[type="date"],select{
     width:100%;border:1px solid var(--line-strong);border-radius:8px;background:#fff;color:var(--ink);
     padding:6px 9px;min-height:34px;outline:none;
@@ -247,8 +284,9 @@
   .decision-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   .decision-actions .btn:disabled{opacity:.5;cursor:not-allowed}
   .internal-only{border:2px solid #94a3b8;background:#f8fafc}
-  .workflow-intro{margin:12px 0}
-  .workflow-steps{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+  .workflow-intro{margin:12px 0 0;border-radius:var(--radius) var(--radius) 0 0;box-shadow:none}
+  .workflow-sticky{position:sticky;top:0;z-index:30;margin-top:-1px;border-radius:0 0 var(--radius) var(--radius)}
+  .workflow-steps{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 6px}
   .workflow-steps button{border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 13px;font:inherit;font-weight:800;cursor:pointer;color:#174156}
   .workflow-steps button[aria-current="step"]{background:var(--brand);color:#fff}
   .workflow-screen{display:none}
@@ -314,6 +352,8 @@
     .import-summary{grid-template-columns:1fr}
     .import-mapping-row{grid-template-columns:1fr}
     th,td{padding:8px 6px}
+    .tkc-row-table th:first-child,.tkc-row-table td:first-child{width:220px}
+    .tkc-row-table .row-code-name{display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis}
     .sales-table input{min-width:96px}
     .decision-grid{grid-template-columns:1fr}
     .decision-actions .btn{width:100%}
@@ -375,13 +415,15 @@
     </div>
     <div class="notice warn" id="workflowProposalNotice" style="display:none;margin-top:8px">改正案・法案成立前の資料に基づく政策試算です。現行の申告・届出判断には使用できません。</div>
     <div class="notice warn" id="workflowMigrationNotice" style="display:none;margin-top:8px"></div>
+  </section>
+  <div class="panel workflow-sticky no-print" id="workflowSticky">
     <nav class="workflow-steps" aria-label="入力の進行">
       <button type="button" data-workflow-step="1" aria-current="step">1. 事業者・対象期間</button>
       <button type="button" data-workflow-step="2">2. 金額の入力</button>
       <button type="button" data-workflow-step="4">3. 税額の比較</button>
     </nav>
     <div class="screen-note" id="workflowStepSummary"></div>
-  </section>
+  </div>
   <div id="workflowScreen1" class="workflow-screen is-active no-print"></div>
   <div id="workflowScreen2" class="workflow-screen no-print"></div>
   <div id="workflowScreen3" class="workflow-screen no-print"></div>
@@ -464,8 +506,8 @@
         </div>
         <div class="notice warn period-inline-notice" id="periodInlineNotice" style="display:none"></div>
 
-        <h3>入力金額</h3>
-        <div class="segmented">
+        <h3 id="amountModeHeading">入力金額</h3>
+        <div class="segmented" id="amountModeChoices">
           <input type="radio" name="amountMode" id="modeTaxIncluded" value="included" checked>
           <label for="modeTaxIncluded">税込</label>
           <input type="radio" name="amountMode" id="modeTaxExcluded" value="excluded">
@@ -491,20 +533,6 @@
             </div>
             <div class="grid two" style="margin-top:8px">
               <div class="field">
-                <label for="foodSalesPriceBasis">将来の食品売上価格</label>
-                <select id="foodSalesPriceBasis">
-                  <option value="netFixed">税抜価格据置</option>
-                  <option value="grossFixed">税込価格据置</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="foodPurchasePriceBasis">将来の食品仕入価格</label>
-                <select id="foodPurchasePriceBasis">
-                  <option value="netFixed">税抜価格据置</option>
-                  <option value="grossFixed">税込価格据置</option>
-                </select>
-              </div>
-              <div class="field">
                 <label for="foodForecastMethod">期間別金額の扱い</label>
                 <select id="foodForecastMethod">
                   <option value="manual">1％対象期間分を手入力</option>
@@ -529,6 +557,25 @@
                 </select>
               </div>
             </div>
+            <details id="foodPriceBasisDetails" class="price-basis-details">
+              <summary>価格前提を変更（任意）<span class="mini" id="foodPriceBasisSummary">現在：売上・仕入とも税抜価格据置</span></summary>
+              <div class="grid two" style="margin-top:8px">
+                <div class="field">
+                  <label for="foodSalesPriceBasis">将来の食品売上価格</label>
+                  <select id="foodSalesPriceBasis">
+                    <option value="netFixed">税抜価格据置</option>
+                    <option value="grossFixed">税込価格据置</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="foodPurchasePriceBasis">将来の食品仕入価格</label>
+                  <select id="foodPurchasePriceBasis">
+                    <option value="netFixed">税抜価格据置</option>
+                    <option value="grossFixed">税込価格据置</option>
+                  </select>
+                </div>
+              </div>
+            </details>
             <h3 class="is-hidden">1％対象食品売上の区分</h3>
             <div id="proposalFoodSalesRows" class="is-hidden"></div>
             <div class="grid two" style="margin-top:8px">
@@ -536,7 +583,7 @@
                 <label for="purchaseFood1">インボイスあり食品仕入（軽8％欄のうち対象額）</label>
                 <input type="text" inputmode="numeric" class="money js-amount" id="purchaseFood1" placeholder="0">
               </div>
-              <div class="notice">
+              <div class="notice food-exclusion-guide">
                 新聞の定期購読、旧税率適用食品、外食・酒類等は1％欄へ含めません。摘要だけで食品と確定せず、担当者が区分を確認してください。
               </div>
             </div>
@@ -609,16 +656,16 @@
                 </select>
               </div>
               <div class="field">
-                <label for="nonTaxableSales">非課税売上等（税抜）</label>
+                <label for="nonTaxableSales">非課税売上等（税抜） <span class="tkc-badge">TKC 3</span></label>
                 <input type="text" inputmode="numeric" class="money js-amount" id="nonTaxableSales" placeholder="0">
                 <div class="mini">課税売上割合の分母に加算する金額</div>
               </div>
               <div class="field detail-individual-field is-hidden">
-                <label for="taxableOnlyPurchaseTax">課税売上対応の仕入税額</label>
+                <label for="taxableOnlyPurchaseTax">課税売上対応の仕入税額 <span class="tkc-badge">TKC 5</span> <span class="tkc-badge">TKC 52</span></label>
                 <input type="text" inputmode="numeric" class="money js-amount" id="taxableOnlyPurchaseTax" placeholder="0">
               </div>
               <div class="field detail-individual-field is-hidden">
-                <label for="commonPurchaseTax">共通対応の仕入税額</label>
+                <label for="commonPurchaseTax">共通対応の仕入税額 <span class="tkc-badge">TKC 7</span> <span class="tkc-badge">TKC 72</span></label>
                 <input type="text" inputmode="numeric" class="money js-amount" id="commonPurchaseTax" placeholder="0">
               </div>
             </div>
@@ -753,12 +800,24 @@
           <span class="mini">簡易課税の事業区分ごと</span>
         </div>
         <p class="screen-note" id="salesInputGuide">お手元の資料を見ながら、金額を入力してください。CSVは不要です。</p>
-        <div class="grid two" style="margin-bottom:8px">
+        <div class="row-entry-only" id="rowSalesInput">
+          <p class="tkc-code-guide">課税区分 → 事業区分 → 税率 → 税込金額の順に入力します。番号を直接入力できます。</p>
+          <datalist id="taxSalesCodeList"><option value="1　課税売上"></option><option value="3　非課税売上"></option></datalist>
+          <datalist id="taxBusinessTypeList"><option value="1　第1種 卸売業"></option><option value="2　第2種 小売業・飲食料品農林漁業"></option><option value="3　第3種 建設業・製造業など"></option><option value="4　第4種 飲食店業など"></option><option value="5　第5種 サービス業など"></option><option value="6　第6種 不動産業"></option></datalist>
+          <datalist id="taxRowRateList"><option value="10％"></option><option value="軽減8％"></option></datalist>
+          <div class="table-wrap"><table class="tkc-row-table" aria-label="TKC課税区分別の売上行入力">
+            <thead><tr><th>課税区分</th><th>事業区分</th><th>税率</th><th>税込金額</th><th>うち食品1％対象</th><th>入力元・操作</th></tr></thead>
+            <tbody id="taxSalesRowBody"></tbody>
+          </table></div>
+          <div class="tkc-row-actions"><button type="button" class="btn secondary" id="addTaxSalesRow">＋ 売上行を追加</button><span class="mini" id="salesRowStatus"></span></div>
+        </div>
+        <div class="grid two legacy-entry-only" style="margin-bottom:8px">
           <div class="field"><label for="addBusinessType">表示する事業区分</label><select id="addBusinessType"><option value="">事業区分を追加</option></select></div>
           <div class="mini" id="salesPreservedNotice"></div>
         </div>
-        <p class="screen-note" id="businessTypeGuide">売上の事業区分を選ぶと入力欄が表示されます。</p>
-        <div class="table-wrap">
+        <p class="screen-note legacy-entry-only" id="businessTypeGuide">売上の事業区分を選ぶと入力欄が表示されます。</p>
+        <div class="tkc-code-guide legacy-entry-only">課税売上 <span class="tkc-badge">TKC 1</span>：下表の10％・軽8％売上を事業区分ごとに入力します。</div>
+        <div class="table-wrap legacy-entry-only">
           <table class="sales-table" aria-label="課税売上入力">
             <thead>
               <tr>
@@ -772,7 +831,7 @@
             <tbody id="salesRows"></tbody>
           </table>
         </div>
-        <div class="notice" style="margin-top:10px">
+        <div class="notice legacy-entry-only" style="margin-top:10px">
           事業区分が混在する場合は、区分できる売上だけでも分けてください。区分していない売上は、実務上みなし仕入率の低い区分で扱うケースがあります。
         </div>
       </section>
@@ -782,19 +841,44 @@
           <h2>課税仕入・本則課税用調整</h2>
           <span class="mini">仕入税額控除の概算</span>
         </div>
+        <div class="row-entry-only" id="rowPurchaseInput">
+          <p class="tkc-code-guide">5・6・7、52・62・72を入力できます。免税事業者等仕入は取引時期の控除割合を選び、時期をまたぐ場合は行を分けてください。</p>
+          <datalist id="taxPurchaseCodeList"><option value="5　課税仕入れ（課税売上対応）"></option><option value="6　課税仕入れ（非課税売上対応）"></option><option value="7　課税仕入れ（共通対応）"></option><option value="52　免税事業者等（課税売上対応）"></option><option value="62　免税事業者等（非課税売上対応）"></option><option value="72　免税事業者等（共通対応）"></option></datalist>
+          <div class="table-wrap"><table class="tkc-row-table" aria-label="TKC課税区分別の仕入行入力">
+            <thead><tr><th>課税区分</th><th>税率</th><th>税込金額</th><th>うち食品1％対象</th><th>控除割合等</th><th>入力元・操作</th></tr></thead>
+            <tbody id="taxPurchaseRowBody"></tbody>
+          </table></div>
+          <div class="tkc-row-actions"><button type="button" class="btn secondary" id="addTaxPurchaseRow">＋ 仕入行を追加</button><span class="mini" id="purchaseRowStatus"></span></div>
+          <div class="mini" id="taxRowErrorSummary" role="status"></div>
+          <details id="rowAggregateDetails"><summary>入力内容からの自動集計を見る</summary><div class="mini" id="rowAggregateSummary"></div></details>
+        </div>
         <div class="grid two">
-          <div class="field">
+          <div class="field legacy-entry-only">
             <label for="purchase10">10%課税仕入・経費（インボイスあり）</label>
             <input type="text" inputmode="numeric" class="money js-amount" id="purchase10" placeholder="0">
           </div>
-          <div class="field">
+          <div class="field legacy-entry-only">
             <label for="purchase8">軽8％対象課税仕入・経費（インボイスあり）</label>
             <input type="text" inputmode="numeric" class="money js-amount" id="purchase8" placeholder="0">
           </div>
-          <div class="notice full-field">
+          <div class="tkc-code-guide full-field legacy-entry-only">上の仕入金額は税率別の合計です。課税仕入れの用途区分（CSV）：
+            <span class="tkc-item">課税売上対応 <span class="tkc-badge">TKC 5</span></span>
+            <span class="tkc-item">非課税売上対応 <span class="tkc-badge">TKC 6</span></span>
+            <span class="tkc-item">共通対応 <span class="tkc-badge">TKC 7</span></span>
+          </div>
+          <div class="notice full-field legacy-entry-only">
             免税事業者等からの課税仕入は、課税仕入れを行った時期ごとの控除割合で分けて入力してください。期中に控除割合が変わる場合でも一括判定しません。
           </div>
-          <div class="field full-field"><label for="exemptPurchaseState">免税事業者等からの課税仕入</label><select id="exemptPurchaseState"><option value="unknown">未確認</option><option value="no">なし・確認済み</option><option value="yes">あり</option></select><div class="mini" id="exemptPurchaseNotice"></div></div>
+          <div class="field full-field">
+            <label for="exemptPurchaseState">免税事業者等からの課税仕入</label>
+            <select id="exemptPurchaseState"><option value="unknown">未確認</option><option value="no">なし・確認済み</option><option value="yes">あり</option></select>
+            <div class="mini" id="exemptPurchaseNotice"></div>
+            <div class="tkc-code-guide legacy-entry-only">下の内訳は期間・税率別の合計です。免税事業者等からの課税仕入れの用途区分（CSV）：
+              <span class="tkc-item">課税売上対応 <span class="tkc-badge">TKC 52</span></span>
+              <span class="tkc-item">非課税売上対応 <span class="tkc-badge">TKC 62</span></span>
+              <span class="tkc-item">共通対応 <span class="tkc-badge">TKC 72</span></span>
+            </div>
+          </div>
           <div class="field">
             <label for="exemptPurchase80_10">80%対象 10%免税事業者からの課税仕入</label>
             <input type="text" inputmode="numeric" class="money js-amount js-exempt-purchase" id="exemptPurchase80_10" placeholder="0">
@@ -1066,6 +1150,8 @@
 <script src="tax-engine.js"></script>
 <script src="switch-decision.js"></script>
 <script src="journal-csv.js"></script>
+<script src="tax-entry-rows.js"></script>
+<script src="tax-entry-csv.js"></script>
 <script>
 'use strict';
 
@@ -1110,6 +1196,8 @@ const {
   resolveImportValues,
   prepareEstimatedImport
 } = ShohizeiJournalCsv;
+const { CODE_DETAILS:TAX_ROW_CODES, createTaxEntryRow, aggregateTaxRows } = ShohizeiTaxEntryRows;
+const { rowsFromJournalAnalysis } = ShohizeiTaxEntryCsv;
 const STORAGE_KEY = 'shohizeiKazeiHoushiki.v13';
 const LEGACY_STORAGE_KEYS = ['shohizeiKazeiHoushiki.v1', 'shohizeiKazeiHoushiki.v2', 'shohizeiKazeiHoushiki.v3', 'shohizeiKazeiHoushiki.v11', 'shohizeiKazeiHoushiki.v12'];
 const BUSINESS_TYPES = [
@@ -1143,11 +1231,11 @@ const TAX_SCENARIOS = {
 };
 
 const EXEMPT_PURCHASE_BUCKETS = [
-  { key:'80', label:'80%対象', range:'令和5年10月1日から令和8年9月30日まで', ratio:0.80 },
-  { key:'70', label:'70%対象', range:'令和8年10月1日から令和10年9月30日まで', ratio:0.70 },
-  { key:'50', label:'50%対象', range:'令和10年10月1日から令和12年9月30日まで', ratio:0.50 },
-  { key:'30', label:'30%対象', range:'令和12年10月1日から令和13年9月30日まで', ratio:0.30 },
-  { key:'0', label:'0%対象', range:'令和13年10月1日以後', ratio:0 }
+  { key:'80', label:'80%対象', range:'令和5年10月1日から令和8年9月30日まで', start:'2023-10-01', end:'2026-09-30', ratio:0.80 },
+  { key:'70', label:'70%対象', range:'令和8年10月1日から令和10年9月30日まで', start:'2026-10-01', end:'2028-09-30', ratio:0.70 },
+  { key:'50', label:'50%対象', range:'令和10年10月1日から令和12年9月30日まで', start:'2028-10-01', end:'2030-09-30', ratio:0.50 },
+  { key:'30', label:'30%対象', range:'令和12年10月1日から令和13年9月30日まで', start:'2030-10-01', end:'2031-09-30', ratio:0.30 },
+  { key:'0', label:'0%対象', range:'令和13年10月1日以後', start:'2031-10-01', end:'', ratio:0 }
 ];
 
 const $ = id => document.getElementById(id);
@@ -1165,6 +1253,11 @@ let importedExemptTransactionCount = 0;
 let importedActualOnePercent = null;
 const visibleBusinessTypes = new Set();
 let foodConfirmationSignatures = {};
+let entryMode = 'rows';
+let taxEntryRows = { sales:[], purchases:[] };
+let nextTaxEntryId = 1;
+let latestTaxRowAggregate = null;
+let rowCsvKnownZeros = {};
 
 function costWorkflowActive(){
   return $('purposeFoodSwitch').checked && taxScenarioKey() === 'foodProposal';
@@ -1199,6 +1292,22 @@ function normalizeFoodConfirmations(){
 function goToInput(id){
   const input = $(id);
   if(!input) return;
+  if(typeof entryMode !== 'undefined' && entryMode === 'rows' && (/^type[1-6]Sale(?:10|8|Food1)$/.test(id)
+    || ['nonTaxableSales','taxableOnlyPurchaseTax','commonPurchaseTax','purchase10','purchase8','purchaseFood1'].includes(id)
+    || /^exemptPurchase/.test(id))){
+    workflowStep = 2;
+    update();
+    const sales = /^type[1-6]Sale/.test(id) || id === 'nonTaxableSales';
+    const side = sales ? 'sales' : 'purchases';
+    const code = id === 'nonTaxableSales' ? '3' : id === 'taxableOnlyPurchaseTax' ? '5' : id === 'commonPurchaseTax' ? '7' : '';
+    const row = taxEntryRows[side].find(item => !code || item.code === code);
+    const selector = row ? `tr[data-tax-row-key="${row.id}"] [data-row-field="${id.endsWith('Food1') ? 'foodAmount' : 'amount'}"]` : '';
+    const target = selector ? $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').querySelector(selector)
+      : $(side === 'sales' ? 'addTaxSalesRow' : 'addTaxPurchaseRow');
+    target?.scrollIntoView({block:'center'});
+    target?.focus();
+    return;
+  }
   const business = BUSINESS_TYPES.find(type => id.startsWith(type.key + 'Sale'));
   if(business) visibleBusinessTypes.add(business.key);
   workflowStep = input.closest('#workflowScreen1') ? 1 : input.closest('#workflowScreen2') ? 2 : 4;
@@ -1288,7 +1397,7 @@ function formatCtxAmount(value, entered){
 function formatAmountLive(input){
   const before = input.value.slice(0, input.selectionStart ?? input.value.length);
   const digitsBefore = before.replace(/[^0-9０-９]/g, '').length;
-  const allowNegative = input.id === 'regularAdjustment';
+  const allowNegative = input.id === 'regularAdjustment' || input.classList?.contains('row-amount');
   const parsed = parseAmountInput(input.value, { allowNegative });
   if(!parsed.entered || !parsed.valid) return;
   const formatted = formatInput(input.value, allowNegative);
@@ -1370,6 +1479,274 @@ function renderSalesRows(){
       <td class="num" id="${type.key}Tax">0円</td>
     </tr>
   `).join('');
+}
+
+function singleExemptCreditRatio(){
+  const period = weightedExemptPurchaseRatio($('periodStart').value, $('periodEnd').value);
+  if(!period.valid || period.breakdown.length !== 1) return '';
+  const ratio = String(Math.round(period.breakdown[0].ratio * 100));
+  return CSV_EXEMPT_RATIOS.includes(ratio) ? ratio : '';
+}
+
+function newTaxEntry(side){
+  return createTaxEntryRow(side, { id:`manual-${nextTaxEntryId++}` });
+}
+
+function taxRowCodeName(code){
+  return TAX_ROW_CODES[code]?.label || '番号を入力';
+}
+
+function taxRowChoiceNumber(value){
+  const text = String(value || '').trim();
+  return text.match(/^(\d+)[\s　]+\S/)?.[1] || text;
+}
+
+function taxRowRateValue(value){
+  const text = String(value || '').trim();
+  if(/^10[%％]$/.test(text)) return '10';
+  if(/^(?:軽減)?8[%％]$/.test(text)) return '8';
+  return text;
+}
+
+function taxRowRatioPeriod(ratio){
+  return EXEMPT_PURCHASE_BUCKETS.find(bucket => bucket.key === String(ratio))?.range || '';
+}
+
+function taxRowRatioOverlapsPeriod(bucket, start, end){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) return true;
+  return (!bucket.start || end >= bucket.start) && (!bucket.end || start <= bucket.end);
+}
+
+function rowCellInput(row, side, field, label, extra = ''){
+  const raw = field === 'businessType' ? String(row.businessType || '').replace(/^type/, '') : String(row[field] ?? '');
+  const value = ['amount','foodAmount'].includes(field) ? formatInput(raw, true) : raw;
+  return `<input type="text" class="${extra}" data-row-side="${side}" data-row-key="${escapeHtml(row.id)}" data-row-field="${field}" aria-label="${escapeHtml(label)}" value="${escapeHtml(value)}" autocomplete="off">`;
+}
+
+function renderTaxEntryRows(side){
+  const target = $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody');
+  target.innerHTML = taxEntryRows[side].map(row => {
+    const codeInput = rowCellInput(row, side, 'code', 'TKC課税区分番号', `row-code js-row-field`)
+      .replace('autocomplete="off"', `autocomplete="off" inputmode="numeric" list="${side === 'sales' ? 'taxSalesCodeList' : 'taxPurchaseCodeList'}"`);
+    const rateInput = rowCellInput(row, side, 'rate', '税率（10または軽減8）', 'row-rate js-row-field')
+      .replace('autocomplete="off"', 'autocomplete="off" inputmode="numeric" list="taxRowRateList"');
+    const amountInput = rowCellInput(row, side, 'amount', '税込金額', 'row-amount js-row-field')
+      .replace('autocomplete="off"', 'autocomplete="off" inputmode="decimal"');
+    const foodInput = rowCellInput(row, side, 'foodAmount', 'うち食品1％対象額', 'row-amount js-row-field')
+      .replace('autocomplete="off"', 'autocomplete="off" inputmode="decimal"');
+    const source = {manual:'手入力',csv:'CSV','csv-edited':'CSV→手修正'}[row.source] || '手入力';
+    const actions = `<span class="row-source">${source}</span> <button type="button" class="btn secondary" data-delete-tax-row="${escapeHtml(row.id)}" data-row-side="${side}" aria-label="この${side === 'sales' ? '売上' : '仕入'}行を削除">削除</button><span class="row-error" aria-live="polite"></span>`;
+    return `<tr data-tax-row-key="${escapeHtml(row.id)}" data-row-side="${side}">
+      <td>${codeInput}<span class="row-code-name" title="${escapeHtml(taxRowCodeName(row.code))}">${escapeHtml(taxRowCodeName(row.code))}</span></td>
+      ${side === 'sales' ? `<td>${rowCellInput(row, side, 'businessType', '事業区分番号', 'row-business js-row-field').replace('autocomplete="off"', 'autocomplete="off" inputmode="numeric" list="taxBusinessTypeList"')}</td>` : ''}
+      <td>${rateInput}</td><td>${amountInput}</td><td>${foodInput}</td>
+      ${side === 'purchases' ? `<td><select class="js-row-field" data-row-side="${side}" data-row-key="${escapeHtml(row.id)}" data-row-field="creditRatio" aria-label="控除割合・対象時期"><option value="">未確認</option>${EXEMPT_PURCHASE_BUCKETS.map(bucket => `<option value="${bucket.key}"${String(row.creditRatio) === bucket.key ? ' selected' : ''}${taxRowRatioOverlapsPeriod(bucket, $('periodStart').value, $('periodEnd').value) ? '' : ' disabled'}>${bucket.key}%｜${escapeHtml(bucket.range)}</option>`).join('')}</select><span class="row-ratio-period">${escapeHtml(taxRowRatioPeriod(row.creditRatio))}</span></td>` : ''}
+      <td>${actions}</td></tr>`;
+  }).join('');
+  target.querySelectorAll('tr').forEach(refreshTaxRowControls);
+  $(side === 'sales' ? 'salesRowStatus' : 'purchaseRowStatus').textContent = `${taxEntryRows[side].length}行`;
+}
+
+function refreshTaxRowControls(tr){
+  const side = tr.dataset.rowSide;
+  const row = taxEntryRows[side].find(item => item.id === tr.dataset.taxRowKey);
+  if(!row) return;
+  const code = TAX_ROW_CODES[row.code];
+  const business = tr.querySelector('[data-row-field="businessType"]');
+  const rate = tr.querySelector('[data-row-field="rate"]');
+  const food = tr.querySelector('[data-row-field="foodAmount"]');
+  const ratio = tr.querySelector('[data-row-field="creditRatio"]');
+  if(business) business.disabled = row.code !== '1';
+  rate.disabled = row.code === '3';
+  food.disabled = row.code === '3' || row.rate !== '8';
+  if(ratio){
+    ratio.disabled = !code?.exempt;
+    for(const option of Array.from(ratio.options).slice(1)){
+      const bucket = EXEMPT_PURCHASE_BUCKETS.find(item => item.key === option.value);
+      option.disabled = bucket ? !taxRowRatioOverlapsPeriod(bucket, $('periodStart').value, $('periodEnd').value) : false;
+    }
+    if(row.creditRatio && ratio.value !== String(row.creditRatio)) ratio.value = String(row.creditRatio);
+    const selected = EXEMPT_PURCHASE_BUCKETS.find(bucket => bucket.key === String(row.creditRatio));
+    const conflict = Boolean(code?.exempt && selected && !taxRowRatioOverlapsPeriod(selected, $('periodStart').value, $('periodEnd').value));
+    ratio.title = conflict ? '選択した控除割合の対象時期が課税期間と重なりません。取引時期を確認してください。'
+      : row.creditRatioSource === 'auto' ? '課税期間が単一の控除割合に収まるため自動設定' : '';
+    ratio.classList.toggle('input-invalid', conflict);
+    ratio.setAttribute('aria-invalid', conflict ? 'true' : 'false');
+    ratio.options[0].textContent = ratio.disabled ? '—' : '未確認';
+    const period = tr.querySelector('.row-ratio-period');
+    period.textContent = ratio.disabled ? '' : conflict ? '対象期と重なりません。取引時期を確認' : taxRowRatioPeriod(row.creditRatio);
+    period.classList.toggle('is-conflict', conflict);
+  }
+  for(const control of [business,rate,food]) if(control) control.placeholder = control.disabled ? '—' : '';
+  const codeName = tr.querySelector('.row-code-name');
+  codeName.textContent = taxRowCodeName(row.code);
+  codeName.title = codeName.textContent;
+}
+
+function syncTaxEntryRows(){
+  if(entryMode !== 'rows') return;
+  $('modeTaxIncluded').checked = true;
+  latestTaxRowAggregate = aggregateTaxRows(taxEntryRows, {
+    amountMode:'included', actualOnePercentEntries:importedActualOnePercent?.entries || []
+  });
+  for(const id of ['nonTaxableSales','purchase10','purchase8']){
+    if(rowCsvKnownZeros[id] && !latestTaxRowAggregate.fields[id]?.entered){
+      latestTaxRowAggregate.fields[id] = {value:0,entered:true,valid:true};
+    }
+  }
+  Object.entries(latestTaxRowAggregate.fields).forEach(([id, state]) => {
+    const input = $(id);
+    if(input) input.value = state.entered ? formatInput(String(state.value)) : '';
+  });
+  const hasExempt = taxEntryRows.purchases.some(row => ['52','62','72'].includes(row.code) && String(row.amount).trim());
+  if(hasExempt && $('exemptPurchaseState').value === 'no') $('exemptPurchaseState').value = 'unknown';
+  for(const side of ['sales','purchases']){
+    $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').querySelectorAll('tr').forEach(tr => {
+      const index = taxEntryRows[side].findIndex(row => row.id === tr.dataset.taxRowKey);
+      const messages = latestTaxRowAggregate.errors.filter(error => error.side === side && error.index === index).map(error => error.message);
+      tr.classList.toggle('has-row-error', messages.length > 0);
+      tr.querySelector('.row-error').textContent = messages.join(' ');
+    });
+  }
+  const count = latestTaxRowAggregate.errors.length;
+  $('taxRowErrorSummary').textContent = count ? `入力確認が${count}件あります。該当行をご確認ください。` : latestTaxRowAggregate.unclassifiedSales.length ? '事業区分未確認の売上があります。簡易課税は区分の確認が必要です。' : '';
+  const fields = latestTaxRowAggregate.fields;
+  const show = id => fields[id]?.entered ? yen(fields[id].value) : '未入力';
+  const csvZeroNote = Object.values(rowCsvKnownZeros).some(Boolean)
+    ? 'CSVで0円と判明した合計は保持し、元の課税区分を復元できない0円行は推測して作りません。' : '';
+  const actualOneNote = importedActualOnePercent?.entries?.length
+    ? 'CSV明示1％実績は通常の8％行と分け、従来の実績情報として計算します。' : '';
+  $('rowAggregateSummary').textContent = `売上：${BUSINESS_TYPES.map(type => `${type.name} 10% ${show(type.key + 'Sale10')}・軽8% ${show(type.key + 'Sale8')}`).join('／')}。非課税売上 ${show('nonTaxableSales')}。仕入：10% ${show('purchase10')}・軽8% ${show('purchase8')}。課税売上対応の仕入税額 ${show('taxableOnlyPurchaseTax')}、非課税売上対応 ${yen(latestTaxRowAggregate.nonTaxableOnlyPurchaseTax)}、共通対応 ${show('commonPurchaseTax')}。${csvZeroNote}${actualOneNote}`;
+}
+
+function updateAutomaticRowRatios(){
+  if(entryMode !== 'rows') return;
+  const automatic = singleExemptCreditRatio();
+  taxEntryRows.purchases.forEach(row => {
+    if(!['52','62','72'].includes(row.code) || (row.creditRatio && row.creditRatioSource !== 'auto')) return;
+    row.creditRatio = automatic;
+    row.creditRatioSource = automatic ? 'auto' : '';
+    const select = $('taxPurchaseRowBody').querySelector(`tr[data-tax-row-key="${row.id}"] [data-row-field="creditRatio"]`);
+    if(select){
+      select.value = row.creditRatio;
+      select.title = automatic ? '対象期間が単一の控除割合に収まるため自動設定' : '期間が境界をまたぐ場合は行を分け、控除割合を確認してください';
+      select.closest('td').querySelector('.row-ratio-period').textContent = taxRowRatioPeriod(row.creditRatio);
+    }
+  });
+  $('taxPurchaseRowBody').querySelectorAll('tr').forEach(refreshTaxRowControls);
+}
+
+function applyTaxRowEdit(input){
+  const side = input.dataset.rowSide;
+  const row = taxEntryRows[side]?.find(item => item.id === input.dataset.rowKey);
+  if(!row) return;
+  const field = input.dataset.rowField;
+  const oldValue = row[field];
+  const choice = ['code','businessType'].includes(field) ? taxRowChoiceNumber(input.value)
+    : field === 'rate' ? taxRowRateValue(input.value) : input.value.trim();
+  if(choice !== input.value && ['code','businessType','rate'].includes(field)) input.value = choice;
+  row[field] = field === 'businessType' ? (choice ? `type${choice.replace(/^type/, '')}` : '') : choice;
+  if(field === 'creditRatio') row.creditRatioSource = 'manual';
+  if(field === 'code' && oldValue !== row.code){
+    if(row.code === '3'){
+      row.businessType = '';
+      row.rate = '';
+      row.foodAmount = '';
+    }
+    if(!TAX_ROW_CODES[row.code]?.exempt){
+      row.creditRatio = '';
+      row.creditRatioSource = '';
+    }
+  }
+  if(field === 'rate' && row.rate !== '8') row.foodAmount = '';
+  if(['52','62','72'].includes(row.code) && !row.creditRatio) updateAutomaticRowRatios();
+  if(row.source === 'csv') row.source = 'csv-edited';
+  if(importedCsvOrigin) importedCsvOrigin.manualChanged = true;
+  const tr = input.closest('tr');
+  if(tr){
+    for(const changed of ['businessType','rate','foodAmount','creditRatio']){
+      const control = tr.querySelector(`[data-row-field="${changed}"]`);
+      if(control && changed !== field) control.value = changed === 'businessType' ? String(row.businessType || '').replace(/^type/, '') : row[changed] || '';
+    }
+    refreshTaxRowControls(tr);
+    tr.querySelector('.row-source').textContent = row.source === 'csv-edited' ? 'CSV→手修正' : row.source === 'csv' ? 'CSV' : '手入力';
+  }
+  update();
+}
+
+function nextTaxRowField(row, side, current){
+  const order = ['code'];
+  if(side === 'sales' && row.code === '1') order.push('businessType');
+  if(row.code !== '3') order.push('rate');
+  order.push('amount');
+  if(row.rate === '8' && row.code !== '3') order.push('foodAmount');
+  if(side === 'purchases' && ['52','62','72'].includes(row.code) && !row.creditRatio) order.push('creditRatio');
+  return order[order.indexOf(current) + 1] || '';
+}
+
+function focusNextTaxRow(input){
+  const side = input.dataset.rowSide;
+  const rows = taxEntryRows[side];
+  const index = rows.findIndex(row => row.id === input.dataset.rowKey);
+  if(index < 0) return;
+  const row = rows[index];
+  if(input.dataset.rowField === 'code' && TAX_ROW_CODES[row.code]?.side !== side) return;
+  const nextField = nextTaxRowField(row, side, input.dataset.rowField);
+  if(nextField){
+    input.closest('tr')?.querySelector(`[data-row-field="${nextField}"]`)?.focus();
+    return;
+  }
+  if(index === rows.length - 1){
+    rows.push(newTaxEntry(side));
+    renderTaxEntryRows(side);
+    update();
+  }
+  const nextRow = rows[index + 1];
+  $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').querySelector(`tr[data-tax-row-key="${nextRow.id}"] [data-row-field="code"]`)?.focus();
+}
+
+function bindTaxEntryRows(){
+  for(const side of ['sales','purchases']){
+    $(side === 'sales' ? 'addTaxSalesRow' : 'addTaxPurchaseRow').addEventListener('click', () => {
+      const row = newTaxEntry(side);
+      taxEntryRows[side].push(row);
+      renderTaxEntryRows(side);
+      update();
+      $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').querySelector(`tr[data-tax-row-key="${row.id}"] [data-row-field="code"]`)?.focus();
+    });
+  }
+  document.addEventListener('input', event => {
+    if(entryMode !== 'rows' || !event.target.matches?.('.js-row-field')) return;
+    if(event.target.classList.contains('row-amount')) formatAmountLive(event.target);
+    applyTaxRowEdit(event.target);
+  });
+  document.addEventListener('change', event => {
+    if(entryMode !== 'rows' || !event.target.matches?.('.js-row-field')) return;
+    applyTaxRowEdit(event.target);
+  });
+  document.addEventListener('keydown', event => {
+    if(entryMode !== 'rows' || event.key !== 'Enter' || !event.target.matches?.('.js-row-field')) return;
+    event.preventDefault();
+    focusNextTaxRow(event.target);
+  });
+  document.addEventListener('blur', event => {
+    if(entryMode !== 'rows' || !event.target.matches?.('.row-amount')) return;
+    event.target.value = formatInput(event.target.value, true);
+    applyTaxRowEdit(event.target);
+  }, true);
+  document.addEventListener('click', event => {
+    const button = event.target.closest?.('[data-delete-tax-row]');
+    if(!button || entryMode !== 'rows') return;
+    const side = button.dataset.rowSide;
+    const index = taxEntryRows[side].findIndex(row => row.id === button.dataset.deleteTaxRow);
+    if(index < 0) return;
+    taxEntryRows[side].splice(index, 1);
+    if(!taxEntryRows[side].length) taxEntryRows[side].push(newTaxEntry(side));
+    renderTaxEntryRows(side);
+    update();
+    const target = taxEntryRows[side][Math.min(index, taxEntryRows[side].length - 1)];
+    $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').querySelector(`tr[data-tax-row-key="${target.id}"] [data-row-field="code"]`)?.focus();
+  });
 }
 
 function renderProposalInputs(){
@@ -1493,7 +1870,7 @@ function initWorkflow(){
   purchases.querySelector('.grid.two').insertBefore($('purchaseFood1Field'), $('purchase8').closest('.field').nextElementSibling);
   const foodSaleConfirmation = $('proposalFoodClassificationState').closest('.field');
   const foodPurchaseConfirmation = $('proposalPurchaseClassificationState').closest('.field');
-  sales.querySelector('.table-wrap').after(foodSaleConfirmation);
+  $('addTaxSalesRow').closest('.tkc-row-actions').after(foodSaleConfirmation);
   $('purchaseFood1Field').after(foodPurchaseConfirmation);
   [foodSaleConfirmation, foodPurchaseConfirmation].forEach(field => {
     field.classList.add('food-confirmation');
@@ -1579,6 +1956,9 @@ function renderWorkflow(calc, decision){
   $('salesInputGuide').textContent = pendingJournalImport?.applied
     ? 'CSVから取り込んだ金額を確認してください。必要な箇所は修正できます。明示1％実績は元行を保持し、必要な確認事項は結果に残ります。'
     : 'お手元の資料を見ながら、金額を入力してください。';
+  if(typeof entryMode !== 'undefined' && entryMode === 'rows'){
+    $('salesInputGuide').textContent += ' 課税区分番号から行ごとに入力します。CSV由来と手入力は同じ表で区別します。';
+  }
   $('businessTypeGuide').classList.toggle('is-hidden', visibleBusinessTypes.size > 0);
   renderExemptFields();
   const confirmationCount = [...new Set([
@@ -1946,6 +2326,28 @@ function applyJournalImport(){
     if(['10','8','1'].some(rate => values.salesEntryCountsByTypeRate?.[type.key]?.[rate])) visibleBusinessTypes.add(type.key);
   });
   if(importedExemptTransactionCount > 0) $('exemptPurchaseState').value = 'yes';
+  if(typeof rowsFromJournalAnalysis === 'function' && typeof entryMode !== 'undefined'){
+    const csvRows = rowsFromJournalAnalysis(analysis, resolved);
+    const keepManual = side => entryMode === 'rows'
+      ? taxEntryRows[side].filter(row => row.source === 'manual' && (row.code || row.amount || row.foodAmount || row.businessType))
+      : [];
+    taxEntryRows = {
+      sales:[...keepManual('sales'), ...csvRows.sales],
+      purchases:[...keepManual('purchases'), ...csvRows.purchases]
+    };
+    if(!taxEntryRows.sales.length) taxEntryRows.sales.push(newTaxEntry('sales'));
+    if(!taxEntryRows.purchases.length) taxEntryRows.purchases.push(newTaxEntry('purchases'));
+    rowCsvKnownZeros = {
+      nonTaxableSales:values.nonTaxableSales === 0 && !csvRows.sales.some(row => row.code === '3'),
+      purchase10:values.invoicePurchases['10'] === 0 && !csvRows.purchases.some(row => ['5','6','7'].includes(row.code) && row.rate === '10'),
+      purchase8:values.invoicePurchases['8'] === 0 && !csvRows.purchases.some(row => ['5','6','7'].includes(row.code) && row.rate === '8')
+    };
+    entryMode = 'rows';
+    document.body.dataset.entryMode = entryMode;
+    $('modeTaxExcluded').disabled = true;
+    renderTaxEntryRows('sales');
+    renderTaxEntryRows('purchases');
+  }
   workflowStep = 2;
   update();
   renderJournalImport();
@@ -2181,7 +2583,10 @@ function projectProposalSales(sales, ctx){
     totalTax += rowTax;
     return { ...row, amount8, amountFood1, tax8, taxFood1, taxableBase8, taxableBaseFood1, foodOnePercentTax:taxFood1, foodOnePercentTaxableBase:taxableBaseFood1, rowTax, rowAmount, rowTaxableBase };
   });
-  const simplified = calculateSimplifiedTax(rows);
+  const simplifiedBase = calculateSimplifiedTax(rows.filter(row => !row.businessTypeUnknown));
+  const simplified = sales.simplifiedBusinessUnknown
+    ? {...simplifiedBase, amount:null, deemedCredit:null, methodLabel:'事業区分未確認', foodOnePercentTax:rows.reduce((sum,row) => sum + row.foodOnePercentTax,0)}
+    : simplifiedBase;
   return { ...sales, rows, totalAmount, totalTaxableBase, totalTax, deemedCredit:simplified.deemedCredit, simplified };
 }
 
@@ -2345,9 +2750,40 @@ function collectSales(ctx){
       entered:state10.entered || state8.entered || stateFood1.entered || actualGross !== 0 || Boolean(importedActualOnePercent?.entries?.some(entry => entry.kind === 'sale' && entry.businessType === type.key))
     };
   });
-  const simplified = calculateSimplifiedTax(rows);
+  const unknown = typeof entryMode !== 'undefined' && entryMode === 'rows' ? latestTaxRowAggregate?.unclassifiedSalesTotals : null;
+  const simplifiedBusinessUnknown = Boolean(unknown && latestTaxRowAggregate.unclassifiedSales.length);
+  if(simplifiedBusinessUnknown){
+    const amount10 = Number(unknown['10'] || 0);
+    const originalAmount8 = Number(unknown['8'] || 0);
+    const foodInputAmount = ctx.taxScenario === 'foodProposal' ? Number(latestTaxRowAggregate.unclassifiedFoodTotal || 0) : 0;
+    const foodOneOriginalAmount = Math.min(originalAmount8, proposalFoodOriginalAmount(foodInputAmount, ctx));
+    const forecastFood1 = repriceFoodAmount(foodOneOriginalAmount, ctx, ctx.foodSalesPriceBasis);
+    const amount8 = Math.max(0, originalAmount8 - foodOneOriginalAmount);
+    const tax10 = taxFromAmount(amount10, 10);
+    const tax8 = taxFromAmount(amount8, 8);
+    const taxFood1 = taxFromAmount(forecastFood1, 1);
+    const taxableBase10 = taxableBaseFromAmount(amount10, 10);
+    const taxableBase8 = taxableBaseFromAmount(amount8, 8);
+    const taxableBaseFood1 = taxableBaseFromAmount(forecastFood1, 1);
+    const rowTax = tax10 + tax8 + taxFood1;
+    const rowAmount = amount10 + amount8 + forecastFood1;
+    const rowTaxableBase = taxableBase10 + taxableBase8 + taxableBaseFood1;
+    rows.push({key:'unclassified',name:'事業区分未確認',detail:'行入力・確認待ち',deemed:null,businessTypeUnknown:true,
+      amount10,amount8,originalAmount8,amountFood1:forecastFood1,foodInputAmount,foodOneOriginalAmount,
+      forecastFood1,forecastFood1Tax:taxFood1,actualFood1:0,actualFood1Tax:0,actualOneGross:0,
+      taxableBase10,taxableBase8,taxableBaseFood1,tax10,tax8,taxFood1,
+      foodOnePercentTax:taxFood1,foodOnePercentTaxableBase:taxableBaseFood1,rowTax,rowAmount,rowTaxableBase,entered:true});
+    totalAmount += rowAmount;
+    totalTaxableBase += rowTaxableBase;
+    totalTax += rowTax;
+    anyEntered = true;
+  }
+  const simplifiedBase = calculateSimplifiedTax(rows.filter(row => !row.businessTypeUnknown));
+  const simplified = simplifiedBusinessUnknown
+    ? {...simplifiedBase, amount:null, deemedCredit:null, methodLabel:'事業区分未確認', foodOnePercentTax:rows.reduce((sum,row) => sum + row.foodOnePercentTax,0)}
+    : simplifiedBase;
   errors.push(...simplified.allocationErrors);
-  return { rows, totalAmount, totalTaxableBase, totalTax, deemedCredit:simplified.deemedCredit, simplified, anyEntered, errors };
+  return { rows, totalAmount, totalTaxableBase, totalTax, deemedCredit:simplified.deemedCredit, simplified, simplifiedBusinessUnknown, anyEntered, errors };
 }
 
 function exemptPurchaseInputId(bucketKey, rate){
@@ -2703,6 +3139,9 @@ function calculate(contextOverride){
   const eligibility = getEligibility(ctx);
   const periodCheck = validateTaxPeriod(ctx.start, ctx.end);
   const inputErrors = [...ctx.inputErrors, ...periodCheck.errors, ...sales.errors, ...purchases.errors, ...validateProposalClassification(ctx)];
+  if(typeof entryMode !== 'undefined' && entryMode === 'rows' && latestTaxRowAggregate?.errors.length){
+    inputErrors.push(`行入力の確認が${latestTaxRowAggregate.errors.length}件あります。該当する売上・仕入行を確認してください。`);
+  }
   const csvReview = validateImportedOnePercentEntries(ctx);
   inputErrors.push(...csvReview.errors);
   const regular = calculateRegularForContext(ctx, sales, purchases);
@@ -2715,6 +3154,7 @@ function calculate(contextOverride){
   };
   eligibility.regular = mergeCalculationAvailability(selectionEligibility.regular, regularCalculationAvailability);
   eligibility.simplified = selectionEligibility.simplified;
+  if(sales.simplifiedBusinessUnknown) eligibility.simplified = {eligibility:ELIGIBILITY.UNKNOWN,reasons:['課税売上の事業区分が未確認です']};
   if(!periodCheck.valid){
     Object.keys(eligibility).forEach(key => {
       if(eligibility[key]?.eligibility === ELIGIBILITY.ELIGIBLE) eligibility[key] = { eligibility:ELIGIBILITY.UNKNOWN, reasons:periodCheck.errors };
@@ -2737,8 +3177,10 @@ function calculate(contextOverride){
   const hasComparisonInput = sales.anyEntered || purchases.anyEntered;
   const salesEntryRequired = !sales.anyEntered && purchases.anyEntered;
   const comparisonReady = sales.anyEntered && inputErrors.length === 0;
-  const inputUnconfirmedItems = purchases.exemptConfirmationState === 'unknown'
-    ? ['免税事業者等からの課税仕入は未確認です。入力済み金額のみで試算しています。'] : [];
+  const inputUnconfirmedItems = [
+    ...(purchases.exemptConfirmationState === 'unknown' ? ['免税事業者等からの課税仕入は未確認です。入力済み金額のみで試算しています。'] : []),
+    ...(sales.simplifiedBusinessUnknown ? ['課税売上の事業区分が未確認です。本則・特例は入力済み売上額で参考試算し、簡易課税は区分確認後に算定します。'] : [])
+  ];
   const comparisonProvisional = Boolean(csvPartial || csvReview.reviewItems.length || inputUnconfirmedItems.length || csvOriginReference);
   const statusLabel = (state, reference, selection) => state === ELIGIBILITY.ELIGIBLE
     ? (csvPartial ? '参考・CSVに仮定／除外あり' : csvReview.reviewItems.length ? '参考・元取引を確認' : reference ? '参考・入力／CSV由来を確認' : '入力条件では適用可能')
@@ -2870,6 +3312,7 @@ function calculateProjectionMethods(calc, period, index){
   };
   eligibility.regular = mergeCalculationAvailability(selectionEligibility.regular, regularCalculationAvailability);
   eligibility.simplified = selectionEligibility.simplified;
+  if(snapshot.sales.simplifiedBusinessUnknown) eligibility.simplified = {eligibility:ELIGIBILITY.UNKNOWN,reasons:['課税売上の事業区分が未確認です']};
   const periodCheck = validateTaxPeriod(ctx.start, ctx.end);
   if(!periodCheck.valid) Object.keys(eligibility).forEach(key => {
     if(eligibility[key]?.eligibility === ELIGIBILITY.ELIGIBLE) eligibility[key] = {eligibility:ELIGIBILITY.UNKNOWN,reasons:periodCheck.errors};
@@ -2942,7 +3385,8 @@ function calculateProjectionPlan(calc){
 
 function renderSalesTax(rows){
   rows.forEach(row => {
-    $(row.key + 'Tax').textContent = yen(row.rowTax);
+    const output = $(row.key + 'Tax');
+    if(output) output.textContent = yen(row.rowTax);
   });
 }
 
@@ -2957,6 +3401,11 @@ function renderTaxScenarioNotice(calc){
   const notice = $('taxScenarioNotice');
   const resultNotice = $('resultScenarioNotice');
   const isSimulation = calc.ctx.taxScenario !== 'current';
+  const salesBasis = calc.ctx.foodSalesPriceBasis === 'grossFixed' ? '税込価格据置' : '税抜価格据置';
+  const purchaseBasis = calc.ctx.foodPurchasePriceBasis === 'grossFixed' ? '税込価格据置' : '税抜価格据置';
+  $('foodPriceBasisSummary').textContent = salesBasis === purchaseBasis
+    ? `現在：売上・仕入とも${salesBasis}`
+    : `現在：売上${salesBasis}／仕入${purchaseBasis}`;
   const forecastIds = [...BUSINESS_TYPES.map(type => type.key + 'SaleFood1'), 'purchaseFood1', ...EXEMPT_PURCHASE_BUCKETS.map(bucket => exemptPurchaseInputId(bucket.key, '1'))];
   const preservedForecast = !isSimulation && forecastIds.some(id => {
     const state = amountState(id);
@@ -4147,6 +4596,13 @@ function saveState(){
   ];
   const data = { saveEnabled:true, schemaVersion:17, regularConditionsVersion:1, switchDecisionOpen, workflowStep,
     importedExemptTransactionCount, importedActualOnePercent, importedUnsupportedEntries, importedCsvRecovery:normalizeCsvRecovery(importedCsvRecovery), importedCsvOrigin };
+  if(typeof entryMode !== 'undefined') data.entryMode = entryMode;
+  if(typeof entryMode !== 'undefined' && entryMode === 'rows') data.rowCsvKnownZeros = rowCsvKnownZeros;
+  if(typeof entryMode !== 'undefined' && entryMode === 'rows') data.taxEntryRows = Object.fromEntries(['sales','purchases'].map(side => [side,
+    taxEntryRows[side].filter(row => row.code || row.rate || row.amount || row.foodAmount || row.businessType).map(row => ({
+      code:row.code, businessType:row.businessType, rate:row.rate, amount:row.amount,
+      foodAmount:row.foodAmount, creditRatio:row.creditRatio, creditRatioSource:row.creditRatioSource || '', source:row.source
+    }))]));
   ids.forEach(id => {
     const el = $(id);
     if(!el) return;
@@ -4187,8 +4643,32 @@ function restoreState(){
       return;
     }
     $('saveToDevice').checked = true;
+    if(typeof entryMode !== 'undefined' && data.taxEntryRows && Array.isArray(data.taxEntryRows.sales) && Array.isArray(data.taxEntryRows.purchases)){
+      entryMode = 'rows';
+      rowCsvKnownZeros = Object.fromEntries(['nonTaxableSales','purchase10','purchase8'].map(id => [id,data.rowCsvKnownZeros?.[id] === true]));
+      taxEntryRows = Object.fromEntries(['sales','purchases'].map(side => [side,
+        data.taxEntryRows[side].filter(row => row && typeof row === 'object').map(row => createTaxEntryRow(side, {
+          id:`saved-${nextTaxEntryId++}`, code:String(row.code || ''), businessType:String(row.businessType || ''),
+          rate:String(row.rate || ''), amount:String(row.amount ?? ''), foodAmount:String(row.foodAmount ?? ''),
+          creditRatio:String(row.creditRatio || ''), creditRatioSource:row.creditRatioSource === 'auto' ? 'auto' : row.creditRatioSource === 'manual' ? 'manual' : '',
+          source:['manual','csv','csv-edited'].includes(row.source) ? row.source : 'manual'
+        }))]));
+      if(!taxEntryRows.sales.length) taxEntryRows.sales.push(newTaxEntry('sales'));
+      if(!taxEntryRows.purchases.length) taxEntryRows.purchases.push(newTaxEntry('purchases'));
+    }else if(typeof entryMode !== 'undefined'){
+      // Older aggregate-only saves cannot identify purchase uses 5/6/7.
+      entryMode = 'legacy';
+      $('storageNotice').style.display = '';
+      $('storageNotice').textContent = '旧形式の集計データを使用中です。課税区分別の内訳は復元できないため、従来の入力欄で確認してください。';
+    }
+    if(typeof entryMode !== 'undefined'){
+      document.body.dataset.entryMode = entryMode;
+      $('modeTaxExcluded').disabled = entryMode === 'rows';
+      renderTaxEntryRows('sales');
+      renderTaxEntryRows('purchases');
+    }
     Object.entries(data).forEach(([id, value]) => {
-      if(['saveEnabled','schemaVersion','switchDecisionOpen','workflowStep','migrationNotice','importedExemptTransactionCount','importedActualOnePercent','importedUnsupportedEntries','advancedMode','declarationRounding','highAssetSelfConstructed','switchCreditIncludedInBTax','switchOtherCostsNone','switchTimeEvaluation','workflowPurpose','entityType','amountMode','taxScenario','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState'].includes(id)) return;
+      if(['saveEnabled','schemaVersion','switchDecisionOpen','workflowStep','migrationNotice','entryMode','taxEntryRows','rowCsvKnownZeros','importedExemptTransactionCount','importedActualOnePercent','importedUnsupportedEntries','advancedMode','declarationRounding','highAssetSelfConstructed','switchCreditIncludedInBTax','switchOtherCostsNone','switchTimeEvaluation','workflowPurpose','entityType','amountMode','taxScenario','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState'].includes(id)) return;
       const el = $(id);
       if(!el) return;
       el.value = value;
@@ -4238,6 +4718,10 @@ function restoreState(){
 }
 
 function update(){
+  if(entryMode === 'rows'){
+    updateAutomaticRowRatios();
+    syncTaxEntryRows();
+  }
   normalizeFoodConfirmations();
   const calc = calculate();
   const decision = calculateSwitchDecision(calc);
@@ -4288,6 +4772,7 @@ function resetAll(){
   $('highAssetType').value = 'unknown';
   $('foodSalesPriceBasis').value = 'netFixed';
   $('foodPurchasePriceBasis').value = 'netFixed';
+  $('foodPriceBasisDetails').open = false;
   $('foodForecastMethod').value = 'manual';
   $('proposalFoodClassificationState').value = 'unknown';
   $('proposalPurchaseClassificationState').value = 'unknown';
@@ -4315,6 +4800,13 @@ function resetAll(){
   $('switchCustomerComment').value = '';
   $('officeInternalMemo').value = '';
   switchDecisionOpen = false;
+  entryMode = 'rows';
+  taxEntryRows = {sales:[newTaxEntry('sales')],purchases:[newTaxEntry('purchases')]};
+  rowCsvKnownZeros = {};
+  document.body.dataset.entryMode = entryMode;
+  $('modeTaxExcluded').disabled = true;
+  renderTaxEntryRows('sales');
+  renderTaxEntryRows('purchases');
   $('saveToDevice').checked = false;
   $('saveStatus').textContent = '保存しません';
   clearJournalImport();
@@ -4388,6 +4880,7 @@ function bindEvents(){
     }
   });
   document.addEventListener('input', event => {
+    if(event.target.matches?.('.js-row-field')) return;
     if(event.target.closest && event.target.closest('#journalImportPanel')) return;
     if(event.target.classList && event.target.classList.contains('js-amount')){
       formatAmountLive(event.target);
@@ -4403,6 +4896,7 @@ function bindEvents(){
     if(event.target.matches('input,select')) update();
   });
   document.addEventListener('change', event => {
+    if(event.target.matches?.('.js-row-field')) return;
     if(event.target.dataset?.recoveryKey){
       updateJournalRecovery(event.target.dataset.recoveryKey, event.target.dataset.recoveryField, event.target.value);
       return;
@@ -4412,6 +4906,7 @@ function bindEvents(){
     if(event.target.matches('input,select')) update();
   });
   document.addEventListener('blur', event => {
+    if(event.target.matches?.('.js-row-field')) return;
     if(event.target.classList && event.target.classList.contains('js-amount')){
       event.target.value = formatInput(event.target.value, event.target.id === 'regularAdjustment');
       update();
@@ -4480,6 +4975,11 @@ function init(){
   renderSalesRows();
   renderProposalInputs();
   initWorkflow();
+  taxEntryRows = {sales:[newTaxEntry('sales')],purchases:[newTaxEntry('purchases')]};
+  renderTaxEntryRows('sales');
+  renderTaxEntryRows('purchases');
+  document.body.dataset.entryMode = entryMode;
+  $('modeTaxExcluded').disabled = true;
   renderJournalImport();
   renderReleaseHistory();
   $('copyYear').textContent = '2026';
@@ -4490,6 +4990,7 @@ function init(){
   $('lastUpdatedLabel').textContent = `${APP_META.version} / ${APP_META.updatedAt}`;
   handleLegacyStorage();
   restoreState();
+  bindTaxEntryRows();
   bindEvents();
   update();
 }

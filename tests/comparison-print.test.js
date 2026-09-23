@@ -88,6 +88,17 @@ test('[r28印刷03] 専用帳票は確認前提と計算方法を保持し、CSV
   assert.doesNotMatch(source('renderComparisonPrint'), /renderCalculationTrace|renderSwitchBreakdown|officeInternalMemo|customerComment|sourceText/);
 });
 
+test('[TKC行印刷] 行入力表と所内TKC番号は専用帳票・顧客帳票へ追加しない', () => {
+  const h = harness(['renderComparisonPrint']);
+  h.context.taxEntryRows = {sales:[{code:'1',amount:'1100000'}],purchases:[{code:'52',amount:'80000'}]};
+  h.context.renderComparisonPrint(h.calc,null,'<tr><th>方式</th></tr>','<tr><td>40,000円</td></tr>');
+  const markup = h.element('comparisonPrintContent').innerHTML;
+  assert.match(markup,/40,000円/);
+  assert.doesNotMatch(markup,/TKC\s*(?:1|52)|taxSalesRowBody|taxPurchaseRowBody|row-entry-only/);
+  assert.doesNotMatch(source('renderComparisonPrint'),/taxEntryRows|rowAggregateSummary|taxSalesRowBody|taxPurchaseRowBody/);
+  assert.doesNotMatch(source('prepareCustomerPrint'),/taxEntryRows|rowAggregateSummary|taxSalesRowBody|taxPurchaseRowBody/);
+});
+
 test('[r28印刷04] 長い確認事項を省略・切詰めず残し、HTML文字を安全に表示する', () => {
   const h = harness(['renderComparisonPrint']);
   const longNote = '確認事項の詳細。'.repeat(200) + '末尾も保持';

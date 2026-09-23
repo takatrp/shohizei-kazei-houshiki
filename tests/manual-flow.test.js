@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const engine = require('../tax-engine.js');
 const switchDecision = require('../switch-decision.js');
+const taxRows = require('../tax-entry-rows.js');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
@@ -299,6 +300,200 @@ test('[M10][M14] 保存復元後も手入力額・課税期間・税率前提・
   assert.equal(after.context.importedCsvOrigin.dateRange.start, '2025-01-15');
   assert.equal(after.context.importedCsvOrigin.effectiveDateRange.end, '2025-02-15');
   assert.equal(after.context.importedCsvOrigin.manualChanged, true);
+});
+
+test('[TKC行保存] 行の順序・出所・0円と空欄・控除割合を保存復元し旧集計値を二重編集しない', () => {
+  const storage = new Map();
+  const make = () => {
+    const h = flowHarness(['saveState','restoreState']);
+    Object.assign(h.context, {
+      STORAGE_KEY:'tkc-row-save-test', serializeStateIfEnabled:engine.serializeStateIfEnabled,
+      migrateSavedState:switchDecision.migrateSavedState,
+      storageGet:key => storage.get(key), storageSet(key,value){storage.set(key,value);return true;},
+      storageRemove:key => storage.delete(key), getExemptPurchaseInputIds:() => [],
+      selectedValue:() => 'included', taxScenarioKey:() => 'current',
+      foodConfirmationSignatures:{}, switchDecisionOpen:false,
+      entryMode:'rows', rowCsvKnownZeros:{nonTaxableSales:true,purchase10:false,purchase8:false},
+      taxEntryRows:{sales:[],purchases:[]}, nextTaxEntryId:1,
+      createTaxEntryRow:taxRows.createTaxEntryRow,
+      newTaxEntry:side => taxRows.createTaxEntryRow(side,{id:`new-${side}`}),
+      renderTaxEntryRows(){},
+      document:{...h.context.document,body:{dataset:{}},querySelector:selector => selector.startsWith('input[name=') ? h.element(selector) : null}
+    });
+    return h;
+  };
+  const before = make();
+  before.element('saveToDevice').checked = true;
+  before.context.taxEntryRows = {
+    sales:[
+      {id:'1',code:'1',businessType:'type2',rate:'8',amount:'1,080,000',foodAmount:'',source:'manual'},
+      {id:'2',code:'3',rate:'',amount:'0',foodAmount:'',source:'csv'},
+      {id:'blank',code:'',rate:'',amount:'',foodAmount:'',source:'manual'}
+    ],
+    purchases:[{id:'3',code:'52',rate:'8',amount:'100,000',foodAmount:'0',creditRatio:'80',creditRatioSource:'manual',source:'csv-edited'}]
+  };
+  before.context.saveState();
+  const saved = JSON.parse(storage.get('tkc-row-save-test'));
+  assert.equal(saved.taxEntryRows.sales.length, 2);
+  assert.equal(saved.taxEntryRows.sales[1].amount, '0');
+  assert.equal(saved.taxEntryRows.sales[0].foodAmount, '');
+  const after = make();
+  after.context.restoreState();
+  assert.equal(after.context.entryMode, 'rows');
+  assert.deepEqual(Array.from(after.context.taxEntryRows.sales, row => row.code), ['1','3']);
+  assert.equal(after.context.taxEntryRows.sales[1].source, 'csv');
+  assert.equal(after.context.taxEntryRows.purchases[0].source, 'csv-edited');
+  assert.equal(after.context.taxEntryRows.purchases[0].creditRatio, '80');
+  assert.equal(after.context.taxEntryRows.purchases[0].foodAmount, '0');
+  assert.equal(after.context.rowCsvKnownZeros.nonTaxableSales, true);
+  assert.equal(after.element('modeTaxExcluded').disabled, true);
+  const aggregate = taxRows.aggregateTaxRows(after.context.taxEntryRows);
+  assert.equal(aggregate.fields.nonTaxableSales.entered, true);
+  assert.equal(aggregate.fields.nonTaxableSales.value, 0);
+  assert.equal(aggregate.fields.type2SaleFood1.entered, false);
+  storage.set('tkc-row-save-test',JSON.stringify({...saved,taxEntryRows:undefined,rowCsvKnownZeros:undefined,type2Sale10:'1,100,000'}));
+  const old = make();
+  old.element('storageNotice').style = {};
+  old.context.restoreState();
+  assert.equal(old.context.entryMode,'legacy');
+  assert.equal(old.context.document.body.dataset.entryMode,'legacy');
+  assert.equal(old.element('type2Sale10').value,'1,100,000');
+  assert.match(old.element('storageNotice').textContent,/旧形式の集計データ/);
+});
+
+test('[TKC行キーボード] 10行連続でもEnterの列順と条件付き列を維持する', () => {
+  const h = flowHarness(['nextTaxRowField','focusNextTaxRow']);
+  for(let i=0;i<10;i++){
+    const sales = {code:'1',rate:i % 2 ? '10' : '8'};
+    const saleOrder = ['code','businessType','rate','amount',...(sales.rate === '8' ? ['foodAmount'] : [])];
+    for(let n=0;n<saleOrder.length;n++) assert.equal(h.context.nextTaxRowField(sales,'sales',saleOrder[n]),saleOrder[n+1] || '');
+    const purchase = {code:i % 2 ? '5' : '52',rate:'8',creditRatio:i % 2 ? '' : '80'};
+    const purchaseOrder = ['code','rate','amount','foodAmount'];
+    for(let n=0;n<purchaseOrder.length;n++) assert.equal(h.context.nextTaxRowField(purchase,'purchases',purchaseOrder[n]),purchaseOrder[n+1] || '');
+  }
+  assert.equal(h.context.nextTaxRowField({code:'3'},'sales','code'),'amount');
+  assert.equal(h.context.nextTaxRowField({code:'52',rate:'10',creditRatio:''},'purchases','amount'),'creditRatio');
+  assert.equal(h.context.nextTaxRowField({code:'52',rate:'10',creditRatio:'70'},'purchases','amount'),'');
+  const focuses = [];
+  h.context.TAX_ROW_CODES = taxRows.CODE_DETAILS;
+  h.context.taxEntryRows = {sales:Array.from({length:10},(_,index) => ({id:`row-${index}`,code:'1',rate:'10'})),purchases:[]};
+  h.context.newTaxEntry = () => ({id:'row-10',code:'',rate:''});
+  h.context.renderTaxEntryRows = () => {};
+  h.element('taxSalesRowBody').querySelector = selector => ({focus(){focuses.push(selector);}});
+  const input = {dataset:{rowSide:'sales',rowKey:'row-9',rowField:'amount'},closest:() => null};
+  h.context.focusNextTaxRow(input);
+  assert.equal(h.context.taxEntryRows.sales.length,11);
+  assert.match(focuses[0],/row-10.*code/);
+});
+
+test('[TKC行表示] 金額の入力中に桁区切りし、選択肢は番号へ正規化する', () => {
+  const h = flowHarness(['formatInput','formatAmountLive','taxRowChoiceNumber']);
+  const input = {id:'',value:'2500000',selectionStart:7,cursor:-1,
+    classList:{contains:name => name === 'row-amount'},
+    setSelectionRange(start){this.cursor = start;}
+  };
+  h.context.formatAmountLive(input);
+  assert.equal(input.value,'2,500,000');
+  assert.equal(input.cursor,input.value.length);
+  input.value = '-1234567';
+  input.selectionStart = input.value.length;
+  h.context.formatAmountLive(input);
+  assert.equal(input.value,'-1,234,567');
+  assert.equal(h.context.taxRowChoiceNumber('1　第1種 卸売業'),'1');
+  assert.equal(h.context.taxRowChoiceNumber('52　免税事業者等（課税売上対応）'),'52');
+  assert.equal(h.context.taxRowChoiceNumber('6'),'6');
+  assert.match(functionSource('bindTaxEntryRows'),/formatAmountLive\(event\.target\)/);
+});
+
+test('[TKC行表示] 不要セルは入力不能かつ通常欄と別表示、売上追加は表の直下に置く', () => {
+  assert.match(html,/\.tkc-row-table input:disabled,\.tkc-row-table select:disabled\{[^}]*border-color:transparent/);
+  assert.match(html,/\.tkc-row-table input:disabled::placeholder\{[^}]*opacity:1/);
+  assert.match(functionSource('refreshTaxRowControls'),/business\.disabled = row\.code !== '1'/);
+  assert.match(functionSource('refreshTaxRowControls'),/rate\.disabled = row\.code === '3'/);
+  assert.match(functionSource('refreshTaxRowControls'),/food\.disabled = row\.code === '3' \|\| row\.rate !== '8'/);
+  assert.match(functionSource('initWorkflow'),/\$\('addTaxSalesRow'\)\.closest\('\.tkc-row-actions'\)\.after\(foodSaleConfirmation\)/);
+  for(const text of ['1　第1種 卸売業','2　第2種 小売業','3　第3種 建設業','4　第4種 飲食店業','5　第5種 サービス業','6　第6種 不動産業']) assert.ok(html.includes(text),text);
+  assert.doesNotMatch(html,/<datalist id="tax(?:SalesCode|PurchaseCode|BusinessType)List">[^<]*<option[^>]*label=/);
+  assert.match(functionSource('renderTaxEntryRows'),/bucket\.key\}%｜\$\{escapeHtml\(bucket\.range\)\}/);
+});
+
+test('[TKC行表示] CSV由来の初期値を描画時から桁区切りし、税率候補を内部の8・10へ戻す', () => {
+  const h = flowHarness(['escapeHtml','formatInput','rowCellInput','taxRowRateValue']);
+  const row = {id:'csv-5-10',amount:'2500000',foodAmount:'-1200000'};
+  assert.match(h.context.rowCellInput(row,'purchases','amount','税込金額'),/value="2,500,000"/);
+  assert.match(h.context.rowCellInput(row,'purchases','foodAmount','食品対象'),/value="-1,200,000"/);
+  assert.equal(row.amount,'2500000','CSV由来の行データは表示整形で変更しない');
+  assert.equal(h.context.taxRowRateValue('10％'),'10');
+  assert.equal(h.context.taxRowRateValue('軽減8％'),'8');
+  assert.equal(h.context.taxRowRateValue('8'),'8');
+  assert.match(html,/<datalist id="taxRowRateList"><option value="10％"><\/option><option value="軽減8％"><\/option><\/datalist>/);
+});
+
+test('[TKC行期間] 対象期と重ならない控除割合だけを無効化し既入力値は消さず警告する', () => {
+  const h = flowHarness(['taxRowRatioOverlapsPeriod','taxRowRatioPeriod','taxRowCodeName','refreshTaxRowControls']);
+  const buckets = [
+    {key:'80',start:'2023-10-01',end:'2026-09-30',range:'令和5年10月1日から令和8年9月30日まで'},
+    {key:'70',start:'2026-10-01',end:'2028-09-30',range:'令和8年10月1日から令和10年9月30日まで'},
+    {key:'50',start:'2028-10-01',end:'2030-09-30',range:'令和10年10月1日から令和12年9月30日まで'},
+    {key:'30',start:'2030-10-01',end:'2031-09-30',range:'令和12年10月1日から令和13年9月30日まで'},
+    {key:'0',start:'2031-10-01',end:'',range:'令和13年10月1日以後'}
+  ];
+  h.context.EXEMPT_PURCHASE_BUCKETS = buckets;
+  h.context.TAX_ROW_CODES = taxRows.CODE_DETAILS;
+  h.context.taxEntryRows = {sales:[],purchases:[{id:'p1',code:'52',rate:'10',amount:'80000',creditRatio:'80',creditRatioSource:'manual'}]};
+  h.element('periodStart').value = '2027-01-01';
+  h.element('periodEnd').value = '2027-12-31';
+  const control = () => ({disabled:false,placeholder:''});
+  const ratio = {disabled:false,value:'80',options:[{value:'',textContent:'未確認'},...buckets.map(bucket => ({value:bucket.key,disabled:false}))],
+    classList:{toggle(){}},setAttribute(name,value){this[name]=value;}};
+  const period = {textContent:'',classList:{toggle(){}}};
+  const controls = {'[data-row-field="businessType"]':null,'[data-row-field="rate"]':control(),
+    '[data-row-field="foodAmount"]':control(),'[data-row-field="creditRatio"]':ratio,
+    '.row-ratio-period':period,'.row-code-name':{textContent:''}};
+  const tr = {dataset:{rowSide:'purchases',taxRowKey:'p1'},querySelector:selector => controls[selector]};
+  h.context.refreshTaxRowControls(tr);
+  assert.equal(ratio.options.find(option => option.value === '80').disabled,true);
+  assert.equal(ratio.options.find(option => option.value === '70').disabled,false);
+  assert.equal(ratio.options.find(option => option.value === '50').disabled,true);
+  assert.equal(ratio.value,'80','対象期変更でCSV・手入力の既存値を消さない');
+  assert.equal(ratio['aria-invalid'],'true');
+  assert.match(period.textContent,/対象期と重なりません/);
+  h.element('periodStart').value = '2026-01-01';
+  h.element('periodEnd').value = '2026-12-31';
+  h.context.refreshTaxRowControls(tr);
+  assert.equal(ratio.options.find(option => option.value === '80').disabled,false);
+  assert.equal(ratio.options.find(option => option.value === '70').disabled,false);
+  assert.equal(ratio['aria-invalid'],'false');
+  assert.equal(h.context.taxRowRatioOverlapsPeriod(buckets[2],'2028-10-01','2028-10-01'),true);
+  assert.equal(h.context.taxRowRatioOverlapsPeriod(buckets[1],'2028-10-01','2028-10-01'),false);
+  assert.equal(h.context.taxRowRatioOverlapsPeriod(buckets[0],'',''),true,'対象期不明なら候補を推測で除外しない');
+});
+
+test('[画面ガイド] タイトルを除いた進行ボタンと対象期の要約を固定表示する構造', () => {
+  const introStart = html.indexOf('<section class="panel workflow-intro');
+  const introEnd = html.indexOf('</section>',introStart);
+  const stickyStart = html.indexOf('<div class="panel workflow-sticky',introEnd);
+  const firstScreen = html.indexOf('<div id="workflowScreen1"',stickyStart);
+  assert.ok(introStart >= 0 && introEnd < stickyStart && stickyStart < firstScreen);
+  assert.doesNotMatch(html.slice(stickyStart,firstScreen),/課税方式を比較します/);
+  assert.match(html.slice(stickyStart,firstScreen),/workflow-steps[\s\S]*workflowStepSummary/);
+  assert.match(html,/\.workflow-sticky\{position:sticky;top:0;z-index:30/);
+  assert.match(html,/@media print\{[\s\S]*?\.head-actions,\.no-print\{display:none!important\}/);
+});
+
+test('[食品1％入力] 価格前提は初期値を示す任意の折りたたみ、注意文と課税区分名は1行表示', () => {
+  const priceDetails = html.match(/<details id="foodPriceBasisDetails"[^>]*>([\s\S]*?)<\/details>/);
+  assert.ok(priceDetails);
+  assert.doesNotMatch(priceDetails[0], /<details[^>]*\sopen(?:\s|=|>)/);
+  for(const id of ['foodSalesPriceBasis','foodPurchasePriceBasis']){
+    assert.match(priceDetails[1], new RegExp(`<select id="${id}">[\\s\\S]*?<option value="netFixed">税抜価格据置<\\/option>`));
+  }
+  assert.match(priceDetails[1], /現在：売上・仕入とも税抜価格据置/);
+  assert.match(html, /class="notice food-exclusion-guide"/);
+  assert.match(html, /\.food-exclusion-guide\{[^}]*grid-column:1\/-1;white-space:nowrap/);
+  assert.match(html, /\.tkc-row-table th:first-child,\.tkc-row-table td:first-child\{[^}]*width:340px;white-space:nowrap/);
+  assert.match(html, /\.tkc-row-table \.row-code-name\{[^}]*white-space:nowrap/);
+  assert.match(functionSource('renderTaxEntryRows'), /class="row-code-name" title="\$\{escapeHtml\(taxRowCodeName\(row\.code\)\)\}"/);
 });
 
 test('[C17-C19] 保存は除外要約だけを残し復元後も注意を維持、元CSVの再選択を案内する', () => {

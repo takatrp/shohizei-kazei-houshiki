@@ -17,10 +17,12 @@ const {
   calculateDeclarationAmount,
   calculateNationalSalesTax,
   assessHighValueAsset,
+  assessCurrentMethodChoice,
   optimizeFourPeriodRoutes,
   calculateSimplifiedTax,
   weightedExemptPurchaseRatio,
   calculateEligibility,
+  validateTaxPeriod,
   sanitizeCsvCell,
   serializeStateIfEnabled
 } = engine;
@@ -194,6 +196,7 @@ test('申告額は納付100円未満、還付1円未満を切り捨てて地方�
   }), {
     rawNational:1234.75,
     nationalAmount:1200,
+    rawLocal:1200 * 22 / 78,
     localAmount:300,
     total:1500
   });
@@ -204,6 +207,7 @@ test('申告額は納付100円未満、還付1円未満を切り捨てて地方�
   }), {
     rawNational:-1234.75,
     nationalAmount:-1234,
+    rawLocal:1234 * 22 / 78,
     localAmount:-348,
     total:-1582
   });
@@ -365,6 +369,80 @@ test('届出有効かつ2年継続済みでも当期の不適用届出確認な�
     'regular', 'regular', 'regular', 'regular'
   ]);
   assert.match(filed.bestRoute[0].action, /初日の前日まで/);
+});
+
+test('当期と4期は簡易課税の初年度・2年目・継続済みの本則選択可否を共有する', () => {
+  for(const initialElectionStatus of ['first', 'second', 'free']){
+    const result = assessCurrentMethodChoice({
+      initialElectionStatus, methodKey:'regular', discontinuanceReady:'no'
+    });
+    assert.equal(result.eligibility, ELIGIBILITY.INELIGIBLE, initialElectionStatus);
+    assert.match(result.reasons.join(''), initialElectionStatus === 'free' ? /不適用届出書/ : /2年継続/);
+    assert.equal(result.transitions.length, 0);
+    const route = optimizeFourPeriodRoutes({
+      initialElectionStatus,
+      periods:[
+        routePeriod('当期', { regular:-100, simplified:10 }, { discontinuanceReady:'no' }),
+        routePeriod('2期', { regular:100, simplified:10 }),
+        routePeriod('3期', { regular:100, simplified:10 }),
+        routePeriod('4期', { regular:100, simplified:10 })
+      ]
+    });
+    assert.equal(route.ok, true);
+    assert.notEqual(route.bestRoute[0].method, 'regular', initialElectionStatus);
+  }
+});
+
+test('本則への不適用届出の有無・未確認を区別し、2年継続と5000万円超例外を維持する', () => {
+  const choice = (initialElectionStatus, discontinuanceReady, extra = {}) => assessCurrentMethodChoice({
+    initialElectionStatus, methodKey:'regular', discontinuanceReady, ...extra
+  });
+  assert.equal(choice('free', 'yes').eligibility, ELIGIBILITY.ELIGIBLE);
+  assert.match(choice('free', 'yes').transitions[0].action, /不適用届出/);
+  assert.equal(choice('free', 'no').eligibility, ELIGIBILITY.INELIGIBLE);
+  assert.equal(choice('free', 'unknown').eligibility, ELIGIBILITY.UNKNOWN);
+  assert.match(choice('free', 'unknown').reasons.join(''), /未確認/);
+  assert.equal(choice('first', 'yes').eligibility, ELIGIBILITY.INELIGIBLE);
+  assert.equal(choice('second', 'yes').eligibility, ELIGIBILITY.INELIGIBLE);
+  const exception = choice('second', 'no', { simplifiedUnavailablePreservesElection:true });
+  assert.equal(exception.eligibility, ELIGIBILITY.ELIGIBLE);
+  assert.match(exception.transitions[0].action, /届出効力を維持/);
+  assert.equal(choice('none', 'no').eligibility, ELIGIBILITY.ELIGIBLE);
+  assert.equal(choice('unknown', 'yes').eligibility, ELIGIBILITY.UNKNOWN);
+});
+
+test('当期の簡易課税は新規届出・高額資産の制限を4期と同じ条件で判定する', () => {
+  const current = noticeReady => assessCurrentMethodChoice({
+    initialElectionStatus:'none', methodKey:'simplified', noticeReady
+  });
+  assert.equal(current('yes').eligibility, ELIGIBILITY.ELIGIBLE);
+  assert.equal(current('no').eligibility, ELIGIBILITY.INELIGIBLE);
+  assert.equal(current('unknown').eligibility, ELIGIBILITY.UNKNOWN);
+  assert.match(current('unknown').reasons.join(''), /届出書/);
+  assert.equal(assessCurrentMethodChoice({
+    initialElectionStatus:'first', methodKey:'simplified', noticeReady:'unknown'
+  }).eligibility, ELIGIBILITY.ELIGIBLE);
+  const assetRoute = optimizeFourPeriodRoutes({
+    initialElectionStatus:'none', noticeReady:'yes',
+    periods:[
+      routePeriod('1期', { regular:0 }, { highValueAssetTrigger:true }),
+      routePeriod('2期', { regular:100, simplified:1, special2:1 }),
+      routePeriod('3期', { regular:100, simplified:1 }),
+      routePeriod('4期', { regular:100, simplified:1 })
+    ]
+  });
+  assert.equal(assetRoute.ok, true);
+  assert.equal(assetRoute.bestRoute[1].method, 'regular');
+});
+
+test('課税期間の共通検証は欠落・逆転・存在しない日付を拒み、短期の有効期間を維持する', () => {
+  assert.deepEqual(validateTaxPeriod('2028-01-01', '2028-01-31'), { valid:true, errors:[] });
+  assert.match(validateTaxPeriod('', '2028-12-31').errors.join(''), /開始日/);
+  assert.match(validateTaxPeriod('2028-01-01', '').errors.join(''), /終了日/);
+  assert.match(validateTaxPeriod('2028-12-31', '2028-01-01').errors.join(''), /終了日は開始日以降/);
+  assert.match(validateTaxPeriod('2028-02-30', '2028-12-31').errors.join(''), /開始日を正しい日付/);
+  assert.equal(calculateEligibility(eligibilityContext({ start:'2028-02-30' })).periodValid, false);
+  assert.equal(calculateEligibility(eligibilityContext({ start:'2028-01-01', end:'2028-01-31' })).periodValid, true);
 });
 
 test('5000万円超で簡易課税が使えない期も届出効力を保って次期に復活する', () => {
@@ -585,7 +663,9 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r14');
+  assert.equal(release.APP_META.version, 'r28');
+  assert.match(release.APP_META.currentLawBasisLabel, /国税庁/);
+  assert.match(release.APP_META.proposalBasisLabel, /未施行/);
 });
 
 test('4期表示に最有利見込みを使わず、出力関数に版数と未確認事項がある', () => {

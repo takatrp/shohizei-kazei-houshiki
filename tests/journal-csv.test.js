@@ -121,6 +121,22 @@ test('[C08 C09 C14] 借貸別に除外し金額と税率の複合問題を一明
   assert.equal(blank.recoverySummary.unresolvedCount,1);
 });
 
+test('簡易課税を比較しない解決経路では未分類売上を残し、第6種の仮定を追加しない', () => {
+  const text = buildCsv([
+    entry('貸方',{account:'区分未確認売上',code:'1',rate:10,reduced:0,amount:1100000}),
+    entry('借方',{code:'5',rate:'?',reduced:0,amount:110000})
+  ]);
+  const analysis = analyzeTkcJournalText(text);
+  assert.equal(resolveImportValues(analysis).ready,false);
+  const option = {allowUnclassifiedSales:true};
+  const estimated = prepareEstimatedImport(text,{}, {}, option);
+  assert.equal(estimated.resolved.ready,true);
+  assert.equal(estimated.recoverySummary.assumedBusinessCount,0);
+  assert.equal(estimated.resolved.unclassifiedSales[0].amounts['10'],1100000);
+  assert.equal(estimated.resolved.values.salesByType.type6['10'],0);
+  assert.equal(estimated.resolved.values.invoicePurchases['10'],110000);
+});
+
 test('[C11 C12] 率だけの補正は用途・免税割合・返品区分を維持し明示1％経路へ入る', () => {
   const text=buildCsv([
     entry('借方',{code:'52',rate:1,reduced:1,credit:80,amount:2020}),

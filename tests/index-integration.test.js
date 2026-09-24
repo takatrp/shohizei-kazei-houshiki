@@ -1243,6 +1243,53 @@ test('[概算UI01] 問題明細・未分類売上でも主ボタンから進め�
   assert.equal(normal.element('type2Sale10').value, '1,100,000');
 });
 
+test('簡易課税を比較しないCSVは未分類売上の補正欄なしで全額を本則へ反映する', () => {
+  const source = csv([csvRow({rate:'10', business:'', amount:1100000})]);
+  const h = harness(source);
+  installCurrentCalculation(h);
+  h.context.selectedComparisonMethods = () => ['regular'];
+  Object.assign(h.context, {
+    entryMode:'rows', taxEntryRows:{sales:[],purchases:[]}, rowCsvKnownZeros:{}, rowsFromJournalAnalysis,
+    newTaxEntry:side => taxRows.createTaxEntryRow(side,{id:`blank-${side}`}),
+    renderTaxEntryRows(){}, document:{...h.context.document,body:{dataset:{}}}
+  });
+  vm.runInContext(['sumRateAmounts','importedTaxableSalesTotal','importedExemptPurchaseTotal','importBusinessOptions','renderJournalImport'].map(functionSource).join('\n'),h.context);
+  h.context.renderJournalImport();
+  assert.equal(h.element('journalImportMapping').innerHTML,'');
+  assert.equal(h.element('applyJournalImportBtn').disabled,false);
+  assert.equal(h.element('applyJournalImportBtn').textContent,'集計値を反映して進む');
+  h.context.window.confirm = () => { throw new Error('未分類事業区分だけで追加確認を求めない'); };
+  h.context.applyJournalImport();
+  assert.equal(h.context.workflowStep,2);
+  assert.equal(h.context.taxEntryRows.sales[0].businessType,'');
+  assert.equal(h.context.taxEntryRows.sales[0].amount,'1100000');
+  const aggregate = taxRows.aggregateTaxRows(h.context.taxEntryRows);
+  assert.equal(aggregate.unclassifiedSalesTotals['10'],1100000);
+  h.context.latestTaxRowAggregate = aggregate;
+  for(const [id,state] of Object.entries(aggregate.fields)) h.element(id).value = state.entered ? String(state.value) : '';
+  for(const id of ['nonTaxableSales','purchase10','purchase8']) if(h.context.rowCsvKnownZeros[id]) h.element(id).value = '0';
+  const calc = h.context.calculate();
+  assert.equal(calc.sales.totalAmount,1100000);
+  assert.deepEqual(Array.from(calc.methods,method => method.key),['regular']);
+  assert.equal(calc.regular.amount,100000);
+  h.context.selectedComparisonMethods = () => ['regular','simplified'];
+  const withSimplified = h.context.calculate();
+  assert.equal(withSimplified.sales.totalAmount,1100000);
+  assert.equal(withSimplified.methods.find(method => method.key === 'simplified').amount,null);
+});
+
+test('比較方式が未選択なら正常CSVも解析はできるが反映して進めない', () => {
+  const h = harness(csv([csvRow({rate:'10',amount:1100000})]));
+  h.context.selectedComparisonMethods = () => [];
+  vm.runInContext(['sumRateAmounts','importedTaxableSalesTotal','importedExemptPurchaseTotal','importBusinessOptions','renderJournalImport'].map(functionSource).join('\n'),h.context);
+  h.context.renderJournalImport();
+  assert.equal(h.element('applyJournalImportBtn').disabled,true);
+  assert.match(h.element('journalImportStatus').innerHTML,/申告方式.*1つ以上/);
+  h.context.applyJournalImport();
+  assert.equal(h.context.workflowStep,1);
+  assert.equal(h.context.pendingJournalImport.applied,false);
+});
+
 test('[概算UI02] 税率不明は一度確認して10％を仮定し89000円、原文と手動判断は変更しない', () => {
   const h = harness(recoveryFixture());
   installCurrentCalculation(h);

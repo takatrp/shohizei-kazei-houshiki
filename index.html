@@ -286,8 +286,10 @@
   .internal-only{border:2px solid #94a3b8;background:#f8fafc}
   .workflow-intro{margin:12px 0 0;border-radius:var(--radius) var(--radius) 0 0;box-shadow:none}
   .workflow-sticky{position:sticky;top:0;z-index:30;margin-top:-1px;border-radius:0 0 var(--radius) var(--radius)}
+  #workflowStepSummary{display:inline-block;max-width:100%;padding:7px 10px;border:1px solid #9dbdc9;border-left:5px solid var(--brand-700);border-radius:6px;background:var(--brand-100);color:#123948;font-size:var(--font-body);font-weight:800;overflow-wrap:anywhere}
   .workflow-steps{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 6px}
   .workflow-steps button{border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 13px;font:inherit;font-weight:800;cursor:pointer;color:#174156}
+  .workflow-steps button:disabled,.workflow-nav .btn:disabled{opacity:.5;cursor:not-allowed}
   .workflow-steps button[aria-current="step"]{background:var(--brand);color:#fff}
   .workflow-screen{display:none}
   .workflow-screen.is-active{display:grid;gap:10px}
@@ -491,11 +493,11 @@
         </div>
         <div class="grid three">
           <div class="field">
-            <label for="periodStart">課税期間 開始日</label>
+            <label for="periodStart">比較対象課税期間 開始日</label>
             <input type="date" id="periodStart" value="2026-01-01">
           </div>
           <div class="field">
-            <label for="periodEnd">課税期間 終了日</label>
+            <label for="periodEnd">比較対象課税期間 終了日</label>
             <input type="date" id="periodEnd" value="2026-12-31">
           </div>
           <div class="field">
@@ -514,12 +516,13 @@
         </div>
         <div class="field" style="margin-top:8px">
           <span class="check-label" id="comparisonMethodLabel">比較する申告方式</span>
-          <div class="segmented" role="group" aria-labelledby="comparisonMethodLabel">
-            <input type="checkbox" name="comparisonMethod" id="compareRegular" value="regular" checked><label for="compareRegular">一般課税（本則）</label>
-            <input type="checkbox" name="comparisonMethod" id="compareSimplified" value="simplified" checked><label for="compareSimplified">簡易課税</label>
-            <input type="checkbox" name="comparisonMethod" id="compareSpecial2" value="special2" checked><label for="compareSpecial2">2割特例</label>
-            <input type="checkbox" name="comparisonMethod" id="compareSpecial3" value="special3" checked><label for="compareSpecial3">3割特例</label>
+          <div class="segmented" role="group" aria-labelledby="comparisonMethodLabel" aria-describedby="comparisonMethodRequired">
+            <input type="checkbox" name="comparisonMethod" id="compareRegular" value="regular"><label for="compareRegular">一般課税（本則）</label>
+            <input type="checkbox" name="comparisonMethod" id="compareSimplified" value="simplified"><label for="compareSimplified">簡易課税</label>
+            <input type="checkbox" name="comparisonMethod" id="compareSpecial2" value="special2"><label for="compareSpecial2">2割特例</label>
+            <input type="checkbox" name="comparisonMethod" id="compareSpecial3" value="special3"><label for="compareSpecial3">3割特例</label>
           </div>
+          <div class="notice warn" id="comparisonMethodRequired" role="status">比較する申告方式を1つ以上選択してください。選択後に手入力またはCSV反映へ進めます。</div>
           <div class="mini">今回の比較対象を選びます。現在の申告方式や制度上の適用可否は変更しません。一般課税だけなら簡易課税の事業区分・届出は比較に使いません。</div>
         </div>
         <div class="notice warn period-inline-notice" id="periodInlineNotice" style="display:none"></div>
@@ -1309,6 +1312,12 @@ function normalizeFoodConfirmations(){
 }
 
 function goToInput(id){
+  if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length){
+    workflowStep = 1;
+    update();
+    $('comparisonMethodLabel').scrollIntoView({block:'center'});
+    return;
+  }
   const input = $(id);
   if(!input) return;
   if(typeof entryMode !== 'undefined' && entryMode === 'rows' && (/^type[1-6]Sale(?:10|8|Food1)$/.test(id)
@@ -2012,7 +2021,13 @@ function renderWorkflow(calc, decision){
   $('individualYearField').classList.toggle('is-hidden', calc.ctx.entity !== 'individual');
   if(calc.ctx.entity !== 'individual' || !calc.ctx.individualCalendarYear) $('specialPeriodDetails').open = true;
   $('specialPeriodDetails').classList.toggle('is-hidden', calc.ctx.entity === 'individual' && calc.ctx.individualCalendarYear && workflowStep !== 1);
-  $('workflowStepSummary').textContent = `${calc.ctx.taxScenario === 'foodProposal' ? '未施行の食品1％試算' : '現行制度'} / 対象期 ${calc.ctx.start || '-'}〜${calc.ctx.end || '-'} / ${workflowStep === 4 ? 3 : workflowStep}画面目`;
+  $('workflowStepSummary').textContent = `計算前提：${calc.ctx.taxScenario === 'foodProposal' ? '未施行の食品1％試算' : '現行制度'}｜比較対象課税期間 ${calc.ctx.start || '-'}〜${calc.ctx.end || '-'}｜${workflowStep === 4 ? 3 : workflowStep}画面目`;
+  const methodSelected = chosen.length > 0;
+  $('comparisonMethodRequired').classList.toggle('is-hidden', methodSelected);
+  for(const step of [2,4]){
+    const button = document.querySelector(`[data-workflow-step="${step}"]`);
+    if(button) button.disabled = !methodSelected;
+  }
   for(let step = 1; step <= 4; step++){
     $('workflowScreen' + step).classList.toggle('is-active', step === workflowStep);
     const button = document.querySelector(`[data-workflow-step="${step}"]`);
@@ -2038,6 +2053,7 @@ function renderWorkflow(calc, decision){
   $('openJournalImportBtn').setAttribute('aria-expanded', $('journalImportDisclosure').open ? 'true' : 'false');
   $('journalImportPanel').classList.toggle('is-hidden', !$('journalImportDisclosure').open);
   $('workflowNext').textContent = workflowStep === 1 ? '金額を手入力して進む' : workflowStep === 4 ? '入力へ戻る' : '税額を計算する';
+  $('workflowNext').disabled = workflowStep === 1 && !methodSelected;
   $('salesInputGuide').textContent = pendingJournalImport?.applied
     ? 'CSVから取り込んだ金額を確認してください。必要な箇所は修正できます。明示1％実績は元行を保持し、必要な確認事項は結果に残ります。'
     : 'お手元の資料を見ながら、金額を入力してください。';
@@ -2307,12 +2323,16 @@ function renderJournalImport(){
   }
 
   const { analysis, encoding, fileName, applied } = pendingJournalImport;
-  const resolved = resolveImportValues(analysis, journalImportMappings);
+  const comparisonMethods = typeof selectedComparisonMethods === 'function' ? selectedComparisonMethods() : ['regular','simplified','special2','special3'];
+  const simplifiedSelected = comparisonMethods.includes('simplified');
+  const methodSelected = comparisonMethods.length > 0;
+  const importOptions = {allowUnclassifiedSales:!simplifiedSelected};
+  const resolved = resolveImportValues(analysis, journalImportMappings, importOptions);
   preview.classList.remove('is-hidden');
-  status.className = `notice ${resolved.ready ? '' : 'warn'}`.trim();
+  status.className = `notice ${resolved.ready && methodSelected ? '' : 'warn'}`.trim();
   status.innerHTML = applied
     ? `<strong>${escapeHtml(fileName)}</strong> の集計値を入力欄へ反映しました。${escapeHtml(csvRecoverySummaryText(pendingJournalImport.estimateSummary))}`
-    : `<strong>${escapeHtml(fileName)}</strong> を${escapeHtml(encoding)}で解析しました。${resolved.ready ? '内容を確認して反映してください。' : 'すべての明細を直さなくても進めます。「仮定を置いて概算へ進む」で今回使う仮定と金額を一度確認できます。'}`;
+    : `<strong>${escapeHtml(fileName)}</strong> を${escapeHtml(encoding)}で解析しました。${!methodSelected ? '先に「比較する申告方式」を1つ以上選んでください。' : resolved.ready ? '内容を確認して反映してください。' : 'すべての明細を直さなくても進めます。「仮定を置いて概算へ進む」で今回使う仮定と金額を一度確認できます。'}`;
 
   const dateLabel = analysis.dateRange.start && analysis.dateRange.end
     ? `${analysis.dateRange.start}〜${analysis.dateRange.end}`
@@ -2331,7 +2351,7 @@ function renderJournalImport(){
     ['CSV明示1％取引', `${analysis.actualOnePercentEntries?.length || 0}件（8％実績からの予測とは別）`]
   ].map(([key, value]) => `<div><span class="k">${escapeHtml(key)}</span><span class="v">${escapeHtml(value)}</span></div>`).join('');
 
-  $('journalImportMapping').innerHTML = analysis.unclassifiedSales.length ? `
+  $('journalImportMapping').innerHTML = !simplifiedSelected ? '' : analysis.unclassifiedSales.length ? `
     <div class="notice warn">
       <strong>簡易課税の事業区分（分かるものだけ選択）</strong><br>
       未選択でも売上金額は取り込めます。未選択分は第6種・みなし仕入率40％に仮置きして概算します。業種の判定ではありません。分かればここで変更してください。
@@ -2372,7 +2392,7 @@ function renderJournalImport(){
   $('journalImportModeNote').textContent = canAdd
     ? '追加では手入力行を残し、以前のCSV部分は今回のCSVで更新します。CSV後の手修正は置き換えます。'
     : '旧形式の集計入力から課税区分別の手入力行は復元できません。現在の金額入力を置き換えます。';
-  $('applyJournalImportBtn').disabled = false;
+  $('applyJournalImportBtn').disabled = !methodSelected;
   $('applyJournalImportBtn').textContent = resolved.ready ? '集計値を反映して進む' : '仮定を置いて概算へ進む';
   $('excludeUnresolvedJournalBtn').classList.toggle('is-hidden', !(analysis.problemEntries || []).some(entry => entry.status === 'unresolved'));
 }
@@ -2418,12 +2438,17 @@ function setImportedAmount(id, value){
 
 function applyJournalImport(){
   if(!pendingJournalImport) return;
+  if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length){
+    $('journalImportStatus').textContent = '比較する申告方式を1つ以上選択してから反映してください。CSVのプレビューと補正内容は保持しています。';
+    return;
+  }
+  const importOptions = {allowUnclassifiedSales:typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().includes('simplified')};
   let analysis = pendingJournalImport.analysis;
-  let resolved = resolveImportValues(analysis, journalImportMappings);
+  let resolved = resolveImportValues(analysis, journalImportMappings, importOptions);
   let summary = analysis.recoverySummary;
   let estimateSummary = null;
   if(!resolved.ready){
-    const estimate = prepareEstimatedImport(pendingJournalImport.sourceText, pendingJournalImport.decisions || {}, journalImportMappings);
+    const estimate = prepareEstimatedImport(pendingJournalImport.sourceText, pendingJournalImport.decisions || {}, journalImportMappings, importOptions);
     if(!estimate.resolved.ready){
       $('journalImportStatus').textContent = `このCSVには自動で仮定できない項目が残っています：${estimate.resolved.errors.join(' / ')}。元の入力は変更していません。「金額を手入力して進む」から集計資料の概算額で続けられます。`;
       return;
@@ -2574,6 +2599,7 @@ function clearJournalImport(){
 }
 
 function enterManualAmountInput(){
+  if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length) return;
   if(!pendingJournalImport?.applied) clearJournalImport();
   else{
     journalImportRequestId++;
@@ -2593,8 +2619,7 @@ function selectedComparisonMethods(){
   const allowed = ['regular','simplified','special2','special3'];
   const inputs = [...document.querySelectorAll('input[name="comparisonMethod"]')]
     .filter(input => allowed.includes(input.value));
-  // Older test/embedding contexts without the new controls retain the former
-  // all-method comparison. The UI always keeps at least one box selected.
+  // Older test/embedding contexts without these controls retain the former comparison.
   return inputs.length ? inputs.filter(input => input.checked).map(input => input.value) : allowed;
 }
 
@@ -3489,7 +3514,7 @@ function calculate(contextOverride){
   const special3Amount = declarationRoundedAmount(calcLike, 'special3', 0, special3Base.amount, roundingDetails);
   const hasComparisonInput = sales.anyEntered || purchases.anyEntered;
   const salesEntryRequired = !sales.anyEntered && purchases.anyEntered;
-  const comparisonReady = sales.anyEntered && inputErrors.length === 0;
+  const comparisonReady = (!ctx.comparisonMethods || ctx.comparisonMethods.length > 0) && sales.anyEntered && inputErrors.length === 0;
   const inputUnconfirmedItems = [
     ...(purchases.exemptConfirmationState === 'unknown' ? ['免税事業者等からの課税仕入は未確認です。入力済み金額のみで試算しています。'] : []),
     ...(ctx.comparisonMethods?.includes('simplified') !== false && sales.simplifiedBusinessUnknown ? ['課税売上の事業区分が未確認です。本則・特例は入力済み売上額で参考試算し、簡易課税は区分確認後に算定します。'] : []),
@@ -5041,7 +5066,6 @@ function restoreState(){
     });
     const savedMethods = Array.isArray(data.comparisonMethods) ? data.comparisonMethods : ['regular','simplified','special2','special3'];
     for(const method of ['regular','simplified','special2','special3']) $('compare' + method[0].toUpperCase() + method.slice(1)).checked = savedMethods.includes(method);
-    if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length) $('compareRegular').checked = true;
     if($('taxScenarioFood1').checked) $('policySimulationDetails').open = true;
     importedExemptTransactionCount = Number.isSafeInteger(data.importedExemptTransactionCount) && data.importedExemptTransactionCount >= 0 ? data.importedExemptTransactionCount : 0;
     importedActualOnePercent = data.importedActualOnePercent?.source === 'csvActual' && Array.isArray(data.importedActualOnePercent.entries)
@@ -5073,6 +5097,7 @@ function restoreState(){
     appliedJournalImport = null;
     workflowStep = Number.isInteger(data.workflowStep) && data.workflowStep >= 1 && data.workflowStep <= 4 ? data.workflowStep : 1;
     if(workflowStep === 3) workflowStep = 4;
+    if(!savedMethods.length) workflowStep = 1;
     BUSINESS_TYPES.forEach(type => {
       if(['Sale10','Sale8','SaleFood1'].some(suffix => $(type.key + suffix)?.value.trim())) visibleBusinessTypes.add(type.key);
     });
@@ -5168,7 +5193,7 @@ function resetAll(){
   $('switchTimeEvaluation').checked = false;
   $('legacyAdditionalFeeValue').value = '';
   $('currentReturnMethod').value = 'unknown';
-  for(const method of ['Regular','Simplified','Special2','Special3']) $('compare' + method).checked = true;
+  for(const method of ['Regular','Simplified','Special2','Special3']) $('compare' + method).checked = false;
   $('exemptPurchaseState').value = 'unknown';
   $('individualYear').value = '2026';
   $('purposeRegular').checked = true;
@@ -5218,6 +5243,7 @@ function bindEvents(){
     if(button) goToInput(button.dataset.inputTarget);
   });
   document.querySelectorAll('[data-workflow-step]').forEach(button => button.addEventListener('click', () => {
+    if(Number(button.dataset.workflowStep) !== 1 && !selectedComparisonMethods().length) return;
     if(Number(button.dataset.workflowStep) === 2){
       enterManualAmountInput();
       $('workflowIntro').scrollIntoView({ block:'start' });
@@ -5279,7 +5305,7 @@ function bindEvents(){
       return;
     }
     if(event.target.closest && event.target.closest('#journalImportPanel')) return;
-    if(event.target.name === 'comparisonMethod' && !selectedComparisonMethods().length) event.target.checked = true;
+    if(event.target.name === 'comparisonMethod') renderJournalImport();
     if(event.target.id === 'taxScenarioFood1' && event.target.checked) $('policySimulationDetails').open = true;
     if(event.target.matches('input,select')) update();
   });

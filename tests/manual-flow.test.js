@@ -120,6 +120,21 @@ test('[M02][M03][M10][M14] CSV未選択の手入力は直接2画面目へ進み�
   assert.match(functionSource('bindEvents'), /workflowNext[\s\S]*enterManualAmountInput/);
 });
 
+test('比較方式は初期状態で全て未選択、選択するまで手入力へ進めない', () => {
+  for(const id of ['compareRegular','compareSimplified','compareSpecial2','compareSpecial3']){
+    assert.match(html, new RegExp(`id="${id}"[^>]*value="[^"]+">`));
+  }
+  assert.match(html, /比較対象課税期間 開始日/);
+  assert.match(html, /比較対象課税期間 終了日/);
+  const h = flowHarness(['clearJournalImport','enterManualAmountInput']);
+  h.context.selectedComparisonMethods = () => [];
+  h.context.enterManualAmountInput();
+  assert.equal(h.context.workflowStep,1);
+  h.context.selectedComparisonMethods = () => ['regular'];
+  h.context.enterManualAmountInput();
+  assert.equal(h.context.workflowStep,2);
+});
+
 test('[M05][M07] ファイル取消し・未反映プレビューから手入力へ戻っても既存金額は上書きしない', async () => {
   const h = flowHarness(['clearJournalImport', 'handleJournalCsvFile', 'enterManualAmountInput']);
   h.element('type2Sale8').value = '1,080,000';

@@ -50,6 +50,17 @@
         }
       }
     }
+    // Other comparisons need the full taxable-sales amount, not a guessed
+    // simplified-tax business type. Keep an unmapped CSV sale visibly unknown.
+    (resolved.unclassifiedSales || []).forEach((group, index) => {
+      for(const rate of RATES){
+        const amount = safeAmount(group.amounts?.[rate]);
+        const count = safeAmount(group.entryCounts?.[rate]);
+        if(amount !== 0 || count > 0){
+          sales.push(row(`csv-sale-1-unclassified-${index}-${rate}`, '1', amount, {rate}));
+        }
+      }
+    });
     const nonTaxableSales = safeAmount(values.nonTaxableSales);
     if(nonTaxableSales !== 0){
       sales.push(row('csv-sale-3', '3', nonTaxableSales));

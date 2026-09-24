@@ -543,14 +543,16 @@
     }]));
   }
 
-  function resolveImportValues(analysis, mappings = {}){
+  function resolveImportValues(analysis, mappings = {}, {allowUnclassifiedSales = false} = {}){
     const salesByType = cloneSalesByType(analysis.salesByType || {});
     const salesEntryCountsByTypeRate = cloneSalesByType(analysis.salesEntryCountsByTypeRate || {});
     const unresolved = [];
+    const unclassifiedSales = [];
     (analysis.unclassifiedSales || []).forEach(group => {
       const selected = mappings[group.key];
       if(!BUSINESS_TYPE_KEYS.includes(selected)){
-        unresolved.push(group.accountName);
+        if(allowUnclassifiedSales) unclassifiedSales.push(group);
+        else unresolved.push(group.accountName);
         return;
       }
       SUPPORTED_RATES.forEach(rate => {
@@ -563,6 +565,7 @@
     return {
       ready:errors.length === 0,
       errors,
+      unclassifiedSales,
       actualOnePercentEntries:(analysis.actualOnePercentEntries || []).map(item => {
         const {mappingKey, ...resolvedEntry} = item;
         if(item.kind === 'sale' && !item.businessType && BUSINESS_TYPE_KEYS.includes(mappings[mappingKey])) resolvedEntry.businessType = mappings[mappingKey];
@@ -591,7 +594,7 @@
     };
   }
 
-  function prepareEstimatedImport(text, decisions = {}, mappings = {}){
+  function prepareEstimatedImport(text, decisions = {}, mappings = {}, {allowUnclassifiedSales = false} = {}){
     // This opt-in preparation is an estimate of input data, not another tax engine.
     // Every invocation starts from the CSV and the user's explicit choices so that
     // cancelling or switching back to strict import never confirms an assumption.
@@ -656,6 +659,7 @@
     const analysis = analyzeTkcJournalText(text, estimateDecisions);
     const estimateMappings = {...mappings};
     analysis.unclassifiedSales.forEach(group => {
+      if(allowUnclassifiedSales) return;
       if(BUSINESS_TYPE_KEYS.includes(estimateMappings[group.key])) return;
       // Type 6's 40% deemed deduction is a conservative estimate, not a legal
       // business classification. The caller must label it as unconfirmed.
@@ -707,7 +711,7 @@
     assumptions.assumedDetailCount = analysis.problemEntries.filter(problem => problem.status === 'corrected' && assumedIds.has(problem.id)).length;
     const recoverySummary = {...analysis.recoverySummary, ...assumptions, correctedCount:analysis.recoverySummary.correctedCount - assumptions.assumedDetailCount};
     analysis.recoverySummary = recoverySummary;
-    return {analysis, resolved:resolveImportValues(analysis, estimateMappings), recoverySummary};
+    return {analysis, resolved:resolveImportValues(analysis, estimateMappings, {allowUnclassifiedSales}), recoverySummary};
   }
 
   return Object.freeze({

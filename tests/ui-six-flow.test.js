@@ -68,8 +68,20 @@ function navigationHarness(step){
   }
   const calc = { ctx:{ taxScenario:'current', entity:'individual', individualCalendarYear:true },
     inputErrors:[], methods:[], csvReview:{ reviewItems:[] } };
-  return { ...h, moves, render:() => h.context.renderWorkflow(calc, {}) };
+  return { ...h, moves, calc, render:() => h.context.renderWorkflow(calc, {}) };
 }
+
+test('未選択では進行を止め、固定バーの計算前提を強調する', () => {
+  const h = navigationHarness(1);
+  h.calc.ctx.comparisonMethods = [];
+  h.render();
+  assert.equal(h.element('workflowNext').disabled,true);
+  assert.match(h.element('workflowStepSummary').textContent,/^計算前提：現行制度｜比較対象課税期間/);
+  assert.match(html,/#workflowStepSummary\{[^}]*border-left:5px[^}]*font-weight:800/);
+  h.calc.ctx.comparisonMethods = ['regular'];
+  h.render();
+  assert.equal(h.element('workflowNext').disabled,false);
+});
 
 test('[r23残件1] 初期画面の同じ位置にあるナビゲーションは再挿入しない', () => {
   const h = navigationHarness(1);

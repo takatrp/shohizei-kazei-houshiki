@@ -320,6 +320,21 @@ test('[A01][A03] 免税仕入なしと返品による純額0を件数で区別�
   assert.equal(returned.exemptTransactionCount, 2);
 });
 
+test('免税仕入の値引き・返品は同じ課税区分・税率・控除割合へ符号付きで差引き、概算前提の件数と金額を残す', () => {
+  const source = buildCsv([
+    entry('借方',{code:'52',rate:'10',reduced:0,amount:110000,credit:80}),
+    entry('貸方',{code:'52',rate:'10',reduced:0,amount:10000,credit:80}),
+    entry('貸方',{code:'53',rate:'10',reduced:0,amount:5000,credit:80})
+  ]);
+  const analysis = analyzeTkcJournalText(source);
+  assert.equal(resolveImportValues(analysis).ready,true);
+  assert.equal(analysis.exemptPurchases['80']['10'],95000);
+  assert.equal(analysis.purchaseAmountsByUse.taxableOnly.exempt['80']['10'],95000);
+  assert.equal(analysis.recoverySummary.nettedExemptAdjustmentCount,2);
+  assert.equal(analysis.recoverySummary.nettedExemptAdjustmentAbsAmount,15000);
+  assert.equal(analysis.problemEntries.length,0,'正常な返品・値引きに補正操作を要求しない');
+});
+
 test('[F05] 正常な売上と返品の相殺0円は区分・税率ごとの有効明細2件として保持する', () => {
   const result = analyzeTkcJournalText(buildCsv([
     entry('貸方', {code:'1', business:'2', rate:10, reduced:0, amount:1100000}),

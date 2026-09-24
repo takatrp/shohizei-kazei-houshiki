@@ -288,9 +288,11 @@ test('[M10][M14] 保存復元後も手入力額・課税期間・税率前提・
     effectiveDateRange:{start:'2025-01-15',end:'2025-02-15'},
     rowCount:2,mappedEntries:2,manualChanged:true
   };
+  before.context.selectedComparisonMethods = () => ['regular'];
   before.context.saveState();
   assert.equal(before.element('saveStatus').textContent, 'この端末に保存中');
   assert.equal(JSON.parse(storage.get('manual-flow-test')).amountMode, 'excluded');
+  assert.deepEqual(JSON.parse(storage.get('manual-flow-test')).comparisonMethods, ['regular']);
 
   const after = make();
   after.context.restoreState();
@@ -301,6 +303,8 @@ test('[M10][M14] 保存復元後も手入力額・課税期間・税率前提・
   assert.equal(after.element('switchFoodSalesState').value, 'yes');
   assert.equal(after.element('input[name="amountMode"][value="excluded"]').checked, true);
   assert.equal(after.element('input[name="taxScenario"][value="foodProposal"]').checked, true);
+  assert.equal(after.element('compareRegular').checked, true);
+  assert.equal(after.element('compareSimplified').checked, false);
   assert.equal(after.context.importedActualOnePercent.entries[0].row, 23);
   assert.equal(after.context.importedActualOnePercent.entries[0].transactionKind, 'adjustment');
   assert.equal(after.context.importedCsvOrigin.dateRange.start, '2025-01-15');

@@ -22,7 +22,7 @@ function functionSource(name){
 const names = [
   'normalizeCsvRecovery', 'csvRecoverySummaryText', 'renderJournalRecovery', 'journalRowHasInput', 'journalManualRows', 'journalImportHasExistingInput',
   'journalImportTotals', 'currentJournalImportTotals', 'journalImportTotalsText', 'updateJournalRecovery', 'excludeUnresolvedJournalEntries', 'openAppliedJournalRecovery',
-  'formatInput', 'amountState', 'formatCtxAmount', 'confirmationLabel', 'simpleElectionLabel', 'taxScenarioKey', 'taxScenarioConfig', 'selectedValue', 'foodConfirmationEvidence', 'conditionInputLinks', 'percent',
+  'formatInput', 'amountState', 'formatCtxAmount', 'confirmationLabel', 'simpleElectionLabel', 'taxScenarioKey', 'taxScenarioConfig', 'selectedValue', 'selectedComparisonMethods', 'foodConfirmationEvidence', 'conditionInputLinks', 'percent',
   'taxFromAmount', 'taxableBaseFromAmount', 'actualOneAmount', 'actualOneTax', 'actualOneBase',
   'inclusiveDayCount', 'proposalOverlapFraction', 'proposalFoodOriginalAmount', 'repriceFoodAmount',
   'currentLawProjectionNotice', 'validateImportedOnePercentEntries', 'csvReviewNotice', 'csvOriginPremise', 'selectionEligibilityForCurrent', 'mergeCalculationAvailability', 'cashBenefitBasisNote',
@@ -210,6 +210,46 @@ test('[現行差額01] 同じ手入力から本則40000円対5000円・簡易160
   assert.equal(h.context.taxScenarioKey(), 'foodProposal');
   assert.equal(h.element('type2Sale8').value, '1,080,000');
   assert.equal(h.element('type2SaleFood1').value, '1,080,000');
+});
+
+test('比較方式を一般課税だけにすると簡易・特例の確認を要求せず、結果・出力・現行差額から除く', () => {
+  const h = currentRateComparisonHarness();
+  const all = h.context.calculate();
+  h.context.selectedComparisonMethods = () => ['regular'];
+  h.element('baseTaxableSales').value = '不明';
+  const calc = h.context.calculate();
+  assert.equal(calc.inputErrors.length,0);
+  assert.equal(calc.regular.amount,all.regular.amount,'既存の本則計算額を変えない');
+  assert.deepEqual(Array.from(calc.methods, method => method.key),['regular']);
+  assert.ok(!calc.unconfirmedItems.join(' ').includes('簡易課税'));
+  assert.doesNotMatch(h.context.conditionInputLinks(calc),/簡易課税|基準期間|特定期間|インボイス登録/);
+  const comparison = h.context.buildCurrentRateComparison(calc);
+  assert.deepEqual(Array.from(comparison.rows, row => row.key),['regular']);
+  const summary = h.context.buildSummaryText(calc);
+  assert.match(summary,/比較する申告方式: 本則課税/);
+  assert.doesNotMatch(summary,/簡易課税の採用計算|簡易課税届出/);
+  h.context.renderCurrentRateComparison(calc);
+  assert.equal((h.element('methodCards').innerHTML.match(/class="method-row/g) || []).length,1);
+});
+
+test('一般課税だけの行入力は事業区分が空欄でも売上税額を使い、簡易の確認待ちにしない', () => {
+  const h = currentRateComparisonHarness();
+  h.context.selectedComparisonMethods = () => ['regular'];
+  h.context.entryMode = 'rows';
+  h.context.taxEntryRows = {sales:[{id:'sale',code:'1',rate:'10',amount:'1100000',businessType:'',source:'manual'}],
+    purchases:[{id:'purchase',code:'5',rate:'10',amount:'0',source:'manual'}]};
+  h.context.latestTaxRowAggregate = taxRows.aggregateTaxRows(h.context.taxEntryRows);
+  for(const [id,state] of Object.entries(h.context.latestTaxRowAggregate.fields)) h.element(id).value = state.entered ? String(state.value) : '';
+  h.element('nonTaxableSales').value = '0';
+  h.element('taxScenarioFood1').checked = false;
+  h.element('taxScenarioCurrent').checked = true;
+  const calc = h.context.calculate();
+  assert.equal(calc.sales.simplifiedBusinessUnknown,true);
+  assert.equal(calc.inputErrors.length,0);
+  assert.equal(calc.regular.amount,100000);
+  assert.deepEqual(Array.from(calc.methods, method => method.key),['regular']);
+  assert.equal(calc.methods[0].include,true);
+  assert.doesNotMatch(calc.unconfirmedItems.join(' '),/事業区分/);
 });
 
 test('[TKC行結合01] 行集計を従来計算入力へ渡すと食品1％の本則・簡易と現行差額が一致する', () => {
@@ -472,8 +512,10 @@ test('[F04/T05] CSV元日付の境界を検証し過年度80％実績は2027年7
   assert.match(crossing.context.calculate().regular.unavailableReasons.join(' '),/CSV元取引日/);
   crossing.context.taxEntryRows.purchases[0].sourceDateStart = '2026-09-30';
   crossing.context.taxEntryRows.purchases[0].sourceDateEnd = '2026-09-30';
+  const beforeAdjustment = crossing.context.calculate().regular.amount;
   crossing.context.taxEntryRows.purchases[0].sourceAdjustmentCount = 1;
-  assert.match(crossing.context.calculate().regular.unavailableReasons.join(' '),/元取引の控除割合/);
+  assert.equal(crossing.context.calculate().regular.amount,beforeAdjustment,
+    '返品・値引きは同区分・同税率の純額として試算し、元取引日だけを理由に止めない');
   crossing.context.taxEntryRows.purchases[0].sourceAdjustmentCount = 0;
   const historical = fourFixRowHarness({start:'2027-01-01',end:'2027-12-31',scenario:'current',purchases:[
     {code:'52',rate:'10',amount:'1100000',creditRatio:'80',source:'csv',sourceDateStart:'2025-04-01',sourceDateEnd:'2025-04-01'},
@@ -1363,6 +1405,49 @@ test('[C03-C16] 税率補正はプレビューだけでは入力を変えず反�
   assert.match(h.context.pendingJournalImport.sourceText, /不明/);
 });
 
+test('CSV免税仕入の返品・値引きは個別操作なしで純額試算し、画面・コピー・CSV・印刷に前提を残す', () => {
+  const source = csv([
+    csvRow({date:'2025/01/15',rate:'10',business:'5',amount:11000000}),
+    csvRow({date:'2025/01/15',side:'借方',code:'52',rate:'10',amount:1100000,credit:'80'}),
+    csvRow({date:'2025/02/09',side:'貸方',code:'52',rate:'10',amount:20000,credit:'80'}),
+    csvRow({date:'2025/02/28',side:'貸方',code:'52',rate:'10',amount:500,credit:'80'}),
+    csvRow({date:'2025/12/31',side:'貸方',code:'52',rate:'10',amount:30000,credit:'80'})
+  ]);
+  const h = harness(source);
+  installCurrentCalculation(h);
+  Object.assign(h.context, {
+    entryMode:'rows',
+    taxEntryRows:{sales:[],purchases:[]},
+    rowCsvKnownZeros:{},rowsFromJournalAnalysis,
+    newTaxEntry:side => taxRows.createTaxEntryRow(side,{id:`blank-${side}`}),
+    renderTaxEntryRows(){},document:{...h.context.document,body:{dataset:{}}}
+  });
+  h.element('periodStart').value = '2025-01-01';
+  h.element('periodEnd').value = '2025-12-31';
+  assert.equal(h.context.pendingJournalImport.analysis.problemEntries.length,0);
+  h.context.applyJournalImport();
+  const aggregate = taxRows.aggregateTaxRows(h.context.taxEntryRows);
+  h.context.latestTaxRowAggregate = aggregate;
+  for(const [id,state] of Object.entries(aggregate.fields)) h.element(id).value = state.entered ? String(state.value) : '';
+  for(const id of ['nonTaxableSales','purchase10','purchase8']) if(h.context.rowCsvKnownZeros[id]) h.element(id).value = '0';
+  const calc = h.context.calculate();
+  const netPurchase = 1100000 - 20000 - 500 - 30000;
+  assert.equal(h.context.taxEntryRows.purchases.find(row => row.code === '52').amount,String(netPurchase));
+  assert.equal(calc.purchases.purchaseRatioConflicts.length,0);
+  assert.ok(Math.abs(calc.regular.amount - (1000000 - engine.taxFromAmount(netPurchase,10,'included') * .8)) < 1e-7,
+    `本則税額の実測 ${calc.regular.amount}`);
+  assert.equal(calc.csvRecovery.nettedExemptAdjustmentCount,3);
+  assert.equal(calc.csvPartial,true);
+  assert.equal(calc.methods.find(method => method.key === 'regular').include,true);
+  h.context.renderPrintAssumptions(calc);
+  for(const output of [calc.csvRecoveryText,h.context.buildSummaryText(calc),h.context.buildCsvText(calc),h.element('printAssumptions').innerHTML]){
+    assert.match(output,/返品・値引き等3明細/);
+    assert.match(output,/元取引.*照合していない/);
+  }
+  h.context.renderHero(calc);
+  assert.match(h.element('csvRecoveryNotice').innerHTML,/参考試算.*返品・値引き等/);
+});
+
 test('[C04-C19-C20] 仮除外で本則90000円を参考表示し通常出力・計算過程に中立的要約を残す', () => {
   const h = harness(recoveryFixture());
   installCurrentCalculation(h);
@@ -1751,7 +1836,7 @@ test('[A09] 現行税率では従来どおり4期経路エンジンへ渡す', (
     methods:[{ key:'regular', amount:100000, include:true }]
   });
   h.context.assessHighAssetForMethod = () => ({ status:'clear' });
-  h.context.optimizeFourPeriodRoutes = input => ({ ok:true, received:input.periods });
+  h.context.optimizeFourPeriodRoutes = input => ({ ok:true, received:input.periods, initialElectionStatus:input.initialElectionStatus });
   const result = h.context.calculateProjectionPlan({
     ctx:{ ...h.ctx, taxScenario:'current', advancedMode:true, simpleElectionStatus:'none', simpleNoticeReady:'yes', futureElectionPlan:'yes', currentDiscontinuanceReady:'yes' },
     comparisonReady:true,
@@ -1760,6 +1845,13 @@ test('[A09] 現行税率では従来どおり4期経路エンジンへ渡す', (
   assert.equal(result.optimized.ok, true);
   assert.equal(result.projections.length, 1);
   assert.equal(result.optimized.received[0].methods[0].amount, 100000);
+  const regularOnly = h.context.calculateProjectionPlan({
+    ctx:{ ...h.ctx, taxScenario:'current', comparisonMethods:['regular'], currentReturnMethod:'regular',
+      simpleElectionStatus:'unknown', simpleNoticeReady:'unknown', futureElectionPlan:'unknown' },
+    methods:[{key:'regular'}], comparisonReady:true, highAssetRegular:{status:'clear'}
+  });
+  assert.equal(regularOnly.optimized.initialElectionStatus,'none',
+    '現行が一般課税で簡易を比較しない場合は簡易の届出位置を必須にしない');
 });
 
 test('[端数06] 4期の計算過程は円表示・注記1回とし累計の内部値を変更しない', () => {

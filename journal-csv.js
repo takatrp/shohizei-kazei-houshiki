@@ -272,7 +272,9 @@
     for(const char of String(text)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
     const fileKey = `${String(text).length}-${hash.toString(16)}`;
     const problemEntries = [];
-    const recoverySummary = { correctedCount:0, temporaryExcludedCount:0, confirmedExcludedCount:0, excludedAbsAmount:0, unknownAmountCount:0, unresolvedCount:0, directionalTotals:{sales:0,nonTaxableSales:0,invoicePurchase:0,exemptPurchase:0}, taxImpactUncalculated:false };
+    const recoverySummary = { correctedCount:0, temporaryExcludedCount:0, confirmedExcludedCount:0, excludedAbsAmount:0, unknownAmountCount:0, unresolvedCount:0,
+      nettedExemptAdjustmentCount:0, nettedExemptAdjustmentAbsAmount:0,
+      directionalTotals:{sales:0,nonTaxableSales:0,invoicePurchase:0,exemptPurchase:0}, taxImpactUncalculated:false };
     const entries = sourceEntries.map((source, index) => {
       const entry = {...source, __recordNumber:source.__recordNumber, __adjustmentSides:[]};
       for(const side of ['借方','貸方']){
@@ -446,12 +448,16 @@
           const signedAmount = amountState.value * amountDirection('purchase', side);
           exemptPurchases[ratio][rate] += signedAmount;
           purchaseAmountsByUse[exemptUsage].exempt[ratio][rate] += signedAmount;
+          if(transactionKind === 'adjustment'){
+            recoverySummary.nettedExemptAdjustmentCount += 1;
+            recoverySummary.nettedExemptAdjustmentAbsAmount += Math.abs(signedAmount);
+          }
           const byRatio = exemptPurchaseProvenanceByUse[exemptUsage][ratio] ||= {};
           const provenance = byRatio[rate] ||= {
             sourceDateStart:'', sourceDateEnd:'', sourceAdjustmentCount:0, sourceDateUnknownCount:0
           };
           if(transactionKind === 'adjustment') provenance.sourceAdjustmentCount += 1;
-          if(!date) provenance.sourceDateUnknownCount += 1;
+          if(!date && transactionKind === 'ordinary') provenance.sourceDateUnknownCount += 1;
           // Returns/corrections identify their original transaction separately;
           // their own date must not establish a credit-ratio period.
           if(transactionKind === 'ordinary' && date){

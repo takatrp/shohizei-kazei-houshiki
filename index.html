@@ -99,13 +99,19 @@
   body[data-entry-mode="rows"] #purchaseFood1Field,
   body[data-entry-mode="rows"] #amountModeHeading,
   body[data-entry-mode="rows"] #amountModeChoices{display:none!important}
-  .tkc-row-table{min-width:1200px;table-layout:fixed}
+  .tkc-row-table{min-width:760px;table-layout:fixed}
+  .tkc-row-table[data-row-layout="business"]{min-width:890px}
+  .tkc-row-table[data-row-layout="food"]{min-width:920px}
+  .tkc-row-table[data-row-layout="business-food"]{min-width:1080px}
+  #rowPurchaseInput .tkc-row-table{min-width:850px}
+  #rowPurchaseInput .tkc-row-table[data-row-layout="food"]{min-width:1030px}
+  .tkc-row-table [hidden]{display:none!important}
   .tkc-row-table th,.tkc-row-table td{white-space:normal}
-  .tkc-row-table th:first-child,.tkc-row-table td:first-child{position:sticky;left:0;z-index:1;background:#fff;width:340px;white-space:nowrap}
+  .tkc-row-table th:first-child,.tkc-row-table td:first-child{position:sticky;left:0;z-index:1;background:#fff;width:245px;white-space:nowrap}
   .tkc-row-table th:first-child{background:#f0f6f8}
   .tkc-row-table input{min-width:0}
   .tkc-row-table .row-code{width:58px;display:inline-block;margin-right:5px}
-  .tkc-row-table .row-code-name{font-size:11px;color:var(--muted);vertical-align:middle;white-space:nowrap}
+  .tkc-row-table .row-code-name{display:inline-block;max-width:calc(100% - 70px);overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--muted);vertical-align:middle;white-space:nowrap}
   .food-exclusion-guide{grid-column:1/-1;white-space:nowrap;overflow-x:auto}
   .price-basis-details{margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
   .price-basis-details>summary{cursor:pointer;font-weight:800}
@@ -139,6 +145,11 @@
     padding:5px 10px;font-size:12px;font-weight:900;cursor:pointer;user-select:none;
   }
   .segmented input:checked + label{background:var(--brand);border-color:var(--brand);color:#fff}
+  #comparisonMethodChoices input:checked + label::before{content:'✓ ';font-weight:900}
+  .method-picker-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .method-picker-actions .btn{min-height:30px}
+  .result-method-selection{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:9px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#f7fafb}
+  .result-method-selection strong{font-size:var(--font-body)}
   .segmented input:focus-visible + label{outline:3px solid rgba(37,99,235,.35);outline-offset:2px}
   .checks{display:grid;grid-template-columns:1fr;gap:8px}
   .check-row{
@@ -355,7 +366,7 @@
     .import-mapping-row{grid-template-columns:1fr}
     th,td{padding:8px 6px}
     .tkc-row-table th:first-child,.tkc-row-table td:first-child{width:220px}
-    .tkc-row-table .row-code-name{display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis}
+    .tkc-row-table .row-code-name{max-width:135px}
     .sales-table input{min-width:96px}
     .decision-grid{grid-template-columns:1fr}
     .decision-actions .btn{width:100%}
@@ -515,14 +526,15 @@
           <div class="field"><label for="currentReturnMethod">現在の申告方式</label><select id="currentReturnMethod"><option value="unknown">未確認</option><option value="simplified">簡易課税</option><option value="regular">一般課税</option><option value="special">特例など</option></select><div class="mini">届出の効力や対象期の適用可否とは別の事実です。</div></div>
         </div>
         <div class="field" style="margin-top:8px">
-          <span class="check-label" id="comparisonMethodLabel">比較する申告方式</span>
-          <div class="segmented" role="group" aria-labelledby="comparisonMethodLabel" aria-describedby="comparisonMethodRequired">
+          <span class="check-label" id="comparisonMethodLabel">比較・試算する方式（複数選択可）</span>
+          <div class="segmented" id="comparisonMethodChoices" role="group" aria-labelledby="comparisonMethodLabel" aria-describedby="comparisonMethodRequired">
             <input type="checkbox" name="comparisonMethod" id="compareRegular" value="regular"><label for="compareRegular">一般課税（本則）</label>
             <input type="checkbox" name="comparisonMethod" id="compareSimplified" value="simplified"><label for="compareSimplified">簡易課税</label>
             <input type="checkbox" name="comparisonMethod" id="compareSpecial2" value="special2"><label for="compareSpecial2">2割特例</label>
             <input type="checkbox" name="comparisonMethod" id="compareSpecial3" value="special3"><label for="compareSpecial3">3割特例</label>
           </div>
-          <div class="notice warn" id="comparisonMethodRequired" role="status">比較する申告方式を1つ以上選択してください。選択後に手入力またはCSV反映へ進めます。</div>
+          <div class="method-picker-actions"><button type="button" class="btn secondary" id="selectAllComparisonMethods">すべて選択</button></div>
+          <div class="notice" id="comparisonMethodRequired" role="status">まず、今回試算する方式を選んでください。複数選択できます。</div>
           <div class="mini">今回の比較対象を選びます。現在の申告方式や制度上の適用可否は変更しません。一般課税だけなら簡易課税の事業区分・届出は比較に使いません。</div>
         </div>
         <div class="notice warn period-inline-notice" id="periodInlineNotice" style="display:none"></div>
@@ -827,7 +839,7 @@
           <datalist id="taxBusinessTypeList"><option value="1　第1種 卸売業"></option><option value="2　第2種 小売業・飲食料品農林漁業"></option><option value="3　第3種 建設業・製造業など"></option><option value="4　第4種 飲食店業など"></option><option value="5　第5種 サービス業など"></option><option value="6　第6種 不動産業"></option></datalist>
           <datalist id="taxRowRateList"><option value="10％"></option><option value="軽減8％"></option></datalist>
           <div class="table-wrap"><table class="tkc-row-table" aria-label="TKC課税区分別の売上行入力">
-            <thead><tr><th>課税区分</th><th>事業区分</th><th>税率</th><th>税込金額</th><th>うち食品1％対象</th><th>入力元・操作</th></tr></thead>
+            <thead><tr><th>課税区分</th><th data-row-column="businessType">事業区分</th><th>税率</th><th>税込金額</th><th data-row-column="foodAmount">うち食品1％対象</th><th>入力元・操作</th></tr></thead>
             <tbody id="taxSalesRowBody"></tbody>
           </table></div>
           <div class="tkc-row-actions"><button type="button" class="btn secondary" id="addTaxSalesRow">＋ 売上行を追加</button><span class="mini" id="salesRowStatus"></span></div>
@@ -866,7 +878,7 @@
           <p class="tkc-code-guide">5・6・7、52・62・72を入力できます。免税事業者等仕入は取引時期の控除割合を選び、時期をまたぐ場合は行を分けてください。</p>
           <datalist id="taxPurchaseCodeList"><option value="5　課税仕入れ（課税売上対応）"></option><option value="6　課税仕入れ（非課税売上対応）"></option><option value="7　課税仕入れ（共通対応）"></option><option value="52　免税事業者等（課税売上対応）"></option><option value="62　免税事業者等（非課税売上対応）"></option><option value="72　免税事業者等（共通対応）"></option></datalist>
           <div class="table-wrap"><table class="tkc-row-table" aria-label="TKC課税区分別の仕入行入力">
-            <thead><tr><th>課税区分</th><th>税率</th><th>税込金額</th><th>うち食品1％対象</th><th>控除割合等</th><th>入力元・操作</th></tr></thead>
+            <thead><tr><th>課税区分</th><th>税率</th><th>税込金額</th><th data-row-column="foodAmount">うち食品1％対象</th><th>控除割合等</th><th>入力元・操作</th></tr></thead>
             <tbody id="taxPurchaseRowBody"></tbody>
           </table></div>
           <div class="tkc-row-actions"><button type="button" class="btn secondary" id="addTaxPurchaseRow">＋ 仕入行を追加</button><span class="mini" id="purchaseRowStatus"></span></div>
@@ -979,6 +991,7 @@
         <div class="notice warn" id="storageNotice" style="display:none;margin-bottom:10px"></div>
         <div class="notice bad major-warning" id="resultScenarioNotice" style="display:none;margin-bottom:10px"></div>
         <div class="notice bad" id="inputErrorNotice" style="display:none;margin-bottom:10px"></div>
+        <div class="result-method-selection no-print"><strong id="resultMethodSelection">比較対象：未選択</strong><button type="button" class="btn secondary" id="changeComparisonMethods">変更</button></div>
         <div id="resultHero" class="result-hero"></div>
         <div id="csvRecoveryNotice" class="notice warn no-print is-hidden"></div>
         <div class="print-only" id="printAssumptions"></div>
@@ -1271,6 +1284,7 @@ let appliedJournalImport = null;
 let latestCalculation = null;
 let switchDecisionOpen = false;
 let workflowStep = 1;
+let comparisonMethodAttempted = false;
 let importedExemptTransactionCount = 0;
 let importedActualOnePercent = null;
 const visibleBusinessTypes = new Set();
@@ -1313,6 +1327,7 @@ function normalizeFoodConfirmations(){
 
 function goToInput(id){
   if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length){
+    comparisonMethodAttempted = true;
     workflowStep = 1;
     update();
     $('comparisonMethodLabel').scrollIntoView({block:'center'});
@@ -1603,6 +1618,32 @@ function rowCellInput(row, side, field, label, extra = ''){
   return `<input type="text" class="${extra}" data-row-side="${side}" data-row-key="${escapeHtml(row.id)}" data-row-field="${field}" aria-label="${escapeHtml(label)}" value="${escapeHtml(value)}" autocomplete="off">`;
 }
 
+function showBusinessTypeColumn(){
+  return selectedComparisonMethods().includes('simplified');
+}
+
+function showFoodAmountColumn(){
+  return taxScenarioKey() === 'foodProposal';
+}
+
+function purchaseRowsForScenario(scenario){
+  return scenario === 'foodProposal' ? taxEntryRows.purchases
+    : taxEntryRows.purchases.map(row => ({...row,foodAmount:''}));
+}
+
+function refreshTaxRowTableLayout(){
+  const business = showBusinessTypeColumn();
+  const food = showFoodAmountColumn();
+  for(const side of ['sales','purchases']){
+    const table = $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').closest('table');
+    table.dataset.rowLayout = side === 'sales' ? business && food ? 'business-food' : business ? 'business' : food ? 'food' : 'basic' : food ? 'food' : 'basic';
+    table.querySelectorAll('[data-row-column]').forEach(cell => {
+      cell.hidden = cell.dataset.rowColumn === 'businessType' ? !business : !food;
+    });
+    table.querySelectorAll('tbody tr').forEach(refreshTaxRowControls);
+  }
+}
+
 function renderTaxEntryRows(side){
   const target = $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody');
   target.innerHTML = taxEntryRows[side].map(row => {
@@ -1618,12 +1659,13 @@ function renderTaxEntryRows(side){
     const actions = `<span class="row-source">${source}</span> <button type="button" class="btn secondary" data-delete-tax-row="${escapeHtml(row.id)}" data-row-side="${side}" aria-label="この${side === 'sales' ? '売上' : '仕入'}行を削除">削除</button><span class="row-error" aria-live="polite"></span>`;
     return `<tr data-tax-row-key="${escapeHtml(row.id)}" data-row-side="${side}">
       <td>${codeInput}<span class="row-code-name" title="${escapeHtml(taxRowCodeName(row.code))}">${escapeHtml(taxRowCodeName(row.code))}</span></td>
-      ${side === 'sales' ? `<td>${rowCellInput(row, side, 'businessType', '事業区分番号', 'row-business js-row-field').replace('autocomplete="off"', 'autocomplete="off" inputmode="numeric" list="taxBusinessTypeList"')}</td>` : ''}
-      <td>${rateInput}</td><td>${amountInput}</td><td>${foodInput}</td>
+      ${side === 'sales' ? `<td data-row-column="businessType">${rowCellInput(row, side, 'businessType', '事業区分番号', 'row-business js-row-field').replace('autocomplete="off"', 'autocomplete="off" inputmode="numeric" list="taxBusinessTypeList"')}</td>` : ''}
+      <td>${rateInput}</td><td>${amountInput}</td><td data-row-column="foodAmount">${foodInput}</td>
       ${side === 'purchases' ? `<td><select class="js-row-field" data-row-side="${side}" data-row-key="${escapeHtml(row.id)}" data-row-field="creditRatio" aria-label="控除割合・対象時期"><option value="">未確認</option>${EXEMPT_PURCHASE_BUCKETS.map(bucket => `<option value="${bucket.key}"${String(row.creditRatio) === bucket.key ? ' selected' : ''}${taxRowRatioOverlapsPeriod(bucket, purchaseRatioContext(row,$('periodStart').value,$('periodEnd').value).start, purchaseRatioContext(row,$('periodStart').value,$('periodEnd').value).end) ? '' : ' disabled'}>${bucket.key}%｜${escapeHtml(bucket.range)}</option>`).join('')}</select><span class="row-ratio-period">${escapeHtml(taxRowRatioPeriod(row.creditRatio))}</span></td>` : ''}
       <td>${actions}</td></tr>`;
   }).join('');
   target.querySelectorAll('tr').forEach(refreshTaxRowControls);
+  refreshTaxRowTableLayout();
   $(side === 'sales' ? 'salesRowStatus' : 'purchaseRowStatus').textContent = `${taxEntryRows[side].length}行`;
 }
 
@@ -1636,9 +1678,9 @@ function refreshTaxRowControls(tr){
   const rate = tr.querySelector('[data-row-field="rate"]');
   const food = tr.querySelector('[data-row-field="foodAmount"]');
   const ratio = tr.querySelector('[data-row-field="creditRatio"]');
-  if(business) business.disabled = row.code !== '1';
+  if(business) business.disabled = !showBusinessTypeColumn() || row.code !== '1';
   rate.disabled = row.code === '3';
-  food.disabled = row.code === '3' || row.rate !== '8';
+  food.disabled = !showFoodAmountColumn() || row.code === '3' || row.rate !== '8';
   if(ratio){
     const ratioContext = purchaseRatioContext(row,$('periodStart').value,$('periodEnd').value);
     ratio.disabled = !code?.exempt;
@@ -1667,7 +1709,11 @@ function refreshTaxRowControls(tr){
 function syncTaxEntryRows(){
   if(entryMode !== 'rows') return;
   $('modeTaxIncluded').checked = true;
-  latestTaxRowAggregate = aggregateTaxRows(taxEntryRows, {
+  const activeRows = showFoodAmountColumn() ? taxEntryRows : {
+    sales:taxEntryRows.sales.map(row => ({...row,foodAmount:''})),
+    purchases:purchaseRowsForScenario('current')
+  };
+  latestTaxRowAggregate = aggregateTaxRows(activeRows, {
     amountMode:'included', actualOnePercentEntries:importedActualOnePercent?.entries || []
   });
   for(const id of ['nonTaxableSales','purchase10','purchase8']){
@@ -1758,10 +1804,10 @@ function applyTaxRowEdit(input){
 
 function nextTaxRowField(row, side, current){
   const order = ['code'];
-  if(side === 'sales' && row.code === '1') order.push('businessType');
+  if(side === 'sales' && row.code === '1' && showBusinessTypeColumn()) order.push('businessType');
   if(row.code !== '3') order.push('rate');
   order.push('amount');
-  if(row.rate === '8' && row.code !== '3') order.push('foodAmount');
+  if(row.rate === '8' && row.code !== '3' && showFoodAmountColumn()) order.push('foodAmount');
   if(side === 'purchases' && ['52','62','72'].includes(row.code) && !row.creditRatio) order.push('creditRatio');
   return order[order.indexOf(current) + 1] || '';
 }
@@ -2005,7 +2051,8 @@ function renderWorkflow(calc, decision){
   $('salesBusinessHint').textContent = wantsSimplified ? '簡易課税の事業区分ごと' : '一般課税・特例では事業区分の入力は任意';
   $('rowEntryGuide').textContent = wantsSimplified
     ? '課税区分 → 事業区分 → 税率 → 税込金額の順に入力します。番号を直接入力できます。'
-    : '課税区分 → 税率 → 税込金額の順に入力します。事業区分は簡易課税を比較するときだけ必要です。';
+    : '課税区分 → 税率 → 税込金額の順に入力します。事業区分は簡易課税を比較するときだけ表示します。';
+  refreshTaxRowTableLayout();
   $('methodEligibilityHeading').classList.toggle('is-hidden', !wantsSpecial && !wantsSimplified);
   $('methodEligibilityChecks').classList.toggle('is-hidden', !wantsSpecial && !wantsSimplified);
   for(const id of ['invoiceRegisteredField','invoiceTransitionField','specificPeriodField','noSpecialExclusionField'])
@@ -2021,12 +2068,23 @@ function renderWorkflow(calc, decision){
   $('individualYearField').classList.toggle('is-hidden', calc.ctx.entity !== 'individual');
   if(calc.ctx.entity !== 'individual' || !calc.ctx.individualCalendarYear) $('specialPeriodDetails').open = true;
   $('specialPeriodDetails').classList.toggle('is-hidden', calc.ctx.entity === 'individual' && calc.ctx.individualCalendarYear && workflowStep !== 1);
-  $('workflowStepSummary').textContent = `計算前提：${calc.ctx.taxScenario === 'foodProposal' ? '未施行の食品1％試算' : '現行制度'}｜比較対象課税期間 ${calc.ctx.start || '-'}〜${calc.ctx.end || '-'}｜${workflowStep === 4 ? 3 : workflowStep}画面目`;
+  const methodNames = chosen.map(method => method === 'regular' ? '一般課税' : METHOD_LABELS[method]);
+  $('workflowStepSummary').textContent = `計算前提：${calc.ctx.taxScenario === 'foodProposal' ? '未施行の食品1％試算' : '現行制度'}｜対象期 ${calc.ctx.start || '-'}〜${calc.ctx.end || '-'}｜試算方式 ${methodNames.join('・') || '未選択'}`;
+  $('resultMethodSelection').textContent = `比較対象：${methodNames.join('・') || '未選択'}`;
   const methodSelected = chosen.length > 0;
-  $('comparisonMethodRequired').classList.toggle('is-hidden', methodSelected);
+  if(methodSelected) comparisonMethodAttempted = false;
+  const methodNotice = $('comparisonMethodRequired');
+  methodNotice.classList.toggle('is-hidden', methodSelected);
+  methodNotice.classList.toggle('warn', comparisonMethodAttempted && !methodSelected);
+  methodNotice.textContent = comparisonMethodAttempted
+    ? '比較・試算する方式を1つ以上選択してください。手入力またはCSV反映へ進めます。'
+    : 'まず、今回試算する方式を選んでください。複数選択できます。';
   for(const step of [2,4]){
     const button = document.querySelector(`[data-workflow-step="${step}"]`);
-    if(button) button.disabled = !methodSelected;
+    if(button){
+      button.disabled = false;
+      button.setAttribute('aria-disabled', methodSelected ? 'false' : 'true');
+    }
   }
   for(let step = 1; step <= 4; step++){
     $('workflowScreen' + step).classList.toggle('is-active', step === workflowStep);
@@ -2053,7 +2111,8 @@ function renderWorkflow(calc, decision){
   $('openJournalImportBtn').setAttribute('aria-expanded', $('journalImportDisclosure').open ? 'true' : 'false');
   $('journalImportPanel').classList.toggle('is-hidden', !$('journalImportDisclosure').open);
   $('workflowNext').textContent = workflowStep === 1 ? '金額を手入力して進む' : workflowStep === 4 ? '入力へ戻る' : '税額を計算する';
-  $('workflowNext').disabled = workflowStep === 1 && !methodSelected;
+  $('workflowNext').disabled = false;
+  $('workflowNext').setAttribute('aria-disabled', workflowStep === 1 && !methodSelected ? 'true' : 'false');
   $('salesInputGuide').textContent = pendingJournalImport?.applied
     ? 'CSVから取り込んだ金額を確認してください。必要な箇所は修正できます。明示1％実績は元行を保持し、必要な確認事項は結果に残ります。'
     : 'お手元の資料を見ながら、金額を入力してください。';
@@ -2392,7 +2451,8 @@ function renderJournalImport(){
   $('journalImportModeNote').textContent = canAdd
     ? '追加では手入力行を残し、以前のCSV部分は今回のCSVで更新します。CSV後の手修正は置き換えます。'
     : '旧形式の集計入力から課税区分別の手入力行は復元できません。現在の金額入力を置き換えます。';
-  $('applyJournalImportBtn').disabled = !methodSelected;
+  $('applyJournalImportBtn').disabled = false;
+  $('applyJournalImportBtn').setAttribute('aria-disabled', methodSelected ? 'false' : 'true');
   $('applyJournalImportBtn').textContent = resolved.ready ? '集計値を反映して進む' : '仮定を置いて概算へ進む';
   $('excludeUnresolvedJournalBtn').classList.toggle('is-hidden', !(analysis.problemEntries || []).some(entry => entry.status === 'unresolved'));
 }
@@ -2439,6 +2499,8 @@ function setImportedAmount(id, value){
 function applyJournalImport(){
   if(!pendingJournalImport) return;
   if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length){
+    comparisonMethodAttempted = true;
+    update();
     $('journalImportStatus').textContent = '比較する申告方式を1つ以上選択してから反映してください。CSVのプレビューと補正内容は保持しています。';
     return;
   }
@@ -2842,7 +2904,7 @@ function projectProposalPurchases(purchases, ctx, index){
   const projectionRatio = weightedExemptPurchaseRatio(ctx.start, ctx.end);
   if(ctx.taxScenario !== 'foodProposal'){
     if(index > 0 && typeof entryMode !== 'undefined' && entryMode === 'rows'){
-      const projected = aggregateScenarioPurchases({purchases:taxEntryRows.purchases}, {
+      const projected = aggregateScenarioPurchases({purchases:purchaseRowsForScenario('current')}, {
         taxScenario:'current', exemptRatioOverride:projectionRatio.ratio
       });
       return { ...purchases, invoiceTax:projected.invoiceTax, exemptTax:projected.exemptTax,
@@ -3159,7 +3221,7 @@ function collectPurchases(ctx){
   const creditRatio = ctx.creditRatio;
   const adjustment = adjustmentState.valid ? adjustmentState.value : 0;
   let rowScenario = typeof entryMode !== 'undefined' && entryMode === 'rows' ? aggregateScenarioPurchases({
-    purchases:taxEntryRows.purchases,
+    purchases:purchaseRowsForScenario(ctx.taxScenario),
     actualOnePercentEntries:importedActualOnePercent?.entries || []
   }, {
     taxScenario:ctx.taxScenario,
@@ -3168,7 +3230,7 @@ function collectPurchases(ctx){
     foodPurchasePriceBasis:ctx.foodPurchasePriceBasis,
     exemptRatioOverride:null
   }) : null;
-  const historicalRows = typeof entryMode !== 'undefined' && entryMode === 'rows' ? taxEntryRows.purchases.filter(row =>
+  const historicalRows = typeof entryMode !== 'undefined' && entryMode === 'rows' ? purchaseRowsForScenario(ctx.taxScenario).filter(row =>
     ['52','62','72'].includes(row.code)
     && purchaseRatioContext(row,ctx.start,ctx.end).historical) : [];
   if(rowScenario && historicalRows.length && validateTaxPeriod(ctx.start,ctx.end).valid){
@@ -3180,7 +3242,7 @@ function collectPurchases(ctx){
       proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),
       foodPurchasePriceBasis:ctx.foodPurchasePriceBasis};
     const currentRows = aggregateScenarioPurchases({
-      purchases:taxEntryRows.purchases.filter(row => !historicalIds.has(row.id)),
+      purchases:purchaseRowsForScenario(ctx.taxScenario).filter(row => !historicalIds.has(row.id)),
       actualOnePercentEntries:importedActualOnePercent?.entries || []
     },scenarioOptions);
     const historical = aggregateScenarioPurchases({purchases:historicalRows},
@@ -3951,16 +4013,26 @@ function renderHero(calc){
     return;
   }
   const second = calc.sorted[1];
+  const selectedCount = calc.ctx.comparisonMethods?.length ?? calc.methods.length;
   const diff = second ? second.amount - calc.best.amount : 0;
   const label = METHOD_LABELS[calc.best.key];
   const amountPrefix = calc.best.amount < 0 ? '還付見込' : '納付見込';
   const provisional = calc.comparisonProvisional;
+  if(selectedCount === 1){
+    $('resultHero').innerHTML = `
+      <div class="result-kicker">${escapeHtml(calc.best.key === 'regular' ? '一般課税' : label)}の試算結果</div>
+      <div class="winner-name">${escapeHtml(label)}</div>
+      <div class="winner-amount ${amountClass(calc.best.amount)}">${provisional ? '参考 ' : ''}${amountPrefix} ${yen(calc.best.amount)}</div>
+      <div class="diff-text">${provisional ? `${escapeHtml(csvReviewNotice(calc.csvReview))}<br>` : ''}選択した方式のみの試算です。${calc.csvPartial ? 'CSVの仮定・除外を含みます。' : ''}</div>
+    `;
+    return;
+  }
   const kicker = calc.csvPartial ? '参考試算（CSVに仮定・除外あり）' : provisional ? '入力済み金額に基づく参考比較' : '入力された適用条件での比較';
   $('resultHero').innerHTML = `
     <div class="result-kicker">${kicker}</div>
     <div class="winner-name">${!second && !provisional ? `現在、適用条件を確認できている方式は${escapeHtml(label)}です` : escapeHtml(label)}</div>
     <div class="winner-amount ${amountClass(calc.best.amount)}">${provisional ? '参考 ' : ''}${amountPrefix} ${yen(calc.best.amount)}</div>
-    <div class="diff-text">${provisional ? `${escapeHtml(csvReviewNotice(calc.csvReview))}<br>` : ''}${second ? `比較できる${escapeHtml(METHOD_LABELS[second.key])}との差は ${yen(diff)} です。` : '他方式の確認状況は下の比較表をご覧ください。'}${calc.unknownMethods.length ? '<br>適用条件が未確認の方式があります。下の案内から入力・確認できます。' : ''}${calc.smallDifference ? '<br>方式間の差が小さいため、精密計算が必要です。' : ''}</div>
+    <div class="diff-text">${provisional ? `${escapeHtml(csvReviewNotice(calc.csvReview))}<br>` : ''}${second ? `比較できる${escapeHtml(METHOD_LABELS[second.key])}との差は ${yen(diff)} です。` : '選択した複数方式のうち、現在金額を比較できるのは1方式だけです。下の比較表で未算定・対象外の理由を確認してください。'}${calc.unknownMethods.length ? '<br>適用条件が未確認の方式があります。下の案内から入力・確認できます。' : ''}${calc.smallDifference ? '<br>方式間の差が小さいため、精密計算が必要です。' : ''}</div>
   `;
 }
 
@@ -5147,6 +5219,7 @@ function update(){
 }
 
 function resetAll(){
+  comparisonMethodAttempted = false;
   storageRemove(STORAGE_KEY);
   LEGACY_STORAGE_KEYS.forEach(key => storageRemove(key));
   $('storageNotice').style.display = 'none';
@@ -5243,7 +5316,13 @@ function bindEvents(){
     if(button) goToInput(button.dataset.inputTarget);
   });
   document.querySelectorAll('[data-workflow-step]').forEach(button => button.addEventListener('click', () => {
-    if(Number(button.dataset.workflowStep) !== 1 && !selectedComparisonMethods().length) return;
+    if(Number(button.dataset.workflowStep) !== 1 && !selectedComparisonMethods().length){
+      comparisonMethodAttempted = true;
+      workflowStep = 1;
+      update();
+      $('comparisonMethodLabel').scrollIntoView({block:'center'});
+      return;
+    }
     if(Number(button.dataset.workflowStep) === 2){
       enterManualAmountInput();
       $('workflowIntro').scrollIntoView({ block:'start' });
@@ -5261,6 +5340,12 @@ function bindEvents(){
   });
   $('workflowNext').addEventListener('click', () => {
     if(workflowStep === 1){
+      if(!selectedComparisonMethods().length){
+        comparisonMethodAttempted = true;
+        update();
+        $('comparisonMethodLabel').scrollIntoView({block:'center'});
+        return;
+      }
       enterManualAmountInput();
       $('workflowIntro').scrollIntoView({ block:'start' });
       return;
@@ -5268,6 +5353,17 @@ function bindEvents(){
     workflowStep = workflowStep === 4 ? 2 : 4;
     update();
     $('workflowIntro').scrollIntoView({ block:'start' });
+  });
+  $('selectAllComparisonMethods').addEventListener('click', () => {
+    document.querySelectorAll('input[name="comparisonMethod"]').forEach(input => { input.checked = true; });
+    comparisonMethodAttempted = false;
+    update();
+    renderJournalImport();
+  });
+  $('changeComparisonMethods').addEventListener('click', () => {
+    workflowStep = 1;
+    update();
+    $('comparisonMethodLabel').scrollIntoView({block:'center'});
   });
   $('addBusinessType').addEventListener('change', event => {
     if(event.target.value) visibleBusinessTypes.add(event.target.value);

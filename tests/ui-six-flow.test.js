@@ -31,6 +31,7 @@ function harness(names){
     BUSINESS_TYPES:[{key:'type2'}], EXEMPT_PURCHASE_BUCKETS:[{key:'80'}],
     importedActualOnePercent:null, importedCsvRecovery:null, appliedJournalImport:null, foodConfirmationSignatures:{},
     workflowStep:1, switchDecisionOpen:false, visibleBusinessTypes:new Set(),
+    comparisonMethodAttempted:false, refreshTaxRowTableLayout(){}, selectedComparisonMethods:()=>['regular'],
     selectedValue:()=> 'included', taxScenarioKey:()=> 'foodProposal',
     escapeHtml:String, yen:n=>`${n}円`, amountClass:()=>'',
     METHOD_LABELS:{regular:'本則課税',simplified:'簡易課税'}, ELIGIBILITY:engine.ELIGIBILITY,
@@ -75,12 +76,27 @@ test('未選択では進行を止め、固定バーの計算前提を強調す�
   const h = navigationHarness(1);
   h.calc.ctx.comparisonMethods = [];
   h.render();
-  assert.equal(h.element('workflowNext').disabled,true);
-  assert.match(h.element('workflowStepSummary').textContent,/^計算前提：現行制度｜比較対象課税期間/);
+  assert.equal(h.element('workflowNext').disabled,false);
+  assert.match(h.element('workflowStepSummary').textContent,/^計算前提：現行制度｜対象期/);
+  assert.match(h.element('comparisonMethodRequired').textContent,/まず、今回試算する方式を選んでください/);
   assert.match(html,/#workflowStepSummary\{[^}]*border-left:5px[^}]*font-weight:800/);
+  h.context.comparisonMethodAttempted = true;
+  h.render();
+  assert.match(h.element('comparisonMethodRequired').textContent,/1つ以上選択してください/);
   h.calc.ctx.comparisonMethods = ['regular'];
   h.render();
   assert.equal(h.element('workflowNext').disabled,false);
+  assert.equal(h.context.comparisonMethodAttempted,false);
+});
+
+test('未選択のまま手入力へ進もうとすると案内を強調し、方式選択へ戻す', () => {
+  const h = harness(['bindEvents']);
+  h.context.selectedComparisonMethods = () => [];
+  h.context.bindEvents();
+  h.element('workflowNext').listeners.click();
+  assert.equal(h.context.workflowStep,1);
+  assert.equal(h.context.comparisonMethodAttempted,true);
+  assert.equal(h.element('comparisonMethodLabel').scrolled,true);
 });
 
 test('[r23残件1] 初期画面の同じ位置にあるナビゲーションは再挿入しない', () => {
@@ -278,7 +294,7 @@ test('[U18-U20] 参考試算・全対象外・1方式・不正入力を異なる
   const render=overrides=>{h.context.renderHero({...base,...overrides});return h.element('resultHero').innerHTML;};
   assert.match(render({methods:[{eligibility:engine.ELIGIBILITY.UNKNOWN}],unknownMethods:[{}]}),/税額の参考試算/);
   assert.match(render({methods:[{eligibility:engine.ELIGIBILITY.INELIGIBLE}]}),/適用対象外/);
-  assert.match(render({best:{key:'regular',amount:400000},sorted:[{key:'regular',amount:400000}],methods:[{key:'regular',eligibility:engine.ELIGIBILITY.ELIGIBLE}]}),/現在、適用条件を確認できている方式/);
+  assert.match(render({best:{key:'regular',amount:400000},sorted:[{key:'regular',amount:400000}],methods:[{key:'regular',eligibility:engine.ELIGIBILITY.ELIGIBLE}]}),/一般課税の試算結果/);
   assert.match(render({inputErrors:['不正な金額']}),/計算できません/);
   assert.match(render({hasComparisonInput:false}),/金額を入力/);
   assert.doesNotMatch(h.element('resultHero').innerHTML,/確認済み候補がありません/);

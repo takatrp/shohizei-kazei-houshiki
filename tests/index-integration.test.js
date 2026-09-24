@@ -22,7 +22,7 @@ function functionSource(name){
 const names = [
   'normalizeCsvRecovery', 'csvRecoverySummaryText', 'renderJournalRecovery', 'journalRowHasInput', 'journalManualRows', 'journalImportHasExistingInput',
   'journalImportTotals', 'currentJournalImportTotals', 'journalImportTotalsText', 'updateJournalRecovery', 'excludeUnresolvedJournalEntries', 'openAppliedJournalRecovery',
-  'formatInput', 'amountState', 'formatCtxAmount', 'confirmationLabel', 'simpleElectionLabel', 'taxScenarioKey', 'taxScenarioConfig', 'selectedValue', 'selectedComparisonMethods', 'foodConfirmationEvidence', 'conditionInputLinks', 'percent',
+  'formatInput', 'amountState', 'formatCtxAmount', 'confirmationLabel', 'simpleElectionLabel', 'taxScenarioKey', 'taxScenarioConfig', 'selectedValue', 'selectedComparisonMethods', 'showBusinessTypeColumn', 'showFoodAmountColumn', 'purchaseRowsForScenario', 'foodConfirmationEvidence', 'conditionInputLinks', 'percent',
   'taxFromAmount', 'taxableBaseFromAmount', 'actualOneAmount', 'actualOneTax', 'actualOneBase',
   'inclusiveDayCount', 'proposalOverlapFraction', 'proposalFoodOriginalAmount', 'repriceFoodAmount',
   'currentLawProjectionNotice', 'validateImportedOnePercentEntries', 'csvReviewNotice', 'csvOriginPremise', 'selectionEligibilityForCurrent', 'mergeCalculationAvailability', 'cashBenefitBasisNote',
@@ -115,7 +115,8 @@ function harness(csv){
     renderSalesRowVisibility(){},
     sumRateAmounts:amounts => ['10','8','1'].reduce((sum, rate) => sum + Number(amounts?.[rate] || 0), 0),
     projectionPeriods(){ return [{ label:'2028年' }]; },
-    workflowStep:1
+    workflowStep:1,
+    comparisonMethodAttempted:false
   });
   vm.runInContext(names.map(functionSource).join('\n'), context);
   const ctx = {
@@ -383,6 +384,23 @@ function fourFixRowHarness({start,end,scenario,purchases}){
   h.context.syncTaxEntryRows();
   return h;
 }
+
+test('[T03-T04] 非表示の食品内数は現行計算に混入せず、元行に残して再表示時に検証する', () => {
+  const h = fourFixRowHarness({start:'2027-04-01',end:'2028-03-31',scenario:'current',purchases:[
+    {code:'5',rate:'10',amount:'5500000',foodAmount:'不正な食品内数'}
+  ]});
+  h.context.taxEntryRows.sales[0].foodAmount = '不正な食品内数';
+  h.context.syncTaxEntryRows();
+  const current = h.context.calculate();
+  assert.equal(current.inputErrors.length,0);
+  assert.equal(current.regular.amount,500000);
+  assert.equal(h.context.taxEntryRows.sales[0].foodAmount,'不正な食品内数');
+  assert.equal(h.context.taxEntryRows.purchases[0].foodAmount,'不正な食品内数');
+  h.element('taxScenarioCurrent').checked = false;
+  h.element('taxScenarioFood1').checked = true;
+  h.context.syncTaxEntryRows();
+  assert.match(h.context.latestTaxRowAggregate.errors.map(error => error.message).join(' '),/食品1％対象額/);
+});
 
 test('[F01/T01] 行入力の食品1％個別対応は3用途の税額から940000円、現行との差70000円', () => {
   const h = fourFixRowHarness({start:'2027-04-01',end:'2028-03-31',scenario:'foodProposal',purchases:[
@@ -1283,9 +1301,10 @@ test('比較方式が未選択なら正常CSVも解析はできるが反映し�
   h.context.selectedComparisonMethods = () => [];
   vm.runInContext(['sumRateAmounts','importedTaxableSalesTotal','importedExemptPurchaseTotal','importBusinessOptions','renderJournalImport'].map(functionSource).join('\n'),h.context);
   h.context.renderJournalImport();
-  assert.equal(h.element('applyJournalImportBtn').disabled,true);
+  assert.equal(h.element('applyJournalImportBtn').disabled,false,'未選択の案内を出せるようクリックは受ける');
   assert.match(h.element('journalImportStatus').innerHTML,/申告方式.*1つ以上/);
   h.context.applyJournalImport();
+  assert.equal(h.context.comparisonMethodAttempted,true);
   assert.equal(h.context.workflowStep,1);
   assert.equal(h.context.pendingJournalImport.applied,false);
 });

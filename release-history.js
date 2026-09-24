@@ -7,6 +7,18 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r29.2',
+      date:'2026-09-24',
+      title:'比較方式に応じた必要列・キー移動と結果表示を整理',
+      category:'usability',
+      recalcRecommended:false,
+      changes:Object.freeze([
+        '選択した方式・税率シナリオに必要な売上・仕入列だけを表示し、Enter・Tab移動も同じ条件へ統一。非表示の入力値は保持',
+        '方式選択に全選択と選択済み印を追加し、初期案内と未選択で進もうとした際の警告を区別',
+        '行入力表の幅、固定サマリー、単独試算と複数方式の結果表示を整理。税額算式・適用判定は不変更'
+      ])
+    }),
+    Object.freeze({
       version:'r29.1',
       date:'2026-09-23',
       title:'本則の現行入力判定・明示1％CSV割合・過年度換算前提を修正',

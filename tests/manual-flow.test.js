@@ -59,6 +59,9 @@ function flowHarness(names){
     journalImportMappings:{},
     journalImportRequestId:0,
     workflowStep:1,
+    showBusinessTypeColumn:()=>true,
+    showFoodAmountColumn:()=>true,
+    refreshTaxRowTableLayout(){},
     importedActualOnePercent:null,
     importedUnsupportedEntries:[],
     importedCsvRecovery:null,
@@ -437,9 +440,9 @@ test('[TKC行表示] 金額の入力中に桁区切りし、選択肢は番号�
 test('[TKC行表示] 不要セルは入力不能かつ通常欄と別表示、売上追加は表の直下に置く', () => {
   assert.match(html,/\.tkc-row-table input:disabled,\.tkc-row-table select:disabled\{[^}]*border-color:transparent/);
   assert.match(html,/\.tkc-row-table input:disabled::placeholder\{[^}]*opacity:1/);
-  assert.match(functionSource('refreshTaxRowControls'),/business\.disabled = row\.code !== '1'/);
+  assert.match(functionSource('refreshTaxRowControls'),/business\.disabled = !showBusinessTypeColumn\(\) \|\| row\.code !== '1'/);
   assert.match(functionSource('refreshTaxRowControls'),/rate\.disabled = row\.code === '3'/);
-  assert.match(functionSource('refreshTaxRowControls'),/food\.disabled = row\.code === '3' \|\| row\.rate !== '8'/);
+  assert.match(functionSource('refreshTaxRowControls'),/food\.disabled = !showFoodAmountColumn\(\) \|\| row\.code === '3' \|\| row\.rate !== '8'/);
   assert.match(functionSource('initWorkflow'),/\$\('addTaxSalesRow'\)\.closest\('\.tkc-row-actions'\)\.after\(foodSaleConfirmation\)/);
   for(const text of ['1　第1種 卸売業','2　第2種 小売業','3　第3種 建設業','4　第4種 飲食店業','5　第5種 サービス業','6　第6種 不動産業']) assert.ok(html.includes(text),text);
   assert.doesNotMatch(html,/<datalist id="tax(?:SalesCode|PurchaseCode|BusinessType)List">[^<]*<option[^>]*label=/);
@@ -520,7 +523,7 @@ test('[食品1％入力] 価格前提は初期値を示す任意の折りたた�
   assert.match(priceDetails[1], /現在：売上・仕入とも税抜価格据置/);
   assert.match(html, /class="notice food-exclusion-guide"/);
   assert.match(html, /\.food-exclusion-guide\{[^}]*grid-column:1\/-1;white-space:nowrap/);
-  assert.match(html, /\.tkc-row-table th:first-child,\.tkc-row-table td:first-child\{[^}]*width:340px;white-space:nowrap/);
+  assert.match(html, /\.tkc-row-table th:first-child,\.tkc-row-table td:first-child\{[^}]*width:245px;white-space:nowrap/);
   assert.match(html, /\.tkc-row-table \.row-code-name\{[^}]*white-space:nowrap/);
   assert.match(functionSource('renderTaxEntryRows'), /class="row-code-name" title="\$\{escapeHtml\(taxRowCodeName\(row\.code\)\)\}"/);
 });

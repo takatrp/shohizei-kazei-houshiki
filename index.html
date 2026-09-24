@@ -2083,7 +2083,6 @@ function renderWorkflow(calc, decision){
     const button = document.querySelector(`[data-workflow-step="${step}"]`);
     if(button){
       button.disabled = false;
-      button.setAttribute('aria-disabled', methodSelected ? 'false' : 'true');
     }
   }
   for(let step = 1; step <= 4; step++){
@@ -2112,7 +2111,6 @@ function renderWorkflow(calc, decision){
   $('journalImportPanel').classList.toggle('is-hidden', !$('journalImportDisclosure').open);
   $('workflowNext').textContent = workflowStep === 1 ? '金額を手入力して進む' : workflowStep === 4 ? '入力へ戻る' : '税額を計算する';
   $('workflowNext').disabled = false;
-  $('workflowNext').setAttribute('aria-disabled', workflowStep === 1 && !methodSelected ? 'true' : 'false');
   $('salesInputGuide').textContent = pendingJournalImport?.applied
     ? 'CSVから取り込んだ金額を確認してください。必要な箇所は修正できます。明示1％実績は元行を保持し、必要な確認事項は結果に残ります。'
     : 'お手元の資料を見ながら、金額を入力してください。';
@@ -2452,7 +2450,6 @@ function renderJournalImport(){
     ? '追加では手入力行を残し、以前のCSV部分は今回のCSVで更新します。CSV後の手修正は置き換えます。'
     : '旧形式の集計入力から課税区分別の手入力行は復元できません。現在の金額入力を置き換えます。';
   $('applyJournalImportBtn').disabled = false;
-  $('applyJournalImportBtn').setAttribute('aria-disabled', methodSelected ? 'false' : 'true');
   $('applyJournalImportBtn').textContent = resolved.ready ? '集計値を反映して進む' : '仮定を置いて概算へ進む';
   $('excludeUnresolvedJournalBtn').classList.toggle('is-hidden', !(analysis.problemEntries || []).some(entry => entry.status === 'unresolved'));
 }

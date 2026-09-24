@@ -53,6 +53,7 @@ function harness(text){
     pendingJournalImport:{analysis:journal.analyzeTkcJournalText(text), sourceText:text, decisions:{}, applied:false},
     appliedJournalImport:null,
     importedCsvRecovery:null,
+    importedCsvOrigin:null,
     importedExemptTransactionCount:0,
     importedUnsupportedEntries:[],
     importedActualOnePercent:null,
@@ -62,9 +63,13 @@ function harness(text){
     window:{confirm(){ throw new Error('正常CSVに追加確認は不要'); }},
     yen:value => `${Math.round(value)}円`,
     sumRateAmounts:amounts => ['10','8','1'].reduce((sum,rate)=>sum+Number(amounts?.[rate] || 0),0),
+    getExemptPurchaseInputIds:() => [],
+    currentJournalImportTotals:() => ({totals:{sales:0,nonTaxableSales:0,invoicePurchases:0,exemptPurchases:0},invalid:false}),
     renderJournalImport(){}, update(){}
   });
-  vm.runInContext(['formatInput','normalizeCsvRecovery','csvRecoverySummaryText','setImportedAmount','applyJournalImport'].map(source).join('\n'),context);
+  vm.runInContext(['formatInput','normalizeCsvRecovery','csvRecoverySummaryText','journalRowHasInput',
+    'journalManualRows','journalImportHasExistingInput','journalImportTotals','journalImportTotalsText',
+    'setImportedAmount','applyJournalImport'].map(source).join('\n'),context);
   return {context, element};
 }
 
@@ -109,6 +114,7 @@ test('[F05画面] 新しいCSVの反映で前回の既知0円を引き継がな�
   h.context.applyJournalImport();
   assert.equal(h.element('type2Sale10').value,'0');
   h.context.pendingJournalImport = {analysis:journal.analyzeTkcJournalText(next), sourceText:next, decisions:{}, applied:false};
+  h.context.window.confirm = () => true;
   h.context.applyJournalImport();
   assert.equal(h.element('type2Sale10').value,'');
   assert.equal(h.element('type3Sale10').value,'2,200');

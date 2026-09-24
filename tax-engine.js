@@ -26,6 +26,20 @@
     { start:'2031-10-01', end:'9999-12-31', ratio:0.00 }
   ]);
 
+  // CSV actual-one-percent entries store a calculation ratio (0.7), while an
+  // older saved value may use the displayed percentage (70). Do not coerce a
+  // blank/null/invalid value to the valid 0% transitional rate.
+  function normalizeExemptPurchaseRatio(value){
+    if(typeof value !== 'number' && typeof value !== 'string') return null;
+    const raw = String(value).trim();
+    if(!/^\d+(?:\.\d+)?(?:%|％)?$/.test(raw)) return null;
+    const percentNotation = /[%％]$/.test(raw);
+    const number = Number(raw.replace(/[%％]$/, ''));
+    if(!Number.isFinite(number)) return null;
+    const ratio = percentNotation || number > 1 ? number / 100 : number;
+    return ratio >= 0 && ratio <= 1 ? ratio : null;
+  }
+
   const FOOD_PROPOSAL = Object.freeze({
     status:'proposal',
     basisDate:'2026-09-15',
@@ -960,11 +974,12 @@
       }
     ];
 
-    const regular = eligibilityFrom([], [{
-      value:ctx.regularCreditConfirmed,
-      noReason:'本則課税の仕入控除率を設定してください',
-      unknownReason:'本則課税の仕入控除率が未確認です'
-    }]);
+    // The caller supplies availability established from the current sales,
+    // purchases and credit method. The retired creditMode control is not evidence.
+    const regular = ctx.regularCalculationAvailability || {
+      eligibility:ELIGIBILITY.UNKNOWN,
+      reasons:['本則課税の入力金額と計算条件を確認してください']
+    };
 
     return {
       periodValid,
@@ -988,6 +1003,7 @@
     CONFIRMATION,
     ELIGIBILITY,
     EXEMPT_PURCHASE_RATES,
+    normalizeExemptPurchaseRatio,
     FOOD_PROPOSAL,
     normalizeNumberString,
     parseAmountInput,

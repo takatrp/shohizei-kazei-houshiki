@@ -46,6 +46,8 @@ function flowHarness(names){
       return null;
     } },
     parseAmountInput:engine.parseAmountInput,
+    normalizeExemptPurchaseRatio:engine.normalizeExemptPurchaseRatio,
+    summarizeActualOnePercentEntries:taxRows.summarizeActualOnePercentEntries,
     engineTaxFromAmount:engine.taxFromAmount,
     engineTaxableBaseFromAmount:engine.taxableBaseFromAmount,
     calculateSimplifiedTax:engine.calculateSimplifiedTax,
@@ -63,6 +65,9 @@ function flowHarness(names){
     importedCsvOrigin:null,
     appliedJournalImport:null,
     importedExemptTransactionCount:0,
+    window:{confirm:() => true},
+    getExemptPurchaseInputIds:() => [],
+    currentJournalImportTotals:() => ({totals:{sales:0,nonTaxableSales:0,invoicePurchases:0,exemptPurchases:0},invalid:false}),
     update(){ updates += 1; },
     renderJournalImport(){},
     decodeCsvBytes(){ return { text:'fixture', encoding:'UTF-8' }; },
@@ -200,7 +205,8 @@ test('[M04][M08][M09] 手入力とCSV反映は同じ入力欄・計算関数で�
   assert.equal(manualSales.errors.length, 0);
   assert.equal(manualSales.totalTax, 80000);
 
-  const imported = flowHarness([...salesFunctions, 'setImportedAmount', 'applyJournalImport']);
+  const imported = flowHarness([...salesFunctions, 'journalRowHasInput', 'journalManualRows',
+    'journalImportHasExistingInput', 'journalImportTotals', 'journalImportTotalsText', 'setImportedAmount', 'applyJournalImport']);
   imported.context.pendingJournalImport = {
     applied:false, analysis:{ actualOnePercentEntries:[], unsupportedEntries:[], exemptTransactionCount:0 }
   };
@@ -330,7 +336,8 @@ test('[TKC行保存] 行の順序・出所・0円と空欄・控除割合を保�
       {id:'2',code:'3',rate:'',amount:'0',foodAmount:'',source:'csv'},
       {id:'blank',code:'',rate:'',amount:'',foodAmount:'',source:'manual'}
     ],
-    purchases:[{id:'3',code:'52',rate:'8',amount:'100,000',foodAmount:'0',creditRatio:'80',creditRatioSource:'manual',source:'csv-edited'}]
+    purchases:[{id:'3',code:'52',rate:'8',amount:'100,000',foodAmount:'0',creditRatio:'80',creditRatioSource:'manual',source:'csv-edited',
+      sourceDateStart:'2026-09-30',sourceDateEnd:'2026-09-30',sourceAdjustmentCount:1,sourceDateUnknownCount:0}]
   };
   before.context.saveState();
   const saved = JSON.parse(storage.get('tkc-row-save-test'));
@@ -344,6 +351,9 @@ test('[TKC行保存] 行の順序・出所・0円と空欄・控除割合を保�
   assert.equal(after.context.taxEntryRows.sales[1].source, 'csv');
   assert.equal(after.context.taxEntryRows.purchases[0].source, 'csv-edited');
   assert.equal(after.context.taxEntryRows.purchases[0].creditRatio, '80');
+  assert.equal(after.context.taxEntryRows.purchases[0].sourceDateStart, '2026-09-30');
+  assert.equal(after.context.taxEntryRows.purchases[0].sourceDateEnd, '2026-09-30');
+  assert.equal(after.context.taxEntryRows.purchases[0].sourceAdjustmentCount, 1);
   assert.equal(after.context.taxEntryRows.purchases[0].foodAmount, '0');
   assert.equal(after.context.rowCsvKnownZeros.nonTaxableSales, true);
   assert.equal(after.element('modeTaxExcluded').disabled, true);
@@ -430,7 +440,7 @@ test('[TKC行表示] CSV由来の初期値を描画時から桁区切りし、�
 });
 
 test('[TKC行期間] 対象期と重ならない控除割合だけを無効化し既入力値は消さず警告する', () => {
-  const h = flowHarness(['taxRowRatioOverlapsPeriod','taxRowRatioPeriod','taxRowCodeName','refreshTaxRowControls']);
+  const h = flowHarness(['taxRowRatioOverlapsPeriod','taxRowRatioPeriod','purchaseRatioContext','taxRowCodeName','refreshTaxRowControls']);
   const buckets = [
     {key:'80',start:'2023-10-01',end:'2026-09-30',range:'令和5年10月1日から令和8年9月30日まで'},
     {key:'70',start:'2026-10-01',end:'2028-09-30',range:'令和8年10月1日から令和10年9月30日まで'},

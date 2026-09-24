@@ -20,8 +20,14 @@
     return amount;
   }
 
-  function row(id, code, amount, {businessType = '', rate = '', creditRatio = ''} = {}){
-    return {id, code, businessType, rate, amount:String(safeAmount(amount)), foodAmount:'', creditRatio, source:'csv'};
+  function row(id, code, amount, {businessType = '', rate = '', creditRatio = '', provenance = null} = {}){
+    return {id, code, businessType, rate, amount:String(safeAmount(amount)), foodAmount:'', creditRatio, source:'csv',
+      ...(provenance ? {
+        sourceDateStart:provenance.sourceDateStart,
+        sourceDateEnd:provenance.sourceDateEnd,
+        sourceAdjustmentCount:provenance.sourceAdjustmentCount,
+        sourceDateUnknownCount:provenance.sourceDateUnknownCount
+      } : {})};
   }
 
   // The journal parser owns correction, exclusion, assumptions and signed
@@ -61,7 +67,9 @@
         for(const rate of RATES){
           const amount = safeAmount(group.exempt?.[creditRatio]?.[rate]);
           if(amount !== 0){
-            purchases.push(row(`csv-purchase-${codes.exempt}-${creditRatio}-${rate}`, codes.exempt, amount, {rate, creditRatio}));
+            const provenance = analysis.exemptPurchaseProvenanceByUse?.[usage]?.[creditRatio]?.[rate];
+            if(!provenance) throw new TypeError(`CSVの免税仕入日付情報がありません: ${usage}/${creditRatio}/${rate}`);
+            purchases.push(row(`csv-purchase-${codes.exempt}-${creditRatio}-${rate}`, codes.exempt, amount, {rate, creditRatio, provenance}));
           }
         }
       }

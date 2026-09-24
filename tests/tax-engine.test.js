@@ -663,7 +663,7 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r28');
+  assert.equal(release.APP_META.version, 'r29.1');
   assert.match(release.APP_META.currentLawBasisLabel, /国税庁/);
   assert.match(release.APP_META.proposalBasisLabel, /未施行/);
 });

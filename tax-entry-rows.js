@@ -202,11 +202,12 @@
       // ここでは個別対応方式の用途別仕入税額にだけ同じ実績税額を加える。
       actualOnePercentEntries.forEach(entry => {
         if(entry.usage !== usage || !['invoicePurchase','exemptPurchase'].includes(entry.kind)) return;
-        const gross = Number(entry.amount);
-        if(!Number.isFinite(gross)) return;
-        const ratio = entry.kind === 'exemptPurchase' ? Number(entry.creditRatio) : 1;
-        if(!Number.isFinite(ratio)) return;
-        rawTax += engine.taxFromAmount(gross, 1, 'included') * ratio;
+        const gross = engine.parseAmountInput(entry.amount, {allowNegative:true});
+        if(!gross.valid || !gross.entered || (entry.transactionKind === 'ordinary' && gross.value < 0)) return;
+        const ratio = entry.kind === 'exemptPurchase'
+          ? engine.normalizeExemptPurchaseRatio(entry.creditRatio) : 1;
+        if(ratio === null) return;
+        rawTax += engine.taxFromAmount(gross.value, 1, 'included') * ratio;
       });
       purchaseTaxByUse[usage] = Math.round(rawTax);
     });
@@ -235,8 +236,166 @@
     };
   }
 
+  // 元の税込行を変更せず、指定した税率シナリオ・対象期の控除割合から
+  // 仕入税額の総額と3用途の内訳を同じ行計算で作る。表示用の円丸めは行わない。
+  function aggregateScenarioPurchases(input = {}, options = {}){
+    const purchases = Array.isArray(input.purchases) ? input.purchases : [];
+    const actualEntries = Array.isArray(input.actualOnePercentEntries) ? input.actualOnePercentEntries : [];
+    const taxScenario = options.taxScenario === 'foodProposal' ? 'foodProposal' : 'current';
+    const fraction = options.foodForecastMethod === 'uniform' ? Number(options.proposalFraction) : 1;
+    const override = options.exemptRatioOverride;
+    const useOverride = override !== null && override !== undefined;
+    const errors = aggregateTaxRows({purchases}).errors.map(error => error.message);
+    const calculationErrors = [...errors];
+    const addCalculationError = message => { errors.push(message); calculationErrors.push(message); };
+    if(taxScenario === 'foodProposal' && (!Number.isFinite(fraction) || fraction < 0 || fraction > 1)){
+      addCalculationError('食品1％対象期間の割合を確認してください。');
+    }
+    if(useOverride && (!Number.isFinite(override) || override < 0 || override > 1)){
+      addCalculationError('将来期の免税事業者等仕入の控除割合を確認してください。');
+    }
+    const purchaseTaxByUse = Object.fromEntries(PURCHASE_USAGES.map(usage => [usage, 0]));
+    const invoiceByRate = {'10':0,'8':0,'1':0};
+    const exemptByRate = {'10':0,'8':0,'1':0};
+    let invoiceTotalAmount = 0;
+    let invoiceTax = 0;
+    let exemptTotalAmount = 0;
+    let exemptTax = 0;
+    let exemptCreditableTax = 0;
+    let usageUnknown = false;
+    const priceBasis = options.foodPurchasePriceBasis === 'grossFixed' ? 'grossFixed' : 'netFixed';
+    const projectedFoodGross = gross => {
+      if(!gross) return 0;
+      const sign = Math.sign(gross);
+      const absoluteGross = Math.abs(gross);
+      return sign * engine.projectPrice({
+        netAmount:absoluteGross / 1.08,
+        grossAmount:absoluteGross,
+        ratePercent:1,
+        priceBasis
+      }).grossAmount;
+    };
+    purchases.forEach(row => {
+      const detail = CODE_DETAILS[String(row?.code ?? '').trim()];
+      if(!detail || detail.side !== 'purchases') return;
+      const amount = engine.parseAmountInput(row.amount, {allowNegative:true});
+      const rate = String(row.rate ?? '').trim();
+      if(!amount.valid || !amount.entered || !RATES.includes(rate)) return;
+      const food = engine.parseAmountInput(row.foodAmount, {allowNegative:true});
+      if(!food.valid) return;
+      if(food.entered && (rate !== '8' || Math.abs(food.value) > Math.abs(amount.value) + 1e-8
+        || (food.value !== 0 && Math.sign(food.value) !== Math.sign(amount.value)))) return;
+      const foodOriginal = taxScenario === 'foodProposal' && rate === '8' && food.entered
+        ? food.value * (Number.isFinite(fraction) ? fraction : 0) : 0;
+      const originalRemainder = amount.value - foodOriginal;
+      const foodGross = projectedFoodGross(foodOriginal);
+      const taxOriginal = engine.taxFromAmount(originalRemainder, Number(rate), 'included');
+      const taxFood = engine.taxFromAmount(foodGross, 1, 'included');
+      const rowTax = taxOriginal + taxFood;
+      const rowAmount = originalRemainder + foodGross;
+      let ratio = 1;
+      if(detail.exempt){
+        const enteredRatio = String(row.creditRatio || row.bucket || '').trim().replace(/%$/, '');
+        if(!EXEMPT_RATIOS.includes(enteredRatio)) return;
+        ratio = useOverride ? override : Number(enteredRatio) / 100;
+        exemptTotalAmount += rowAmount;
+        exemptTax += rowTax;
+        exemptCreditableTax += rowTax * ratio;
+        exemptByRate[rate] += originalRemainder;
+        exemptByRate['1'] += foodGross;
+      }else{
+        invoiceTotalAmount += rowAmount;
+        invoiceTax += rowTax;
+        invoiceByRate[rate] += originalRemainder;
+        invoiceByRate['1'] += foodGross;
+      }
+      purchaseTaxByUse[detail.usage] += rowTax * ratio;
+    });
+    actualEntries.forEach((entry, index) => {
+      if(!['invoicePurchase','exemptPurchase'].includes(entry?.kind)) return;
+      if(taxScenario !== 'foodProposal'){
+        addCalculationError(`CSV明示1％仕入${index + 1}件目は現行税率へ換算できません。`);
+        return;
+      }
+      const parsedGross = engine.parseAmountInput(entry.amount, {allowNegative:true});
+      if(!parsedGross.valid || !parsedGross.entered || (entry.transactionKind === 'ordinary' && parsedGross.value < 0)){
+        addCalculationError(`CSV明示1％仕入${index + 1}件目の金額を確認してください。`);
+        return;
+      }
+      const gross = parsedGross.value;
+      const tax = engine.taxFromAmount(gross, 1, 'included');
+      let ratio = 1;
+      if(entry.kind === 'exemptPurchase'){
+        ratio = engine.normalizeExemptPurchaseRatio(entry.creditRatio);
+        if(ratio === null){
+          addCalculationError(`CSV明示1％仕入${index + 1}件目の控除割合を確認してください。`);
+          return;
+        }
+        if(useOverride) ratio = override;
+        exemptTotalAmount += gross;
+        exemptTax += tax;
+        exemptCreditableTax += tax * ratio;
+        exemptByRate['1'] += gross;
+      }else{
+        invoiceTotalAmount += gross;
+        invoiceTax += tax;
+        invoiceByRate['1'] += gross;
+      }
+      if(!PURCHASE_USAGES.includes(entry.usage)){
+        usageUnknown = true;
+        errors.push(`CSV明示1％仕入${index + 1}件目の用途区分を確認してください。`);
+        return;
+      }
+      purchaseTaxByUse[entry.usage] += tax * ratio;
+    });
+    const totalCreditableTax = invoiceTax + exemptCreditableTax;
+    const usageTotal = PURCHASE_USAGES.reduce((sum, usage) => sum + purchaseTaxByUse[usage], 0);
+    const arithmeticTolerance = 1e-7 + Math.abs(totalCreditableTax) * Number.EPSILON * 16;
+    if(!usageUnknown && Math.abs(usageTotal - totalCreditableTax) > arithmeticTolerance){
+      errors.push('仕入税額の用途別合計と控除対象仕入税額総額が一致しません。');
+    }
+    return {
+      invoiceTotalAmount, invoiceTax, exemptTotalAmount, exemptTax, exemptCreditableTax,
+      totalAmount:invoiceTotalAmount + exemptTotalAmount,
+      totalTax:invoiceTax + exemptTax,
+      totalCreditableTax, purchaseTaxByUse, usageTotal,
+      invoiceByRate, exemptByRate,
+      usageUnknown, complete:errors.length === 0, errors, calculationErrors
+    };
+  }
+
+  // Saved CSV summaries are display fields; entries remain the calculation
+  // source. Rebuild summaries only when every entry can be read, so a corrupt
+  // saved amount or ratio is never silently replaced with zero.
+  function summarizeActualOnePercentEntries(entries){
+    if(!Array.isArray(entries) || !entries.length) return null;
+    const summary = {
+      salesByType:Object.fromEntries(BUSINESS_TYPES.map(type => [type, 0])),
+      invoicePurchase:0,
+      exemptPurchases:Object.fromEntries(EXEMPT_RATIOS.map(ratio => [ratio, 0]))
+    };
+    for(const entry of entries){
+      const amount = engine.parseAmountInput(entry?.amount, {allowNegative:true});
+      if(!amount.valid || !amount.entered || (entry.transactionKind === 'ordinary' && amount.value < 0)) return null;
+      if(entry.kind === 'sale'){
+        if(!BUSINESS_TYPES.includes(entry.businessType)) return null;
+        summary.salesByType[entry.businessType] += amount.value;
+      }else if(entry.kind === 'invoicePurchase'){
+        summary.invoicePurchase += amount.value;
+      }else if(entry.kind === 'exemptPurchase'){
+        const ratio = engine.normalizeExemptPurchaseRatio(entry.creditRatio);
+        if(ratio === null) return null;
+        const bucket = EXEMPT_RATIOS.find(value => Math.abs(Number(value) / 100 - ratio) < 1e-9);
+        if(!bucket) return null;
+        summary.exemptPurchases[bucket] += amount.value;
+      }else return null;
+    }
+    return summary;
+  }
+
   return Object.freeze({
     BUSINESS_TYPES, RATES, EXEMPT_RATIOS, CODE_DETAILS,
-    createTaxEntryRow, aggregateTaxRows
+    createTaxEntryRow, aggregateTaxRows, aggregateScenarioPurchases,
+    summarizeActualOnePercentEntries
   });
 });

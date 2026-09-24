@@ -1,6 +1,6 @@
 {
   "name": "shohizei-kazei-houshiki",
-  "version": "28.0.0",
+  "version": "29.1.0",
   "private": true,
   "scripts": {
     "test": "node --test",

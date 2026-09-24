@@ -3,13 +3,115 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const engine = require('../tax-engine.js');
-const { aggregateTaxRows, createTaxEntryRow, CODE_DETAILS } = require('../tax-entry-rows.js');
+const { aggregateTaxRows, aggregateScenarioPurchases, createTaxEntryRow, CODE_DETAILS } = require('../tax-entry-rows.js');
 
 const sale = (code, amount, rate = '', businessType = '', foodAmount = '') =>
   createTaxEntryRow('sales', { code, amount, rate, businessType, foodAmount });
 const purchase = (code, amount, rate = '10', creditRatio = '', foodAmount = '') =>
   createTaxEntryRow('purchases', { code, amount, rate, creditRatio, foodAmount });
 const value = (result, id) => result.fields[id].value;
+const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-7, `${actual} !== ${expected}`);
+
+test('T01: 元行から食品1％の総額と3用途を同時再集計し、現行8％値は不変', () => {
+  const purchases = [
+    purchase('5','1080000','8','','1080000'),
+    purchase('6','1100000','10'),
+    purchase('7','1100000','10')
+  ];
+  const original = structuredClone(purchases);
+  const current = aggregateScenarioPurchases({purchases}, {taxScenario:'current'});
+  const food = aggregateScenarioPurchases({purchases}, {
+    taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1,foodPurchasePriceBasis:'netFixed'
+  });
+  assert.equal(current.complete,true);
+  assert.equal(food.complete,true);
+  closeTo(current.purchaseTaxByUse.taxableOnly,80000);
+  closeTo(current.totalCreditableTax,280000);
+  closeTo(food.invoiceTotalAmount,3210000);
+  closeTo(food.purchaseTaxByUse.taxableOnly,10000);
+  closeTo(food.purchaseTaxByUse.nonTaxableOnly,100000);
+  closeTo(food.purchaseTaxByUse.common,100000);
+  closeTo(food.totalCreditableTax,210000);
+  closeTo(1000000 - (food.purchaseTaxByUse.taxableOnly + food.purchaseTaxByUse.common * .5),940000);
+  closeTo(1000000 - (current.purchaseTaxByUse.taxableOnly + current.purchaseTaxByUse.common * .5),870000);
+  assert.deepEqual(purchases,original);
+});
+
+test('T02: 税込据置・一部食品・期間手入力／均等配分と免税70％を二重適用しない', () => {
+  const rows = [purchase('5','1080000','8','','1080000'),purchase('6','1100000'),purchase('7','1100000')];
+  const grossFixed = aggregateScenarioPurchases({purchases:rows}, {
+    taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1,foodPurchasePriceBasis:'grossFixed'
+  });
+  closeTo(grossFixed.purchaseTaxByUse.taxableOnly,1080000 / 101);
+  closeTo(1000000 - (grossFixed.purchaseTaxByUse.taxableOnly + 50000),939306.9306930693);
+  const manual = aggregateScenarioPurchases({purchases:rows}, {
+    taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:.5,foodPurchasePriceBasis:'netFixed'
+  });
+  const uniform = aggregateScenarioPurchases({purchases:rows}, {
+    taxScenario:'foodProposal',foodForecastMethod:'uniform',proposalFraction:.5,foodPurchasePriceBasis:'netFixed'
+  });
+  closeTo(manual.purchaseTaxByUse.taxableOnly,10000);
+  closeTo(uniform.purchaseTaxByUse.taxableOnly,45000);
+  const exempt = aggregateScenarioPurchases({purchases:[purchase('52','1080000','8','70','1080000'),...rows.slice(1)]}, {
+    taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1,foodPurchasePriceBasis:'netFixed'
+  });
+  closeTo(exempt.purchaseTaxByUse.taxableOnly,7000);
+  closeTo(exempt.totalCreditableTax,207000);
+  closeTo(1000000 - (exempt.purchaseTaxByUse.taxableOnly + 50000),943000);
+});
+
+test('T04: 将来期の70・50・30・0％は元の免税仕入税額から用途別と総額へ同時反映', () => {
+  const purchases = [purchase('52','1100000','10','80'),purchase('6','1100000'),purchase('7','1100000')];
+  const current = aggregateScenarioPurchases({purchases}, {taxScenario:'current'});
+  closeTo(current.purchaseTaxByUse.taxableOnly,80000);
+  closeTo(current.totalCreditableTax,280000);
+  for(const [ratio,taxableOnly,regularAmount] of [[.7,70000,880000],[.5,50000,900000],[.3,30000,920000],[0,0,950000]]){
+    const future = aggregateScenarioPurchases({purchases}, {taxScenario:'current',exemptRatioOverride:ratio});
+    assert.equal(future.complete,true);
+    closeTo(future.purchaseTaxByUse.taxableOnly,taxableOnly);
+    closeTo(future.purchaseTaxByUse.nonTaxableOnly,100000);
+    closeTo(future.purchaseTaxByUse.common,100000);
+    closeTo(future.totalCreditableTax,taxableOnly + 200000);
+    closeTo(1000000 - (future.purchaseTaxByUse.taxableOnly + future.purchaseTaxByUse.common * .5),regularAmount);
+  }
+});
+
+test('明示1％実績は予測8％行へ混ぜず、用途へ一度だけ加え、用途不明は未算定', () => {
+  const purchases = [purchase('5','108000','8','','108000')];
+  const entries = [
+    {kind:'invoicePurchase',usage:'common',amount:10100},
+    {kind:'exemptPurchase',usage:'nonTaxableOnly',amount:10100,creditRatio:.7}
+  ];
+  const result = aggregateScenarioPurchases({purchases,actualOnePercentEntries:entries}, {
+    taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1,foodPurchasePriceBasis:'netFixed'
+  });
+  assert.equal(result.complete,true);
+  closeTo(result.invoiceTax,1100);
+  closeTo(result.exemptCreditableTax,70);
+  closeTo(result.purchaseTaxByUse.taxableOnly,1000);
+  closeTo(result.purchaseTaxByUse.common,100);
+  closeTo(result.purchaseTaxByUse.nonTaxableOnly,70);
+  closeTo(result.totalCreditableTax,1170);
+  const unknown = aggregateScenarioPurchases({purchases,actualOnePercentEntries:[{kind:'invoicePurchase',amount:10100}]}, {
+    taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1
+  });
+  assert.equal(unknown.complete,false);
+  assert.equal(unknown.usageUnknown,true);
+  assert.match(unknown.errors.join(' '),/用途区分/);
+  const current = aggregateScenarioPurchases({purchases,actualOnePercentEntries:entries}, {taxScenario:'current'});
+  assert.equal(current.complete,false);
+  closeTo(current.invoiceTax,8000);
+});
+
+test('食品内数の返品は符号を保って換算し、差引後の正額を維持', () => {
+  const result = aggregateScenarioPurchases({purchases:[
+    purchase('5','216000','8','','216000'),purchase('5','-108000','8','','-108000')
+  ]}, {taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1});
+  assert.equal(result.complete,true);
+  closeTo(result.invoiceTotalAmount,101000);
+  closeTo(result.invoiceTax,1000);
+  closeTo(result.purchaseTaxByUse.taxableOnly,1000);
+});
 
 test('TKC行モデルは指定の8区分のみを定義し、空の末尾行を取引にしない', () => {
   assert.deepEqual(Object.keys(CODE_DETAILS), ['1','3','5','6','7','52','62','72']);

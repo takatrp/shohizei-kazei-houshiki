@@ -339,6 +339,9 @@
     const invoicePurchases = emptyRateAmounts();
     const exemptPurchases = emptyExemptPurchases();
     const purchaseAmountsByUse = emptyPurchaseAmountsByUse();
+    // Only aggregate date evidence is retained here; no account, memo, or
+    // other transaction-level detail is needed by the row-entry UI.
+    const exemptPurchaseProvenanceByUse = {taxableOnly:{},nonTaxableOnly:{},common:{}};
     const unsupported = new Map();
     const errors = problemEntries.filter(item => item.status === 'unresolved').map(item => `${item.row}行目 ${item.side}: ${item.issues.join(' ')}`);
     let nonTaxableSales = 0;
@@ -443,6 +446,18 @@
           const signedAmount = amountState.value * amountDirection('purchase', side);
           exemptPurchases[ratio][rate] += signedAmount;
           purchaseAmountsByUse[exemptUsage].exempt[ratio][rate] += signedAmount;
+          const byRatio = exemptPurchaseProvenanceByUse[exemptUsage][ratio] ||= {};
+          const provenance = byRatio[rate] ||= {
+            sourceDateStart:'', sourceDateEnd:'', sourceAdjustmentCount:0, sourceDateUnknownCount:0
+          };
+          if(transactionKind === 'adjustment') provenance.sourceAdjustmentCount += 1;
+          if(!date) provenance.sourceDateUnknownCount += 1;
+          // Returns/corrections identify their original transaction separately;
+          // their own date must not establish a credit-ratio period.
+          if(transactionKind === 'ordinary' && date){
+            if(!provenance.sourceDateStart || date < provenance.sourceDateStart) provenance.sourceDateStart = date;
+            if(!provenance.sourceDateEnd || date > provenance.sourceDateEnd) provenance.sourceDateEnd = date;
+          }
           exemptTransactionCount += 1;
           if(date){
             if(!effectiveStart || date < effectiveStart) effectiveStart = date;
@@ -503,6 +518,7 @@
       nonTaxableSales,
       purchaseTaxByUse,
       purchaseAmountsByUse,
+      exemptPurchaseProvenanceByUse,
       unsupportedEntries,
       problemEntries,
       recoverySummary,

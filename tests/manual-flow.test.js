@@ -66,6 +66,7 @@ function flowHarness(names){
     importedUnsupportedEntries:[],
     importedCsvRecovery:null,
     importedCsvOrigin:null,
+    importedReturnEvidence:null,
     appliedJournalImport:null,
     importedExemptTransactionCount:0,
     window:{confirm:() => true},
@@ -74,7 +75,8 @@ function flowHarness(names){
     update(){ updates += 1; },
     renderJournalImport(){},
     decodeCsvBytes(){ return { text:'fixture', encoding:'UTF-8' }; },
-    analyzeTkcJournalText(){ return { errors:[], actualOnePercentEntries:[] }; }
+    analyzeTkcJournalText(){ return { errors:[], actualOnePercentEntries:[] }; },
+    aggregateReturnInputs(){ return null; }
   });
   vm.runInContext([...new Set(['normalizeCsvRecovery', 'csvRecoverySummaryText', ...names])].map(functionSource).join('\n'), context);
   return { context, element, updates:() => updates };
@@ -93,6 +95,14 @@ function salesContext(){
     taxScenario:'current', foodForecastMethod:'manual', foodSalesPriceBasis:'netFixed'
   };
 }
+
+test('食品1％の期間別金額は日数均等按分を先頭の原則とし、手入力も選べる', () => {
+  const select = html.match(/<select id="foodForecastMethod">([\s\S]*?)<\/select>/)?.[1];
+  assert.ok(select);
+  assert.match(select,/^\s*<option value="uniform">年額・期間額を日数で均等按分（原則）<\/option>\s*<option value="manual">1％対象期間分を手入力<\/option>\s*$/);
+  assert.match(functionSource('resetAll'),/\$\('foodForecastMethod'\)\.value = 'uniform'/);
+  assert.match(functionSource('getContext'),/foodForecastMethod:\$\('foodForecastMethod'\)\.value \|\| 'uniform'/);
+});
 
 test('[M01][M13][U01-U03] 手入力とCSVは対等な入口で、旧冒頭案内を置かない', () => {
   assert.doesNotMatch(html, /CSVがなくても使えます|manual-entry-intro/);
@@ -306,6 +316,9 @@ test('[M10][M14] 保存復元後も手入力額・課税期間・税率前提・
     effectiveDateRange:{start:'2025-01-15',end:'2025-02-15'},
     rowCount:2,mappedEntries:2,manualChanged:true
   };
+  before.context.importedReturnEvidence = {taxableSalesGross:{'10':110000},invoiceByUse:{taxableOnly:{'10':22000}}};
+  before.element('returnPurchaseAdjustment10').value = '1,000';
+  before.element('returnAdjustmentConfirmed').checked = true;
   before.context.selectedComparisonMethods = () => ['regular'];
   before.context.saveState();
   assert.equal(before.element('saveStatus').textContent, 'この端末に保存中');
@@ -328,6 +341,10 @@ test('[M10][M14] 保存復元後も手入力額・課税期間・税率前提・
   assert.equal(after.context.importedCsvOrigin.dateRange.start, '2025-01-15');
   assert.equal(after.context.importedCsvOrigin.effectiveDateRange.end, '2025-02-15');
   assert.equal(after.context.importedCsvOrigin.manualChanged, true);
+  assert.equal(after.context.importedReturnEvidence,null);
+  assert.equal(Object.hasOwn(JSON.parse(storage.get('manual-flow-test')),'importedReturnEvidence'),false);
+  assert.equal(after.element('returnPurchaseAdjustment10').value,'1,000');
+  assert.equal(after.element('returnAdjustmentConfirmed').checked,true);
 });
 
 test('[TKC行保存] 行の順序・出所・0円と空欄・控除割合を保存復元し旧集計値を二重編集しない', () => {
@@ -440,7 +457,7 @@ test('[TKC行表示] 金額の入力中に桁区切りし、選択肢は番号�
 test('[TKC行表示] 不要セルは入力不能かつ通常欄と別表示、売上追加は表の直下に置く', () => {
   assert.match(html,/\.tkc-row-table input:disabled,\.tkc-row-table select:disabled\{[^}]*border-color:transparent/);
   assert.match(html,/\.tkc-row-table input:disabled::placeholder\{[^}]*opacity:1/);
-  assert.match(functionSource('refreshTaxRowControls'),/business\.disabled = !showBusinessTypeColumn\(\) \|\| row\.code !== '1'/);
+  assert.match(functionSource('refreshTaxRowControls'),/business\.disabled = !showBusinessTypeColumn\(\) \|\| !\['1','11'\]\.includes\(row\.code\)/);
   assert.match(functionSource('refreshTaxRowControls'),/rate\.disabled = row\.code === '3'/);
   assert.match(functionSource('refreshTaxRowControls'),/food\.disabled = !showFoodAmountColumn\(\) \|\| row\.code === '3' \|\| row\.rate !== '8'/);
   assert.match(functionSource('initWorkflow'),/\$\('addTaxSalesRow'\)\.closest\('\.tkc-row-actions'\)\.after\(foodSaleConfirmation\)/);

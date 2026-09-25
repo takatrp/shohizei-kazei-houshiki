@@ -113,8 +113,8 @@ test('食品内数の返品は符号を保って換算し、差引後の正額�
   closeTo(result.purchaseTaxByUse.taxableOnly,1000);
 });
 
-test('TKC行モデルは指定の8区分のみを定義し、空の末尾行を取引にしない', () => {
-  assert.deepEqual(Object.keys(CODE_DETAILS), ['1','3','5','6','7','52','62','72']);
+test('TKC行モデルは8区分と売上返還等11を定義し、空の末尾行を取引にしない', () => {
+  assert.deepEqual(Object.keys(CODE_DETAILS), ['1','3','5','6','7','11','52','62','72']);
   const result = aggregateTaxRows({ sales:[createTaxEntryRow('sales')], purchases:[createTaxEntryRow('purchases')] });
   assert.equal(result.ready, true);
   assert.equal(result.fields.type2Sale10.entered, false);

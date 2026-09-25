@@ -235,7 +235,8 @@
       key:`account-${encodeURIComponent(accountName)}`,
       accountName,
       amounts:emptyRateAmounts(),
-      entryCounts:emptyRateAmounts()
+       entryCounts:emptyRateAmounts(),
+       returnGross:emptyRateAmounts()
     };
     current.amounts[rate] += amount;
     current.entryCounts[rate] += 1;
@@ -336,6 +337,11 @@
     const {entries,problemEntries,recoverySummary} = recovery;
     const problemPositions = new Set(problemEntries.map(item => `${item.row}:${item.side}`));
     const salesByType = emptySalesByType();
+    // Preserve pre-return gross amounts for the filed-return calculation.
+    // salesByType remains net for the existing comparison and row-entry UI.
+    const returnSales = {taxableGross:emptyRateAmounts(),returnGross:emptyRateAmounts()};
+    const returnGrossByType = emptySalesByType();
+    const unhandledReturnCodes = new Set();
     const salesEntryCountsByTypeRate = emptySalesByType();
     const unclassified = new Map();
     const invoicePurchases = emptyRateAmounts();
@@ -365,6 +371,7 @@
       }
       ['借方','貸方'].forEach(side => {
         const code = normalizeCode(entry[`${side}課税区分`]);
+        if(['51','53','61','63','71','73'].includes(code)) unhandledReturnCodes.add(code);
         const transactionKind = entry.__adjustmentSides.includes(side) || ADJUSTMENT_TAX_CODES.has(code)
           || (code === '1' ? side === '借方' : side === '貸方')
           ? 'adjustment' : 'ordinary';
@@ -387,12 +394,21 @@
             return;
           }
           const signedAmount = amountState.value * amountDirection('sales', side);
-          const businessType = businessTypeForEntry(entry, side);
-          if(businessType){
-            salesByType[businessType][rate] += signedAmount;
+           if(code === '11') returnSales.returnGross[rate] -= signedAmount;
+           else returnSales.taxableGross[rate] += signedAmount;
+           const businessType = businessTypeForEntry(entry, side);
+           if(businessType){
+             if(code === '11') returnGrossByType[businessType][rate] -= signedAmount;
+             salesByType[businessType][rate] += signedAmount;
             salesEntryCountsByTypeRate[businessType][rate] += 1;
           }
-          else addUnclassified(unclassified, entry, side, rate, signedAmount);
+           else {
+             addUnclassified(unclassified, entry, side, rate, signedAmount);
+             if(code === '11'){
+               const name = String(entry[`${side}科目名`] ?? '').trim() || '科目名未設定';
+               unclassified.get(name).returnGross[rate] -= signedAmount;
+             }
+           }
           if(date){
             if(!effectiveStart || date < effectiveStart) effectiveStart = date;
             if(!effectiveEnd || date > effectiveEnd) effectiveEnd = date;
@@ -515,6 +531,9 @@
       dateRange:{ start, end },
       effectiveDateRange:{ start:effectiveStart, end:effectiveEnd },
       salesByType,
+      returnSales,
+      returnGrossByType,
+      unhandledReturnCodes:[...unhandledReturnCodes].sort(),
       salesEntryCountsByTypeRate,
       unclassifiedSales,
       invoicePurchases,
@@ -543,8 +562,9 @@
     }]));
   }
 
-  function resolveImportValues(analysis, mappings = {}, {allowUnclassifiedSales = false} = {}){
+  function resolveImportValues(analysis, mappings = {}, {allowUnclassifiedSales = false, allowReturnOnlySales = false} = {}){
     const salesByType = cloneSalesByType(analysis.salesByType || {});
+    const returnGrossByType = cloneSalesByType(analysis.returnGrossByType || {});
     const salesEntryCountsByTypeRate = cloneSalesByType(analysis.salesEntryCountsByTypeRate || {});
     const unresolved = [];
     const unclassifiedSales = [];
@@ -557,10 +577,26 @@
       }
       SUPPORTED_RATES.forEach(rate => {
         salesByType[selected][rate] += Number(group.amounts[rate] || 0);
+        returnGrossByType[selected][rate] += Number(group.returnGross?.[rate] || 0);
         salesEntryCountsByTypeRate[selected][rate] += Number(group.entryCounts?.[rate] || 0);
       });
     });
-    const errors = [...(analysis.errors || [])];
+    // A regular-tax comparison can carry a return-only sales account as an
+    // explicit code 11 row. Keep the strict/default CSV validation unchanged.
+    const returnOnlySafe = allowReturnOnlySales && analysis.negativeAggregateError
+      && ['8','10'].every(rate => Number(analysis.returnSales.returnGross[rate] || 0)
+        <= Number(analysis.returnSales.taxableGross[rate] || 0))
+      && BUSINESS_TYPE_KEYS.every(key => SUPPORTED_RATES.every(rate =>
+        Number(analysis.salesByType[key][rate] || 0) + Number(analysis.returnGrossByType[key][rate] || 0) >= 0))
+      && (analysis.unclassifiedSales || []).every(group => SUPPORTED_RATES.every(rate =>
+        Number(group.amounts[rate] || 0) + Number(group.returnGross?.[rate] || 0) >= 0))
+      && SUPPORTED_RATES.every(rate => Number(analysis.invoicePurchases[rate] || 0) >= 0)
+      && EXEMPT_RATIOS.every(ratio => SUPPORTED_RATES.every(rate => Number(analysis.exemptPurchases[ratio][rate] || 0) >= 0))
+      && Object.values(analysis.purchaseAmountsByUse).every(group => SUPPORTED_RATES.every(rate =>
+        Number(group.invoice[rate] || 0) >= 0 && EXEMPT_RATIOS.every(ratio => Number(group.exempt[ratio][rate] || 0) >= 0)))
+      && Number(analysis.nonTaxableSales || 0) >= 0
+      && !Number(analysis.returnSales.returnGross['1'] || 0);
+    const errors = (analysis.errors || []).filter(error => !(returnOnlySafe && error === analysis.negativeAggregateError));
     if(unresolved.length) errors.push(`簡易課税の事業区分が未選択です: ${unresolved.join('、')}`);
     return {
       ready:errors.length === 0,
@@ -573,6 +609,7 @@
       }),
       values:{
         salesByType,
+        returnGrossByType,
         salesEntryCountsByTypeRate,
         invoicePurchases:{
           '10':Number(analysis.invoicePurchases?.['10'] || 0),
@@ -594,7 +631,7 @@
     };
   }
 
-  function prepareEstimatedImport(text, decisions = {}, mappings = {}, {allowUnclassifiedSales = false} = {}){
+  function prepareEstimatedImport(text, decisions = {}, mappings = {}, {allowUnclassifiedSales = false, allowReturnOnlySales = false} = {}){
     // This opt-in preparation is an estimate of input data, not another tax engine.
     // Every invocation starts from the CSV and the user's explicit choices so that
     // cancelling or switching back to strict import never confirms an assumption.
@@ -675,8 +712,16 @@
       assumptions.negativeAbsAmount += Math.abs(amount);
       amounts[rate] = 0;
     };
-    BUSINESS_TYPE_KEYS.forEach(key => SUPPORTED_RATES.forEach(rate => floorEstimate(analysis.salesByType[key], rate, 'sales')));
-    analysis.unclassifiedSales.forEach(group => SUPPORTED_RATES.forEach(rate => floorEstimate(group.amounts, rate, 'sales')));
+    const returnCovered = rate => allowReturnOnlySales && rate !== '1'
+      && Number(analysis.returnSales.returnGross[rate] || 0) <= Number(analysis.returnSales.taxableGross[rate] || 0);
+    BUSINESS_TYPE_KEYS.forEach(key => SUPPORTED_RATES.forEach(rate => {
+      if(!returnCovered(rate) || analysis.salesByType[key][rate] + analysis.returnGrossByType[key][rate] < 0)
+        floorEstimate(analysis.salesByType[key], rate, 'sales');
+    }));
+    analysis.unclassifiedSales.forEach(group => SUPPORTED_RATES.forEach(rate => {
+      if(!returnCovered(rate) || group.amounts[rate] + group.returnGross[rate] < 0)
+        floorEstimate(group.amounts, rate, 'sales');
+    }));
     Object.values(analysis.purchaseAmountsByUse).forEach(groups => {
       SUPPORTED_RATES.forEach(rate => floorEstimate(groups.invoice, rate, 'invoicePurchase'));
       EXEMPT_RATIOS.forEach(ratio => SUPPORTED_RATES.forEach(rate => floorEstimate(groups.exempt[ratio], rate, 'exemptPurchase')));
@@ -711,7 +756,7 @@
     assumptions.assumedDetailCount = analysis.problemEntries.filter(problem => problem.status === 'corrected' && assumedIds.has(problem.id)).length;
     const recoverySummary = {...analysis.recoverySummary, ...assumptions, correctedCount:analysis.recoverySummary.correctedCount - assumptions.assumedDetailCount};
     analysis.recoverySummary = recoverySummary;
-    return {analysis, resolved:resolveImportValues(analysis, estimateMappings, {allowUnclassifiedSales}), recoverySummary};
+    return {analysis, resolved:resolveImportValues(analysis, estimateMappings, {allowUnclassifiedSales,allowReturnOnlySales}), recoverySummary};
   }
 
   return Object.freeze({

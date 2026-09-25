@@ -250,7 +250,7 @@
       return { status:'unknown', reasonCode:'adjustment', reason:'返品・調整のため、元取引の日付と適用税率の確認が必要です。返品日が1％対象期間内でも、元取引が8％なら1％とは確定できません。' };
     }
     if(input.transactionKind !== 'ordinary'){
-      return { status:'unknown', reasonCode:'kindUnknown', reason:'取引種別が不明です。元のCSV仕訳の課税区分・借貸と元取引の確認が必要です。' };
+      return { status:'unknown', reasonCode:'kindUnknown', reason:'取引種別が不明です。元のCSV仕訳の課税区分・貸借と元取引の確認が必要です。' };
     }
     if(expected.ratePercent === 1) return { status:'confirmed', reasonCode:'dateAligned', reason:'' };
     return { status:'invalid', reasonCode:'outsidePeriod', reason:'取引日が飲食料品1％の制度期間外です。元のCSV仕訳の税率・取引日を確認してください。' };

@@ -42,23 +42,28 @@
     const purchases = [];
     for(const businessType of BUSINESS_TYPES){
       for(const rate of RATES){
-        const amount = safeAmount(values.salesByType?.[businessType]?.[rate]);
+        const net = safeAmount(values.salesByType?.[businessType]?.[rate]);
+        const returned = safeAmount(values.returnGrossByType?.[businessType]?.[rate]);
+        const amount = net + returned;
         const count = safeAmount(values.salesEntryCountsByTypeRate?.[businessType]?.[rate]);
         // A return and sale may cancel exactly: a known zero is still input.
         if(amount !== 0 || count > 0){
           sales.push(row(`csv-sale-1-${businessType}-${rate}`, '1', amount, {businessType, rate}));
         }
+        if(returned !== 0) sales.push(row(`csv-sale-11-${businessType}-${rate}`, '11', returned, {businessType, rate}));
       }
     }
     // Other comparisons need the full taxable-sales amount, not a guessed
     // simplified-tax business type. Keep an unmapped CSV sale visibly unknown.
     (resolved.unclassifiedSales || []).forEach((group, index) => {
       for(const rate of RATES){
-        const amount = safeAmount(group.amounts?.[rate]);
+        const returned = safeAmount(group.returnGross?.[rate]);
+        const amount = safeAmount(group.amounts?.[rate]) + returned;
         const count = safeAmount(group.entryCounts?.[rate]);
         if(amount !== 0 || count > 0){
           sales.push(row(`csv-sale-1-unclassified-${index}-${rate}`, '1', amount, {rate}));
         }
+        if(returned !== 0) sales.push(row(`csv-sale-11-unclassified-${index}-${rate}`, '11', returned, {rate}));
       }
     });
     const nonTaxableSales = safeAmount(values.nonTaxableSales);

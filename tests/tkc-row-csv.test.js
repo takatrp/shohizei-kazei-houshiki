@@ -62,15 +62,14 @@ test('CSVの売上・仕入をTKC用途、税率、控除割合ごとの行へ�
   assert.ok(rows.purchases.every(row => row.foodAmount === ''));
 });
 
-test('CSVの売上返品相殺0円は明示0行として保持し、明示1％実績は通常行に混ぜない', () => {
+test('CSVの売上と返還を別行に保持し、純額0円と明示1％実績を区別する', () => {
   const rows = converted([
     entry('貸方',{code:'1',business:'2',rate:'10',amount:1100}),
     entry('借方',{code:'11',business:'2',rate:'10',amount:1100}),
     entry('貸方',{code:'1',business:'2',rate:'1',amount:1010,account:'秘密の科目名'})
   ]);
-  assert.equal(rows.sales.length, 1);
-  assert.equal(rows.sales[0].amount, '0');
-  assert.equal(rows.sales[0].rate, '10');
+  assert.deepEqual(rows.sales.map(item => [item.code,item.amount,item.rate]),[['1','1100','10'],['11','1100','10']]);
+  assert.equal(aggregateTaxRows(rows).fields.type2Sale10.value,0);
   assert.equal(rows.actualOnePercentEntries.length, 1);
   assert.equal(rows.actualOnePercentEntries[0].amount, 1010);
   assert.ok(!JSON.stringify(rows.actualOnePercentEntries).includes('秘密の科目名'));

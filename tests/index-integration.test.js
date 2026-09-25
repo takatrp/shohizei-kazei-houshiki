@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const engine = require('../tax-engine.js');
 const journal = require('../journal-csv.js');
+const returnEngine = require('../tax-return-engine.js');
 const switchDecision = require('../switch-decision.js');
 const taxRows = require('../tax-entry-rows.js');
 const { rowsFromJournalAnalysis } = require('../tax-entry-csv.js');
@@ -26,9 +27,9 @@ const names = [
   'taxFromAmount', 'taxableBaseFromAmount', 'actualOneAmount', 'actualOneTax', 'actualOneBase',
   'inclusiveDayCount', 'proposalOverlapFraction', 'proposalFoodOriginalAmount', 'repriceFoodAmount',
   'currentLawProjectionNotice', 'validateImportedOnePercentEntries', 'csvReviewNotice', 'csvOriginPremise', 'selectionEligibilityForCurrent', 'mergeCalculationAvailability', 'cashBenefitBasisNote',
-  'traceNumber', 'traceMoney', 'tracePercent', 'traceDisplayNote', 'traceLine', 'traceTaxLine', 'traceFoodRows', 'traceRounding', 'renderCalculationTrace', 'renderSwitchBreakdown',
+  'traceNumber', 'traceMoney', 'tracePercent', 'traceDisplayNote', 'traceLine', 'traceTaxLine', 'traceFoodRows', 'traceRounding', 'renderReturnCalculationTrace', 'renderCurrentSalesMethodTrace', 'renderCalculationTrace', 'renderSwitchBreakdown',
   'setImportedAmount', 'applyJournalImport', 'syncTaxEntryRows', 'collectSales', 'exemptPurchaseInputId',
-  'getExemptPurchaseInputIds', 'activeExemptPurchaseInputIds', 'collectExemptPurchases',
+  'getExemptPurchaseInputIds', 'activeExemptPurchaseInputIds', 'collectExemptPurchases', 'returnInputForProjection',
   'taxRowRatioOverlapsPeriod', 'purchaseRatioContext', 'purchaseRatioConflictsForContext', 'collectPurchases', 'projectProposalPurchases', 'validateProposalClassification', 'calculateProjectionPlan', 'renderProjection', 'renderTaxScenarioNotice', 'switchMetric', 'filingStatusLabel', 'calculateSwitchDecision', 'renderSwitchDecision',
   'buildAssumptionRows', 'buildSummaryText', 'buildCsvText', 'renderPrintAssumptions', 'renderHero',
   'customerDecisionText', 'customerDecisionCsv', 'prepareCustomerPrint'
@@ -89,6 +90,10 @@ function harness(csv){
     resolveImportValues:journal.resolveImportValues,
     prepareEstimatedImport:journal.prepareEstimatedImport,
     analyzeTkcJournalText:journal.analyzeTkcJournalText,
+    aggregateReturnInputs:returnEngine.aggregateReturnInputs,
+    aggregateReturnRows:returnEngine.aggregateReturnRows,
+    calculateCurrentLawReturn:returnEngine.calculateCurrentLawReturn,
+    calculateCurrentLawSalesMethod:returnEngine.calculateCurrentLawSalesMethod,
     BUSINESS_TYPES:types,
     EXEMPT_PURCHASE_BUCKETS:buckets,
     CSV_EXEMPT_RATIOS:journal.EXEMPT_RATIOS,
@@ -107,6 +112,8 @@ function harness(csv){
     importedUnsupportedEntries:[],
     importedCsvRecovery:null,
     importedCsvOrigin:null,
+    importedReturnEvidence:null,
+    taxEntryRows:{sales:[],purchases:[]},rowCsvKnownZeros:{},latestTaxRowAggregate:null,
     appliedJournalImport:null,
     window:{ confirm:() => true },
     importedActualOnePercent:null,
@@ -161,10 +168,333 @@ function installCurrentCalculation(h){
     assessHighAssetForMethod:() => ({ status:'clear' }), calcExemptCreditLabel:() => 'なし'
   });
   vm.runInContext(['getContext', 'periodMonthsForAnnualization', 'calculateRegularForContext',
-    'detailedRegularEligibility', 'regularMethodLabel', 'declarationRoundedAmount', 'calculate'].map(functionSource).join('\n'), h.context);
+    'detailedRegularEligibility', 'regularMethodLabel', 'declarationRoundedAmount', 'currentReturnCalculation', 'currentSalesMethodCalculation', 'currentReturnOptions', 'calculate'].map(functionSource).join('\n'), h.context);
+  // Existing scenario/UX regressions intentionally exercise the legacy
+  // counterfactual path; exact-current cases opt in explicitly below.
+  const productionContext = h.context.getContext;
+  h.context.getContext = () => ({...productionContext(),returnCalculationEnabled:h.context.exactReturnEnabled === true});
   h.element('regularDetailMethod').value = 'auto';
   h.element('exemptPurchaseState').value = 'no';
 }
+
+test('匿名のTKC行→CSV反映→申告調整→方式比較まで同じ申告書税額を使う', () => {
+  const h = harness(csv([
+    csvRow({date:'2025/01/01',rate:'10',amount:600765511}),
+    csvRow({date:'2025/02/01',side:'借方',code:'11',rate:'10',amount:29477}),
+    csvRow({date:'2025/03/01',code:'3',rate:'0',amount:10965615}),
+    csvRow({date:'2025/04/01',side:'借方',code:'5',rate:'10',amount:283404689}),
+    csvRow({date:'2025/05/01',side:'借方',code:'5',rate:'8',amount:286961}),
+    csvRow({date:'2025/06/01',side:'借方',code:'52',rate:'10',amount:28315922,credit:'80'}),
+    csvRow({date:'2025/12/31',side:'借方',code:'52',rate:'8',amount:24625,credit:'80'})
+  ]));
+  h.element('periodStart').value = '2025-01-01';
+  h.element('periodEnd').value = '2025-12-31';
+  h.element('regularDetailMethod').value = 'individual';
+  Object.assign(h.context,{entryMode:'rows',rowsFromJournalAnalysis,newTaxEntry:side => taxRows.createTaxEntryRow(side,{id:`blank-${side}`}),
+    renderTaxEntryRows(){},document:{...h.context.document,body:{dataset:{}}}});
+  h.context.applyJournalImport();
+  installCurrentCalculation(h);
+  h.element('regularDetailMethod').value = 'individual';
+  h.element('exemptPurchaseState').value = 'yes';
+  h.element('returnPurchaseAdjustment10').value = '756521';
+  h.element('returnAdjustmentConfirmed').checked = true;
+  h.context.exactReturnEnabled = true;
+  const calc = h.context.calculate();
+  assert.equal(calc.returnCalculation.complete,true,JSON.stringify(calc.returnCalculation.reasons));
+  assert.equal(calc.returnCalculation.schedule23.fields['⑨B'],284161210);
+  assert.equal(calc.returnCalculation.schedule13.fields['⑨C'],20823900);
+  assert.equal(calc.methods.find(method => method.key === 'regular').amount,26697300);
+  const trace = h.context.renderCalculationTrace(calc,calc.methods.find(method => method.key === 'regular'));
+  assert.match(trace,/283,404,689円 ＋ 明示した申告調整 756,521円 = 284,161,210円/);
+  assert.match(trace,/28,315,922円 × 7\.8 ÷ 110 × 80％ → 1,606,285円/);
+  assert.match(h.context.buildSummaryText(calc),/26697300円/);
+  assert.match(h.context.buildCsvText(calc),/26697300/);
+  h.element('returnAdjustmentConfirmed').checked = false;
+  const incomplete = h.context.calculate();
+  assert.equal(incomplete.returnCalculation.complete,false);
+  assert.match(incomplete.inputUnconfirmedItems.join(' '),/申告書計算：未算定/);
+  assert.equal(incomplete.methods.find(method => method.key === 'regular').amount,null);
+});
+
+function exactRowsHarness({sales=11000123,purchases=5500321,methods=['regular']} = {}){
+  const h = harness(csv([csvRow({rate:'10',amount:sales})]));
+  installCurrentCalculation(h);
+  h.context.METHOD_LABELS = {regular:'本則課税',simplified:'簡易課税',special2:'2割特例',special3:'3割特例'};
+  h.context.exactReturnEnabled = true;
+  h.context.entryMode = 'rows';
+  h.context.selectedComparisonMethods = () => methods;
+  h.context.taxEntryRows = {
+    sales:[
+      {id:'s1',code:'1',businessType:'type5',rate:'10',amount:String(sales),source:'manual'},
+      {id:'s3',code:'3',amount:'0',source:'manual'}
+    ],
+    purchases:[{id:'p5',code:'5',rate:'10',amount:String(purchases),source:'manual'}]
+  };
+  h.context.rowCsvKnownZeros = {};
+  h.context.syncTaxEntryRows();
+  return h;
+}
+
+function provisionalCsvHarness(source, methods=['regular']){
+  const h = harness(source);
+  Object.assign(h.context,{entryMode:'rows',rowsFromJournalAnalysis,
+    newTaxEntry:side => taxRows.createTaxEntryRow(side,{id:`blank-${side}`}),
+    renderTaxEntryRows(){},document:{...h.context.document,body:{dataset:{}}}});
+  installCurrentCalculation(h);
+  h.context.METHOD_LABELS = {regular:'本則課税',simplified:'簡易課税',special2:'2割特例',special3:'3割特例'};
+  h.context.exactReturnEnabled = true;
+  h.context.selectedComparisonMethods = () => methods;
+  return h;
+}
+
+test('[R1] CSVの税率仮定だけでも端数処理後の参考額と厳密再現未完了を示す', () => {
+  const h = provisionalCsvHarness(csv([
+    csvRow({rate:'10',amount:1100000}),
+    csvRow({side:'借方',code:'5',rate:'不明',amount:110000})
+  ]));
+  h.context.applyJournalImport();
+  const calc = h.context.calculate();
+  assert.equal(calc.methods.find(method => method.key === 'regular').amount,90000);
+  assert.equal(calc.returnCalculation.mainReturn.totalBeforeInterim,90000);
+  assert.equal(calc.returnCalculation.complete,false);
+  assert.equal(calc.returnCalculation.referenceCalculable,true);
+  assert.match(calc.inputUnconfirmedItems.join(' '),/申告書再現：未完了/);
+  assert.match(h.context.buildSummaryText(calc),/税率10％を仮定/);
+});
+
+test('[R2-R5,R8] 仮除外CSVの端数処理後100000円を参考表示・出力し、補正反映と取消しを区別する', () => {
+  const h = provisionalCsvHarness(csv([
+    csvRow({rate:'10',amount:1100000}),
+    csvRow({side:'借方',code:'5',rate:'10',amount:'不明'})
+  ]));
+  h.context.excludeUnresolvedJournalEntries();
+  const provisional = h.context.calculate();
+  assert.equal(provisional.methods.find(method => method.key === 'regular').amount,100000);
+  assert.equal(provisional.returnCalculation.mainReturn.totalBeforeInterim,100000);
+  assert.equal(provisional.returnCalculation.mainReturn.fields['①'],1000000);
+  assert.equal(provisional.returnCalculation.mainReturn.national,78000);
+  assert.equal(provisional.returnCalculation.mainReturn.local,22000);
+  assert.equal(provisional.returnCalculation.exactComplete,false);
+  assert.equal(provisional.returnCalculation.referenceCalculable,true);
+  assert.equal(provisional.returnCalculation.precision,'provisional-declaration');
+  assert.equal(provisional.csvRecovery.unknownAmountCount,1);
+  assert.match(provisional.methods.find(method => method.key === 'regular').status,/参考/);
+  assert.match(provisional.inputUnconfirmedItems.join(' '),/申告書再現：未完了/);
+  for(const output of [h.context.buildSummaryText(provisional),h.context.buildCsvText(provisional)]){
+    assert.match(output,/100,000|100000/);
+    assert.match(output,/仮除外1明細/);
+    assert.match(output,/税額影響は未算定/);
+  }
+  vm.runInContext(['renderComparisonPrint','renderMethodCards'].map(functionSource).join('\n'),h.context);
+  h.context.renderMethodCards(provisional);
+  assert.match(h.element('methodCards').innerHTML,/参考/);
+  assert.match(h.element('comparisonPrintContent').innerHTML,/100,000|100000/);
+  assert.match(h.element('comparisonPrintContent').innerHTML,/仮除外1明細/);
+  const before = JSON.stringify(h.context.importedCsvRecovery);
+  const id = h.context.pendingJournalImport.analysis.problemEntries[0].id;
+  h.context.updateJournalRecovery(id,'action','correct');
+  h.context.updateJournalRecovery(id,'amount','110000');
+  assert.equal(JSON.stringify(h.context.importedCsvRecovery),before,'プレビューだけで反映済みの前提を変えない');
+  h.context.window.confirm = () => false;
+  h.context.applyJournalImport();
+  assert.equal(h.context.calculate().methods.find(method => method.key === 'regular').amount,100000);
+  h.context.window.confirm = () => true;
+  h.context.applyJournalImport();
+  const corrected = h.context.calculate();
+  assert.equal(corrected.csvRecovery.temporaryExcludedCount,0);
+  assert.equal(corrected.returnCalculation.complete,true);
+  assert.equal(corrected.returnCalculation.precision,'declaration');
+  assert.equal(corrected.methods.find(method => method.key === 'regular').amount,90000);
+});
+
+test('[R3] 税率仮定と金額不明の仮除外を混在させても残る行から参考額を算定する', () => {
+  const h = provisionalCsvHarness(csv([
+    csvRow({rate:'10',amount:1100000}),
+    csvRow({side:'借方',account:'仮定対象',code:'5',rate:'不明',amount:110000}),
+    csvRow({side:'借方',account:'仮除外対象',code:'5',rate:'10',amount:'不明'})
+  ]));
+  const problems = h.context.pendingJournalImport.analysis.problemEntries;
+  assert.equal(problems.length,2);
+  h.context.updateJournalRecovery(problems[1].id,'action','exclude');
+  h.context.applyJournalImport();
+  const calc = h.context.calculate();
+  assert.equal(calc.methods.find(method => method.key === 'regular').amount,90000);
+  assert.equal(calc.returnCalculation.exactComplete,false);
+  assert.equal(calc.returnCalculation.referenceCalculable,true);
+  assert.equal(calc.csvRecovery.assumedDetailCount,1);
+  assert.equal(calc.csvRecovery.temporaryExcludedCount,1);
+  assert.equal(calc.csvRecovery.unknownAmountCount,1);
+  for(const output of [h.context.buildSummaryText(calc),h.context.buildCsvText(calc)]){
+    assert.match(output,/税率10％を仮定/);
+    assert.match(output,/仮除外1明細/);
+    assert.match(output,/金額不明1明細/);
+    assert.match(output,/税額影響は未算定/);
+  }
+});
+
+test('[再レビューB01/B06] 手入力の本則・簡易は端数処理後の金額を結果と出力に使う', () => {
+  const h = exactRowsHarness({methods:['regular','simplified']});
+  const calc = h.context.calculate();
+  assert.equal(calc.methods.find(item => item.key === 'regular').amount,499800);
+  assert.equal(calc.methods.find(item => item.key === 'simplified').amount,500000);
+  assert.match(h.context.buildSummaryText(calc),/499,800円|499800円/);
+  assert.match(h.context.buildCsvText(calc),/499800/);
+  vm.runInContext(['renderComparisonPrint','renderMethodCards'].map(functionSource).join('\n'),h.context);
+  h.context.renderMethodCards(calc);
+  assert.match(h.element('methodCards').innerHTML,/499,800円|499800円/);
+  assert.match(h.element('comparisonPrintContent').innerHTML,/499,800円|499800円/);
+  assert.match(h.element('comparisonPrintContent').innerHTML,/500,000円|500000円/);
+  h.context.taxEntryRows.sales = h.context.taxEntryRows.sales.filter(row => row.code !== '3');
+  h.context.syncTaxEntryRows();
+  const missing = h.context.calculate();
+  assert.equal(missing.methods.find(item => item.key === 'regular').amount,null);
+  assert.match(missing.methods.find(item => item.key === 'regular').reason,/非課税売上等を入力/);
+  assert.match(h.context.buildSummaryText(missing),/本則課税:.*未算定/);
+  assert.doesNotMatch(h.context.buildCsvText(missing),/本則課税,[^\n]*499800/);
+});
+
+test('[再レビューB03/B08] 無変更の金額正規化と行削除は現在行から再計算する', () => {
+  const h = exactRowsHarness({sales:66000123,purchases:11000005,methods:['regular']});
+  h.context.taxEntryRows.purchases.push({id:'p7',code:'7',rate:'10',amount:'11000005',source:'csv'});
+  h.context.syncTaxEntryRows();
+  const before = h.context.calculate();
+  assert.equal(before.methods[0].amount,4000000);
+  const control = {dataset:{rowSide:'purchases',rowKey:'p7',rowField:'amount'},value:'11,000,005'};
+  h.context.applyTaxRowEdit = undefined;
+  vm.runInContext(functionSource('applyTaxRowEdit'),h.context);
+  h.context.applyTaxRowEdit(control);
+  assert.equal(h.context.taxEntryRows.purchases[1].source,'csv');
+  assert.equal(h.context.calculate().methods[0].amount,4000000);
+  h.context.taxEntryRows.purchases.splice(1,1);
+  h.context.syncTaxEntryRows();
+  assert.equal(h.context.calculate().methods[0].amount,5000000);
+});
+
+test('[再レビューB02/B04] CSV反映・対象期間の参考扱いでも申告書税額を概算へ戻さない', () => {
+  const h = harness(csv([
+    csvRow({date:'2027/12/31',side:'貸方',code:'1',business:'5',rate:'10',amount:11000123}),
+    csvRow({date:'2028/02/15',side:'借方',code:'5',rate:'10',amount:5500321})
+  ]));
+  Object.assign(h.context,{entryMode:'rows',rowsFromJournalAnalysis,
+    newTaxEntry:side => taxRows.createTaxEntryRow(side,{id:`blank-${side}`}),
+    renderTaxEntryRows(){},document:{...h.context.document,body:{dataset:{}}}});
+  h.context.applyJournalImport();
+  installCurrentCalculation(h);
+  h.context.exactReturnEnabled = true;
+  const imported = h.context.calculate();
+  assert.equal(imported.methods.find(item => item.key === 'regular').amount,499800);
+  assert.equal(imported.csvOriginReference,true);
+  assert.match(imported.csvOriginText,/対象期間外の実績を含む参考試算/);
+  assert.match(h.context.buildSummaryText(imported),/499,800円|499800円/);
+  assert.match(h.context.buildCsvText(imported),/499800/);
+  vm.runInContext(['renderComparisonPrint','renderMethodCards'].map(functionSource).join('\n'),h.context);
+  h.context.renderMethodCards(imported);
+  assert.match(h.element('comparisonPrintContent').innerHTML,/499,800円|499800円/);
+  const control = {dataset:{rowSide:'sales',rowKey:h.context.taxEntryRows.sales.find(row => row.code === '1').id,rowField:'amount'},value:'11,000,123'};
+  vm.runInContext(functionSource('applyTaxRowEdit'),h.context);
+  h.context.applyTaxRowEdit(control);
+  assert.equal(h.context.importedCsvOrigin.manualChanged,false);
+  assert.equal(h.context.calculate().methods.find(item => item.key === 'regular').amount,499800);
+  const partial = h.context.calculate();
+  assert.equal(partial.methods.find(item => item.key === 'regular').amount,499800);
+  assert.equal(partial.csvOriginReference,true);
+  assert.match(partial.csvOriginText,/対象期間外の実績を含む参考試算/);
+});
+
+test('[再レビューB05] 全額控除の用途別分割でも税率別総額から申告書税額を使う', () => {
+  const h = exactRowsHarness({sales:66000123,purchases:11000010,methods:['regular']});
+  h.context.taxEntryRows.purchases.push({id:'p7',code:'7',rate:'10',amount:'11000010',source:'manual'});
+  h.context.syncTaxEntryRows();
+  const calc = h.context.calculate();
+  assert.equal(calc.returnCalculation.complete,true,JSON.stringify(calc.returnCalculation.reasons));
+  assert.equal(calc.methods[0].amount,3999800);
+  assert.equal(calc.methods[0].amount,calc.returnCalculation.mainReturn.totalBeforeInterim);
+  h.context.taxEntryRows.purchases[0].amount = '11,011,010';
+  h.context.syncTaxEntryRows();
+  const changed = h.context.calculate();
+  assert.equal(changed.methods[0].amount,3998900);
+  assert.equal(changed.methods[0].amount,changed.returnCalculation.mainReturn.totalBeforeInterim);
+});
+
+test('[再レビューB07] 現行4期の各期と累計は現在行から申告書計算した額のみを用いる', () => {
+  const h = exactRowsHarness({methods:['regular','simplified']});
+  h.element('currentReturnMethod').value = 'regular';
+  h.element('simpleElectionStatus').value = 'none';
+  const calc = h.context.calculate();
+  Object.assign(h.context,{
+    projectionPeriods:() => [2028,2029,2030,2031].map(year => ({start:`${year}-01-01`,end:`${year}-12-31`,label:`${year}年`})),
+    projectionBaseForIndex:() => ({entered:true,value:10000000}),
+    contextWithProjectionBase:(ctx) => ctx,
+    projectProposalSales:() => calc.sales,
+    projectProposalPurchases:() => calc.purchases,
+    optimizeFourPeriodRoutes:engine.optimizeFourPeriodRoutes
+  });
+  vm.runInContext(['projectionSnapshot','returnInputForProjection','calculateProjectionRegular','calculateProjectionMethods']
+    .map(functionSource).join('\n'),h.context);
+  const plan = h.context.calculateProjectionPlan(calc);
+  assert.deepEqual(Array.from(plan.projections, projection => projection.methods.find(method => method.key === 'regular').amount),[499800,499800,499800,499800]);
+  assert.deepEqual(Array.from(plan.projections, projection => projection.methods.find(method => method.key === 'simplified').amount),[500000,500000,500000,500000]);
+  assert.equal(plan.optimized.ok,true,plan.optimized.reason);
+  assert.equal(plan.optimized.cumulative,1999200);
+  const projectionCalc = {...calc,ctx:{...calc.ctx,viewMode:'projection'}};
+  assert.match(h.context.buildSummaryText(projectionCalc),/4期累計: (?:1,999,200|1999200)円/);
+  assert.match(h.context.buildCsvText(projectionCalc),/1999200/);
+});
+
+test('[R6-R8] 仮除外の本則・簡易・特例と4期累計は同じ端数処理後の参考額を使う', () => {
+  const h = exactRowsHarness({methods:['regular','simplified','special2','special3']});
+  h.context.importedCsvRecovery = {temporaryExcludedCount:1,excludedAbsAmount:11000,unknownAmountCount:1};
+  h.element('currentReturnMethod').value = 'regular';
+  h.element('simpleElectionStatus').value = 'none';
+  const calc = h.context.calculate();
+  for(const method of calc.methods){
+    const result = method.key === 'regular' ? calc.returnCalculation : calc.salesMethodCalculations[method.key];
+    assert.equal(result.complete,false);
+    assert.equal(result.referenceCalculable,true);
+    assert.equal(method.amount,method.key === 'regular' ? result.mainReturn.totalBeforeInterim : result.totalBeforeInterim);
+    assert.equal(method.reference,true);
+  }
+  assert.equal(calc.methods.find(method => method.key === 'regular').amount,499800);
+  assert.equal(calc.methods.find(method => method.key === 'simplified').amount,500000);
+  Object.assign(h.context,{
+    projectionPeriods:() => [2028,2029,2030,2031].map(year => ({start:`${year}-01-01`,end:`${year}-12-31`,label:`${year}年`})),
+    projectionBaseForIndex:() => ({entered:true,value:10000000}),
+    contextWithProjectionBase:ctx => ctx,
+    projectProposalSales:() => calc.sales,
+    projectProposalPurchases:() => calc.purchases,
+    optimizeFourPeriodRoutes:engine.optimizeFourPeriodRoutes
+  });
+  vm.runInContext(['projectionSnapshot','returnInputForProjection','calculateProjectionRegular','calculateProjectionMethods']
+    .map(functionSource).join('\n'),h.context);
+  const plan = h.context.calculateProjectionPlan(calc);
+  assert.deepEqual(Array.from(plan.projections, projection => projection.methods.find(method => method.key === 'regular').amount),[499800,499800,499800,499800]);
+  assert.deepEqual(Array.from(plan.projections, projection => projection.methods.find(method => method.key === 'simplified').amount),[500000,500000,500000,500000]);
+  assert.equal(plan.optimized.ok,true,plan.optimized.reason);
+  assert.equal(plan.optimized.cumulative,800000,'このテストの適用判定スタブでは2割特例を各期選ぶ');
+  const projectionCalc = {...calc,ctx:{...calc.ctx,viewMode:'projection'}};
+  for(const output of [h.context.buildSummaryText(projectionCalc),h.context.buildCsvText(projectionCalc)]){
+    assert.match(output,/800000|800,000/);
+    assert.match(output,/仮除外1明細/);
+  }
+});
+
+test('[R6] 簡易課税だけの参考試算も申告書再現未完了を表示する', () => {
+  const h = exactRowsHarness({methods:['simplified']});
+  h.context.importedCsvRecovery = {temporaryExcludedCount:1,unknownAmountCount:1};
+  const calc = h.context.calculate();
+  assert.equal(calc.returnCalculation,null);
+  assert.equal(calc.methods[0].amount,500000);
+  assert.equal(calc.methods[0].reference,true);
+  assert.equal(calc.salesMethodCalculations.simplified.exactComplete,false);
+  assert.match(calc.inputUnconfirmedItems.join(' '),/申告書再現：未完了/);
+});
+
+test('[R9] 貸借の旧順序表記を画面・計算・説明文書へ残さない', () => {
+  for(const file of ['index.html','tax-engine.js','tax-return-engine.js','release-history.js','README.md',
+    'docs/csv-recovery-verification.md','docs/return-golden-verification.md']){
+    assert.equal(fs.readFileSync(path.join(__dirname,'..',file),'utf8').includes('借'+'貸'),false,file);
+  }
+});
 
 function currentRateComparisonHarness(){
   const h = harness(csv([csvRow({ rate:'8', amount:1080000 })]));
@@ -997,7 +1327,7 @@ test('[第2次P1-1] 詳細欄を閉じても保存済み資産・届出・端数
   const facts = new Map(h.context.buildAssumptionRows(calc));
   assert.equal(facts.get('将来期の届出計画'),'はい・確認済み');
   assert.equal(facts.get('高額特定資産等'),'高額資産の取得制限あり');
-  assert.equal(facts.get('端数処理'),'申告書段階の端数処理を反映');
+  assert.equal(facts.get('端数処理'),'現行制度の各方式は申告書段階の端数処理後。必要情報不足の方式は未算定');
   h.context.renderCurrentRateComparison(calc);
   assert.match(h.element('comparisonPrintContent').innerHTML,/高額資産の取得制限あり/);
   assert.doesNotMatch(h.element('comparisonPrintContent').innerHTML,/詳細試算未使用/);

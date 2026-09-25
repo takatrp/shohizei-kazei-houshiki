@@ -13,6 +13,7 @@
   const EXEMPT_RATIOS = Object.freeze(['80','70','50','30','0']);
   const CODE_DETAILS = Object.freeze({
     '1':Object.freeze({ side:'sales', label:'課税売上' }),
+    '11':Object.freeze({ side:'sales', label:'売上返還等' }),
     '3':Object.freeze({ side:'sales', label:'非課税売上' }),
     '5':Object.freeze({ side:'purchases', label:'課税仕入れ（課税売上対応）', usage:'taxableOnly', exempt:false }),
     '6':Object.freeze({ side:'purchases', label:'課税仕入れ（非課税売上対応）', usage:'nonTaxableOnly', exempt:false }),
@@ -114,12 +115,12 @@
           || (food.value !== 0 && Math.sign(food.value) !== Math.sign(amount.value)))){
           addError(side, index, '食品1％対象額が行の税込金額を超えるか、符号が異なります。');
         }
-        const legacyValue = legacyAmount(amount.value, rate, amountMode);
+        const legacyValue = (side === 'sales' && code === '11' ? -1 : 1) * legacyAmount(amount.value, rate, amountMode);
         const legacyFood = food.entered && food.valid ? legacyAmount(food.value, rate, amountMode) : 0;
         if(side === 'sales'){
           const type = String(row.businessType ?? '').trim();
           if(!BUSINESS_TYPES.includes(type)){
-            unclassifiedSales.push({ index, code, rate, amount:amount.value,
+            unclassifiedSales.push({ index, code, rate, amount:code === '11' ? -amount.value : amount.value,
               foodAmount:food.entered && food.valid ? food.value : null,
               source:row.source || 'manual' });
             unclassifiedSalesTotals[rate] += legacyValue;

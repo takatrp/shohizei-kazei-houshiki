@@ -10,6 +10,7 @@ const {
   resolveImportValues,
   prepareEstimatedImport
 } = require('../journal-csv.js');
+const {aggregateReturnInputs,calculateCurrentLawReturn} = require('../tax-return-engine.js');
 
 function csvCell(value){
   const text = String(value ?? '');
@@ -42,6 +43,69 @@ function recoveryFixture(extra = []){
     entry('借方',{code:'5',rate:'?',reduced:1,amount:11000}), ...extra
   ]);
 }
+
+test('課税区分11は既存の売上純額に加え申告書用の返還額も保持する', () => {
+  const text = buildCsv([
+    entry('貸方',{code:'1',business:'2',rate:10,reduced:0,amount:110000}),
+    entry('借方',{code:'11',business:'2',rate:10,reduced:0,amount:1100})
+  ]);
+  const result = analyzeTkcJournalText(text);
+  assert.equal(result.salesByType.type2['10'],108900);
+  assert.equal(result.returnSales.taxableGross['10'],110000);
+  assert.equal(result.returnSales.returnGross['10'],1100);
+});
+
+test('本則だけを比較するときは返還専用科目を区分11に分離し、通常の負売上検証は維持する', () => {
+  const text = buildCsv([
+    entry('貸方',{account:'売上勘定',code:'1',business:'5',rate:10,reduced:0,amount:11000123}),
+    entry('借方',{account:'返還勘定',code:'11',rate:10,reduced:0,amount:1100})
+  ]);
+  const analysis = analyzeTkcJournalText(text);
+  assert.match(analysis.negativeAggregateError,/未分類売上/);
+  assert.equal(resolveImportValues(analysis,{}, {allowUnclassifiedSales:true}).ready,false);
+  const resolved = resolveImportValues(analysis,{}, {allowUnclassifiedSales:true,allowReturnOnlySales:true});
+  assert.equal(resolved.ready,true);
+  assert.equal(resolved.unclassifiedSales.length,1);
+  assert.equal(resolved.unclassifiedSales[0].amounts['10'],-1100);
+  assert.equal(resolved.unclassifiedSales[0].returnGross['10'],1100);
+  const noOriginalSale = analyzeTkcJournalText(buildCsv([
+    entry('借方',{account:'返還勘定',code:'11',rate:10,reduced:0,amount:1100})
+  ]));
+  assert.equal(resolveImportValues(noOriginalSale,{}, {allowUnclassifiedSales:true,allowReturnOnlySales:true}).ready,false);
+});
+
+test('別のCSV明細を概算補正しても、返還専用科目を0円仮置きしない', () => {
+  const text = buildCsv([
+    entry('貸方',{account:'売上勘定',code:'1',business:'5',rate:10,reduced:0,amount:11000123}),
+    entry('借方',{account:'返還勘定',code:'11',rate:10,reduced:0,amount:1100}),
+    entry('借方',{account:'仕入勘定',code:'5',rate:'?',reduced:0,amount:11000})
+  ]);
+  const estimate = prepareEstimatedImport(text,{}, {}, {allowUnclassifiedSales:true,allowReturnOnlySales:true});
+  assert.equal(estimate.resolved.ready,true);
+  assert.equal(estimate.recoverySummary.negativeBucketCount,0);
+  assert.equal(estimate.resolved.unclassifiedSales[0].amounts['10'],-1100);
+  assert.equal(estimate.resolved.unclassifiedSales[0].returnGross['10'],1100);
+});
+
+test('仕入返還等51は黙って申告書計算へ含めず、区分9は明示除外まで未完了', () => {
+  const text = buildCsv([
+    entry('貸方',{code:'1',business:'2',rate:10,reduced:0,amount:110000}),
+    entry('借方',{code:'5',rate:10,reduced:0,amount:11000}),
+    entry('貸方',{code:'51',rate:10,reduced:0,amount:1100}),
+    entry('貸方',{code:'9',amount:100})
+  ]);
+  const before = analyzeTkcJournalText(text);
+  const missing = calculateCurrentLawReturn(aggregateReturnInputs(before));
+  assert.equal(missing.complete,false);
+  assert.match(missing.reasons.join(' '),/51/);
+  assert.match(missing.reasons.join(' '),/9/);
+  const excluded = analyzeTkcJournalText(text,Object.fromEntries(before.problemEntries.map(problem =>
+    [problem.id,{action:'confirmedExclude',reason:'元帳で申告対象外と確認'}])));
+  const stillMissing = calculateCurrentLawReturn(aggregateReturnInputs(excluded));
+  assert.equal(stillMissing.complete,false);
+  assert.match(stillMissing.reasons.join(' '),/51/);
+  assert.doesNotMatch(stillMissing.reasons.join(' '),/9/);
+});
 
 test('[C02-C04 C10 C16] 補正と仮除外は同一原文から再集計し対照CSVと一致する', () => {
   const text = recoveryFixture();
@@ -105,7 +169,7 @@ test('[C07 C11] 不明分類の補正は用途別免税割合・非課税分母�
   assert.equal(resolveImportValues(unmapped).ready,false);
 });
 
-test('[C08 C09 C14] 借貸別に除外し金額と税率の複合問題を一明細として扱う', () => {
+test('[C08 C09 C14] 貸借別に除外し金額と税率の複合問題を一明細として扱う', () => {
   const text = buildCsv([{...entry('借方',{code:'5',rate:'?',amount:'不明'}),...entry('貸方',{code:'1',business:'2',rate:10,reduced:0,amount:1100})}]);
   const initial = analyzeTkcJournalText(text);
   assert.deepEqual(initial.problemEntries[0].reasonCodes,['amount','rate']);
@@ -250,7 +314,7 @@ test('UTF-8 BOMとShift_JISを判定して復号する', () => {
   assert.equal(shiftJis.text, '月日');
 });
 
-test('TKC課税区分、借貸、税率、事業区分、控除割合から必要額を集計する', () => {
+test('TKC課税区分、貸借、税率、事業区分、控除割合から必要額を集計する', () => {
   const csv = buildCsv([
     entry('貸方', { account:'売上高', code:'1', business:'5', reduced:'0', rate:'10', amount:'1,100' }),
     entry('借方', { account:'売上値引', code:'11', business:'5', reduced:'0', rate:'10', amount:110 }),

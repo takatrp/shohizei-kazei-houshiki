@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const journal = require('../journal-csv.js');
+const returnEngine = require('../tax-return-engine.js');
 const engine = require('../tax-engine.js');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -48,12 +49,14 @@ function harness(text){
     parseAmountInput:engine.parseAmountInput,
     resolveImportValues:journal.resolveImportValues,
     prepareEstimatedImport:journal.prepareEstimatedImport,
+    aggregateReturnInputs:returnEngine.aggregateReturnInputs,
     BUSINESS_TYPES:types,
     CSV_EXEMPT_RATIOS:journal.EXEMPT_RATIOS,
     pendingJournalImport:{analysis:journal.analyzeTkcJournalText(text), sourceText:text, decisions:{}, applied:false},
     appliedJournalImport:null,
     importedCsvRecovery:null,
     importedCsvOrigin:null,
+    importedReturnEvidence:null,
     importedExemptTransactionCount:0,
     importedUnsupportedEntries:[],
     importedActualOnePercent:null,

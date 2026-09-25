@@ -7,6 +7,30 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r32.1',
+      date:'2026-09-25',
+      title:'STEP4の前期仮定保存・0回判定・国税代理額を修正',
+      category:'correction',
+      recalcRecommended:true,
+      changes:Object.freeze([
+        '両案の別前期仮定をチェック状態で保存・復元し、旧r32の判別不能な保存値は再確認まで未算定にする',
+        '自動判定0回と手入力の空欄を分け、片案0回・両案0回と自動から手入力への切替を正しく精算する',
+        '国税内訳不明の本則個別調整があるSTEP3代理額の自動予定を止め、前期確定国税額の入力へ案内する'
+      ])
+    }),
+    Object.freeze({
+      version:'r32',
+      date:'2026-09-25',
+      title:'食品対象額の一括転記と中間納付の前期実績方式による自動設定',
+      category:'usability',
+      recalcRecommended:false,
+      changes:Object.freeze([
+        'STEP2の軽減8％売上・仕入行から食品対象額へ一度だけ転記し、既存値の上書きは一括確認',
+        'STEP4で前期国税額を基礎とする0・1・3・11回の中間納付予定を日付・国税・地方税別に生成',
+        'STEP3前期代理の概算と実際の前期入力を区別し、休日繰延べ・法人延長・未確認を表示と出力に反映'
+      ])
+    }),
+    Object.freeze({
       version:'r31.1',
       date:'2026-09-25',
       title:'STEP4の返品・月別配分と確認状態を修正',

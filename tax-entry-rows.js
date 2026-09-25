@@ -35,6 +35,47 @@
     };
   }
 
+  // One-shot input aid for the food 1% scenario. The row amount is already
+  // gross, so do not convert its tax rate, apply a credit ratio, or reverse
+  // TKC 11 here. The ordinary aggregation path owns the TKC 11 sign.
+  function bulkFillFoodAmount(rows, side){
+    if(!Array.isArray(rows)) throw new TypeError('rows must be an array');
+    if(side !== 'sales' && side !== 'purchases') throw new TypeError('side must be sales or purchases');
+    const skipped = [];
+    let eligibleCount = 0;
+    let changedCount = 0;
+    let overwrittenCount = 0;
+    const nextRows = rows.map((row, index) => {
+      const code = String(row?.code ?? '').trim();
+      const rate = String(row?.rate ?? '').trim();
+      const amountText = String(row?.amount ?? '').trim();
+      const foodText = String(row?.foodAmount ?? '').trim();
+      const detail = CODE_DETAILS[code];
+      let reason = '';
+      if(!code && !rate && !amountText && !foodText) reason = 'emptyRow';
+      else if(!code) reason = 'unconfirmedCode';
+      else if(!detail || detail.side !== side || code === '3') reason = 'nonEligibleCode';
+      else if(!RATES.includes(rate)) reason = 'unconfirmedRate';
+      else if(rate !== '8') reason = 'nonReducedRate';
+      else {
+        const amount = engine.parseAmountInput(row.amount, {allowNegative:true});
+        if(!amount.valid) reason = 'invalidAmount';
+        else if(!amount.entered) reason = 'emptyAmount';
+        else {
+          eligibleCount += 1;
+          const food = engine.parseAmountInput(row.foodAmount, {allowNegative:true});
+          if(food.entered && food.valid && food.value === amount.value) return row;
+          changedCount += 1;
+          if(food.entered) overwrittenCount += 1;
+          return {...row, foodAmount:amountText};
+        }
+      }
+      skipped.push({index, reason});
+      return row;
+    });
+    return {rows:nextRows, eligibleCount, changedCount, overwrittenCount, skipped};
+  }
+
   // The rows are always entered as gross amounts. The caller may request the
   // legacy tax-exclusive field value when restoring an older amount-mode UI.
   function legacyAmount(gross, rate, amountMode){
@@ -397,7 +438,7 @@
 
   return Object.freeze({
     BUSINESS_TYPES, RATES, EXEMPT_RATIOS, CODE_DETAILS,
-    createTaxEntryRow, aggregateTaxRows, aggregateScenarioPurchases,
+    createTaxEntryRow, bulkFillFoodAmount, aggregateTaxRows, aggregateScenarioPurchases,
     summarizeActualOnePercentEntries
   });
 });

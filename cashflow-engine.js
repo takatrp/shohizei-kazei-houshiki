@@ -146,7 +146,7 @@
     const salesDeltas = normalizeEntries(input.salesDeltas, '売上入金差', periodStart, periodEnd);
     const purchaseDeltas = normalizeEntries(input.purchaseDeltas, '仕入支払差', periodStart, periodEnd);
     const interim = input.interim || {status:'unknown'};
-    if(!['unknown', 'none', 'scheduled'].includes(interim.status)) throw new TypeError('中間納付の確認状態を指定してください。');
+    if(!['unknown', 'none', 'scheduled', 'auto'].includes(interim.status)) throw new TypeError('中間納付の確認状態を指定してください。');
 
     const reasons = [];
     let taxComplete = interim.status !== 'unknown';
@@ -162,12 +162,19 @@
 
     let baseInterim = [];
     let changedInterim = [];
-    if(interim.status === 'scheduled'){
+    if(interim.status === 'scheduled' || interim.status === 'auto'){
       baseInterim = normalizeEntries(interim.base, '基準案の中間納付', periodStart, null, true);
       changedInterim = normalizeEntries(interim.changed, '変更案の中間納付', periodStart, null, true);
-      if(baseInterim.length === 0 || changedInterim.length === 0){
+      // 'auto' is emitted only after both generated plans are ready; an empty
+      // generated plan means a confirmed zero filing count, unlike a blank manual plan.
+      const baseNoInterim = (interim.status === 'auto' && baseInterim.length === 0) || interim.baseNoInterim === true;
+      const changedNoInterim = (interim.status === 'auto' && changedInterim.length === 0) || interim.changedNoInterim === true;
+      if((baseNoInterim && baseInterim.length) || (changedNoInterim && changedInterim.length)){
+        throw new RangeError('中間納付なしの確認と予定入力を同時に指定できません。');
+      }
+      if((baseInterim.length === 0 && !baseNoInterim) || (changedInterim.length === 0 && !changedNoInterim)){
         taxComplete = false;
-        reasons.push('両案の中間納付予定が未入力です。中間納付なしの場合は明示的に選択してください。');
+        reasons.push('中間納付予定が未入力の案があります。中間納付なしの場合は案ごとに明示的に確認してください。');
       }
     } else if(interim.status === 'none'){
       if((interim.base && interim.base.length) || (interim.changed && interim.changed.length)){

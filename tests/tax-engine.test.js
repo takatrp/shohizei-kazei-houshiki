@@ -663,11 +663,16 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r31.1');
+  assert.equal(release.APP_META.version, 'r32.1');
   assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
-  assert.equal(release.RELEASE_HISTORY[1].version,'r31');
-  assert.equal(release.RELEASE_HISTORY[2].version,'r30');
+  assert.equal(release.RELEASE_HISTORY[1].version,'r32');
+  assert.equal(release.RELEASE_HISTORY[1].recalcRecommended,false);
+  assert.equal(release.RELEASE_HISTORY[2].version,'r31.1');
   assert.equal(release.RELEASE_HISTORY[2].recalcRecommended,true);
+  assert.equal(release.RELEASE_HISTORY[3].version,'r31');
+  assert.equal(release.RELEASE_HISTORY[3].recalcRecommended,false);
+  assert.equal(release.RELEASE_HISTORY[4].version,'r30');
+  assert.equal(release.RELEASE_HISTORY[4].recalcRecommended,true);
   assert.match(release.APP_META.currentLawBasisLabel, /国税庁/);
   assert.match(release.APP_META.proposalBasisLabel, /未施行/);
 });

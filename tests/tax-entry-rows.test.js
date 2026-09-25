@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const engine = require('../tax-engine.js');
-const { aggregateTaxRows, aggregateScenarioPurchases, createTaxEntryRow, CODE_DETAILS } = require('../tax-entry-rows.js');
+const { aggregateTaxRows, aggregateScenarioPurchases, createTaxEntryRow, bulkFillFoodAmount, CODE_DETAILS } = require('../tax-entry-rows.js');
 
 const sale = (code, amount, rate = '', businessType = '', foodAmount = '') =>
   createTaxEntryRow('sales', { code, amount, rate, businessType, foodAmount });
@@ -11,6 +11,88 @@ const purchase = (code, amount, rate = '10', creditRatio = '', foodAmount = '') 
   createTaxEntryRow('purchases', { code, amount, rate, creditRatio, foodAmount });
 const value = (result, id) => result.fields[id].value;
 const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-7, `${actual} !== ${expected}`);
+
+test('B01/B02: 軽減8％の税込額だけを区分5・6・7・52・62・72へそのまま一括転記', () => {
+  const purchases = [
+    purchase('5','283,404,689','8'), purchase('6','286,961','8'),
+    purchase('7','-12,300','8'), purchase('52','28,315,922','10','80','777'),
+    purchase('52','24,625','8','80'), purchase('62','0','8','70'),
+    purchase('72','101','8','50'), purchase('5','11,000','10','','99')
+  ];
+  const original = structuredClone(purchases);
+  const result = bulkFillFoodAmount(purchases, 'purchases');
+  assert.deepEqual(result.rows.map(row => row.foodAmount),
+    ['283,404,689','286,961','-12,300','777','24,625','0','101','99']);
+  assert.equal(result.eligibleCount,6);
+  assert.equal(result.changedCount,6);
+  assert.equal(result.overwrittenCount,0);
+  assert.deepEqual(purchases, original, '元行や元の税率・区分・控除割合を書き換えない');
+  assert.equal(result.rows[4].creditRatio,'80');
+  assert.deepEqual(result.skipped.map(item => item.reason), ['nonReducedRate','nonReducedRate']);
+});
+
+test('B03/B04: 売上のみを更新し、区分11の入力符号は集計時に一度だけ反転', () => {
+  const sales = [sale('1','108,000','8','type2'), sale('11','10,800','8','type2'), sale('3','55,000')];
+  const purchases = [purchase('5','21,600','8')];
+  const result = bulkFillFoodAmount(sales,'sales');
+  assert.deepEqual(result.rows.map(row => row.foodAmount), ['108,000','10,800','']);
+  assert.equal(result.rows[1].amount,'10,800');
+  assert.equal(purchases[0].foodAmount,'');
+  const aggregate = aggregateTaxRows({sales:result.rows,purchases});
+  assert.equal(value(aggregate,'type2SaleFood1'),97200);
+  assert.equal(value(aggregate,'type2Sale8'),97200);
+  assert.equal(value(aggregate,'purchaseFood1'),0);
+});
+
+test('B05: 負の仕入調整と明示0円は元の符号・入力済み状態を保持', () => {
+  const purchases = [purchase('5','21,600','8'),purchase('5','-10,800','8'),purchase('6','0','8')];
+  const result = bulkFillFoodAmount(purchases,'purchases');
+  assert.deepEqual(result.rows.map(row => row.foodAmount), ['21,600','-10,800','0']);
+  const aggregate = aggregateTaxRows({purchases:result.rows});
+  assert.equal(aggregate.ready,true);
+  assert.equal(value(aggregate,'purchaseFood1'),10800);
+  assert.equal(aggregate.fields.purchaseFood1.entered,true);
+});
+
+test('B06: 空欄・不正額・税率未確認・区分未確認を0円にせず理由付きで除外', () => {
+  const rows = [
+    purchase('5','','8'), purchase('5','???','8'), purchase('5','1,080',''),
+    purchase('5','1,080','9'), purchase('','1,080','8'),
+    purchase('6','1,080','10'), createTaxEntryRow('purchases')
+  ];
+  const result = bulkFillFoodAmount(rows,'purchases');
+  assert.equal(result.eligibleCount,0);
+  assert.equal(result.changedCount,0);
+  assert.deepEqual(result.rows,rows);
+  assert.deepEqual(result.skipped.map(item => item.reason), [
+    'emptyAmount','invalidAmount','unconfirmedRate','unconfirmedRate',
+    'unconfirmedCode','nonReducedRate','emptyRow'
+  ]);
+});
+
+test('B07: 既存の部分額と明示0円の上書き候補を数え、確認キャンセルなら元行を保持できる', () => {
+  const rows = [purchase('5','1,080','8','','500'),purchase('6','2,160','8','','0'),
+    purchase('7','3,240','8','','3,240'),purchase('52','4,320','8','80')];
+  const original = structuredClone(rows);
+  const preview = bulkFillFoodAmount(rows,'purchases');
+  assert.equal(preview.eligibleCount,4);
+  assert.equal(preview.changedCount,3);
+  assert.equal(preview.overwrittenCount,2);
+  assert.deepEqual(rows,original, 'UI側がキャンセルしても原本は一切変わらない');
+  assert.deepEqual(preview.rows.map(row => row.foodAmount), ['1,080','2,160','3,240','4,320']);
+});
+
+test('B09: 同じ入力への二重押下は冪等で、追加された行だけを次回転記する', () => {
+  const first = bulkFillFoodAmount([purchase('5','1,080','8')],'purchases');
+  const second = bulkFillFoodAmount(first.rows,'purchases');
+  assert.equal(second.changedCount,0);
+  assert.equal(second.overwrittenCount,0);
+  assert.deepEqual(second.rows,first.rows);
+  const third = bulkFillFoodAmount([...second.rows,purchase('5','2,160','8')],'purchases');
+  assert.equal(third.changedCount,1);
+  assert.equal(third.rows[0].foodAmount,'1,080');
+  assert.equal(third.rows[1].foodAmount,'2,160');
+});
 
 test('T01: 元行から食品1％の総額と3用途を同時再集計し、現行8％値は不変', () => {
   const purchases = [

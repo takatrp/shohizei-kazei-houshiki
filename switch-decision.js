@@ -313,7 +313,7 @@
       : !source.switchAdditionalFee ? source.legacyAdditionalFeeValue : '';
     return {
       ...source,
-      schemaVersion:17,
+      schemaVersion:18,
       switchAdditionalFee:legacyFeeBasisUnknown ? '' : source.switchAdditionalFee,
       legacyAdditionalFeeValue:legacyFeeBasisUnknown ? source.switchAdditionalFee : (source.legacyAdditionalFeeValue || ''),
       taxScenario:legacyFoodScenario ? 'foodProposal' : (source.taxScenario || 'current'),

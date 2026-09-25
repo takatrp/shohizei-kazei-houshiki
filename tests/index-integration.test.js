@@ -1472,7 +1472,7 @@ test('[r27一覧01] 四方式を一つの表に並べ、その金額列を現行
   assert.equal((html.match(/id="methodComparisonTable"/g) || []).length,1);
   assert.doesNotMatch(html, /id="currentRateComparison(?:Panel|Rows)"/);
   const updateSource=functionSource('update');
-  assert.match(updateSource,/renderCurrentRateComparison\(calc\)/);
+  assert.match(updateSource,/const currentRateComparison = buildCurrentRateComparison\(calc\);[\s\S]*renderCurrentRateComparison\(calc,currentRateComparison\);[\s\S]*renderCashflow\(calc,currentRateComparison\);/);
   assert.doesNotMatch(updateSource,/renderMethodCards\(calc\)/);
   vm.runInContext(functionSource('renderSummary'),h.context);
   h.context.renderSummary(calc);

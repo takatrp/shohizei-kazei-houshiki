@@ -55,6 +55,62 @@ test('課税区分11は既存の売上純額に加え申告書用の返還額も
   assert.equal(result.returnSales.returnGross['10'],1100);
 });
 
+test('月別構成は売上と返還の符号・取引月・年を分けて保持し、年間純額ゼロでも消さない', () => {
+  const text = buildCsv([
+    {...entry('貸方',{account:'非公開の売上科目',code:'1',business:'2',rate:10,reduced:0,amount:1100}),月日:'2025/01/15'},
+    {...entry('借方',{account:'非公開の返還科目',code:'11',business:'2',rate:10,reduced:0,amount:1100}),月日:'2025/02/01'},
+    {...entry('貸方',{code:'1',business:'2',rate:10,reduced:0,amount:550}),月日:'2026/01/15'}
+  ]);
+  const result = analyzeTkcJournalText(text);
+  assert.deepEqual(result.monthlyGroups.map(({month,code,amount,transactionKind}) => ({month,code,amount,transactionKind})),[
+    {month:'2025-01',code:'1',amount:1100,transactionKind:'ordinary'},
+    {month:'2025-02',code:'11',amount:-1100,transactionKind:'adjustment'},
+    {month:'2026-01',code:'1',amount:550,transactionKind:'ordinary'}
+  ]);
+  assert.equal(result.monthlyGroups.reduce((sum,group) => sum + group.amount,0),result.salesByType.type2['10']);
+  assert.equal(JSON.stringify(result.monthlyGroups).includes('非公開'),false);
+});
+
+test('月別構成は補正後だけを採用し、仮除外を復活させず、日付不明を別計上する', () => {
+  const text = buildCsv([
+    {...entry('借方',{code:'5',rate:'?',reduced:1,amount:1100}),月日:'2025/04/05'},
+    {...entry('借方',{code:'5',rate:'?',reduced:1,amount:'不明'}),月日:'2025/04/10'},
+    {...entry('借方',{code:'52',rate:10,reduced:0,credit:80,amount:2200}),月日:'日付不明'}
+  ]);
+  const initial = analyzeTkcJournalText(text);
+  const decisions = {
+    [initial.problemEntries[0].id]:{action:'correct',overrides:{rate:'8'}},
+    [initial.problemEntries[1].id]:{action:'exclude'}
+  };
+  const result = analyzeTkcJournalText(text,decisions);
+  assert.equal(result.recoverySummary.correctedCount,1);
+  assert.equal(result.recoverySummary.temporaryExcludedCount,1);
+  assert.equal(result.monthlyDateUnknownEntryCount,1);
+  assert.deepEqual(result.monthlyGroups,[
+    {kind:'purchases',code:'52',rate:'10',businessType:'',usage:'taxableOnly',creditRatio:'80',month:'',amount:2200,transactionKind:'ordinary'},
+    {kind:'purchases',code:'5',rate:'8',businessType:'',usage:'taxableOnly',creditRatio:'',month:'2025-04',amount:1100,transactionKind:'ordinary'}
+  ]);
+  assert.equal(result.invoicePurchases['8'],1100);
+  assert.equal(result.exemptPurchases['80']['10'],2200);
+  assert.equal(JSON.stringify(result.monthlyGroups).includes('不明'),false);
+  assert.deepEqual(analyzeTkcJournalText(text,decisions).monthlyGroups,result.monthlyGroups);
+});
+
+test('同じCSVを再解析しても月別構成は重複加算せず、同月同分類だけを集約する', () => {
+  const text = buildCsv([
+    {...entry('借方',{code:'7',rate:10,reduced:0,amount:110}),月日:'2025/05/01'},
+    {...entry('借方',{code:'7',rate:10,reduced:0,amount:220}),月日:'2025/05/20'},
+    {...entry('借方',{code:'7',rate:8,reduced:1,amount:108}),月日:'2025/05/21'}
+  ]);
+  const first = analyzeTkcJournalText(text);
+  const second = analyzeTkcJournalText(text);
+  assert.equal(first.monthlyGroups.length,2);
+  assert.equal(first.monthlyGroups.find(group => group.rate === '10').amount,330);
+  assert.equal(first.monthlyGroups.find(group => group.rate === '8').amount,108);
+  assert.deepEqual(second.monthlyGroups,first.monthlyGroups);
+  assert.equal(first.purchaseAmountsByUse.common.invoice['10'],330);
+});
+
 test('本則だけを比較するときは返還専用科目を区分11に分離し、通常の負売上検証は維持する', () => {
   const text = buildCsv([
     entry('貸方',{account:'売上勘定',code:'1',business:'5',rate:10,reduced:0,amount:11000123}),

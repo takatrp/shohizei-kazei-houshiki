@@ -22,6 +22,6 @@ test('CSVの用途区分と税率・期間別の合計入力欄の対応を示�
     for (const code of codes) assert.match(guide, new RegExp(`<span class="tkc-badge">TKC ${code}<\\/span>`));
     for (const use of ['課税売上対応', '非課税売上対応', '共通対応']) assert.ok(guide.includes(use));
   }
-  assert.match(html, /body:not\(\[data-print-target="customer"\]\) \.wrap > :not\(#comparisonPrintReport\)\{display:none!important\}/);
+  assert.match(html, /body:not\(\[data-print-target="customer"\]\):not\(\[data-print-target="cashflow"\]\) \.wrap > :not\(#comparisonPrintReport\)\{display:none!important\}/);
   assert.match(html, /body\[data-print-target="customer"\] \.wrap > :not\(#customerPrintReport\)\{display:none!important\}/);
 });

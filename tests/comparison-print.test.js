@@ -297,7 +297,8 @@ test('[r28印刷09] 印刷CSSは専用A4帳票だけを表示し、画面側の�
   assert.match(css, /#comparisonPrintPage\s*\{width:190mm;height:275mm\}/);
   assert.match(css, /@media print\{[\s\S]*?#comparisonPrintPage\{height:auto;min-height:0\}/, '複数ページが必要でも高さで切らない');
   assert.match(css, /\.comparison-print-table \.comparison-number\{white-space:normal;overflow-wrap:anywhere;word-break:break-word\}/, '長い金額も印刷で切らない');
-  assert.match(css, /body:not\(\[data-print-target="customer"\]\) \.wrap > :not\(#comparisonPrintReport\)\{display:none!important\}/);
+  assert.match(css, /body:not\(\[data-print-target="customer"\]\):not\(\[data-print-target="cashflow"\]\) \.wrap > :not\(#comparisonPrintReport\)\{display:none!important\}/);
+  assert.match(css, /body\[data-print-target="cashflow"\] \.wrap > :not\(#cashflowPrintReport\)\{display:none!important\}/);
   assert.match(css, /body\[data-print-target="customer"\] \.wrap > :not\(#customerPrintReport\)\{display:none!important\}/);
   assert.match(css, /\.comparison-number\{[^}]*white-space:nowrap/);
   assert.match(css, /#methodComparisonTable td\[data-column="current"\]\{font-size:16px/);

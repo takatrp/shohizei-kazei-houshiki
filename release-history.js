@@ -7,6 +7,18 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r31',
+      date:'2026-09-25',
+      title:'食品1％試算に資金繰りへの影響（STEP4）を追加',
+      category:'usability',
+      recalcRecommended:false,
+      changes:Object.freeze([
+        '表示上のSTEP4を追加し、既存STEP3と同じ方式・入力・税額を使って月別の税込入出金差と税金精算差を試算',
+        '中間納付・確定納付・還付を両案別に置き、当期税額の二重計上を防止。未確認時は税金未反映の部分試算として区別',
+        'CSV補正・仮除外後の匿名化月別構成、手入力、保存復元、専用コピー・CSV・印刷に対応。元資料期間を確認できない場合は均等配分と明示'
+      ])
+    }),
+    Object.freeze({
       version:'r30',
       date:'2026-09-24',
       title:'現行制度の申告書段階計算を全結果・出力へ統一',

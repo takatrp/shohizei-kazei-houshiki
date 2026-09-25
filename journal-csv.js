@@ -351,6 +351,22 @@
     // other transaction-level detail is needed by the row-entry UI.
     const exemptPurchaseProvenanceByUse = {taxableOnly:{},nonTaxableOnly:{},common:{}};
     const unsupported = new Map();
+    // Only classification, month and signed totals leave the CSV parser for
+    // cash-flow allocation; source names, memos and record IDs stay private.
+    const monthlyGroupsByKey = new Map();
+    let monthlyDateUnknownEntryCount = 0;
+    const addMonthlyGroup = ({kind,code,rate = '',businessType = '',usage = '',creditRatio = '',date,amount,transactionKind}) => {
+      const month = date ? date.slice(0,7) : '';
+      if(!month) monthlyDateUnknownEntryCount += 1;
+      const group = {kind,code,rate,businessType,usage,creditRatio,month,amount:0,transactionKind:transactionKind === 'adjustment' || amount < 0 ? 'adjustment' : 'ordinary'};
+      const key = JSON.stringify([group.kind,group.code,group.rate,group.businessType,group.usage,group.creditRatio,group.month,group.transactionKind]);
+      const current = monthlyGroupsByKey.get(key);
+      if(current) current.amount += amount;
+      else {
+        group.amount = amount;
+        monthlyGroupsByKey.set(key,group);
+      }
+    };
     const errors = problemEntries.filter(item => item.status === 'unresolved').map(item => `${item.row}行目 ${item.side}: ${item.issues.join(' ')}`);
     let nonTaxableSales = 0;
     let mappedEntries = 0;
@@ -397,6 +413,7 @@
            if(code === '11') returnSales.returnGross[rate] -= signedAmount;
            else returnSales.taxableGross[rate] += signedAmount;
            const businessType = businessTypeForEntry(entry, side);
+           addMonthlyGroup({kind:'sales',code,rate,businessType,date,amount:signedAmount,transactionKind});
            if(businessType){
              if(code === '11') returnGrossByType[businessType][rate] -= signedAmount;
              salesByType[businessType][rate] += signedAmount;
@@ -422,7 +439,9 @@
         }
 
         if(NON_TAXABLE_SALES_CODES.has(code)){
-          nonTaxableSales += amountState.value * amountDirection('sales', side);
+          const signedAmount = amountState.value * amountDirection('sales', side);
+          nonTaxableSales += signedAmount;
+          addMonthlyGroup({kind:'sales',code,date,amount:signedAmount,transactionKind:code === '31' ? 'adjustment' : transactionKind});
           if(date){
             if(!effectiveStart || date < effectiveStart) effectiveStart = date;
             if(!effectiveEnd || date > effectiveEnd) effectiveEnd = date;
@@ -442,6 +461,7 @@
           const signedAmount = amountState.value * amountDirection('purchase', side);
           invoicePurchases[rate] += signedAmount;
           purchaseAmountsByUse[invoiceUsage].invoice[rate] += signedAmount;
+          addMonthlyGroup({kind:'purchases',code,rate,usage:invoiceUsage,date,amount:signedAmount,transactionKind});
           if(date){
             if(!effectiveStart || date < effectiveStart) effectiveStart = date;
             if(!effectiveEnd || date > effectiveEnd) effectiveEnd = date;
@@ -464,6 +484,7 @@
           const signedAmount = amountState.value * amountDirection('purchase', side);
           exemptPurchases[ratio][rate] += signedAmount;
           purchaseAmountsByUse[exemptUsage].exempt[ratio][rate] += signedAmount;
+          addMonthlyGroup({kind:'purchases',code,rate,usage:exemptUsage,creditRatio:ratio,date,amount:signedAmount,transactionKind});
           if(transactionKind === 'adjustment'){
             recoverySummary.nettedExemptAdjustmentCount += 1;
             recoverySummary.nettedExemptAdjustmentAbsAmount += Math.abs(signedAmount);
@@ -543,6 +564,8 @@
       nonTaxableSales,
       purchaseTaxByUse,
       purchaseAmountsByUse,
+      monthlyGroups:[...monthlyGroupsByKey.values()].sort((a,b) => a.month.localeCompare(b.month) || a.kind.localeCompare(b.kind) || a.code.localeCompare(b.code) || a.rate.localeCompare(b.rate) || a.businessType.localeCompare(b.businessType) || a.usage.localeCompare(b.usage) || a.creditRatio.localeCompare(b.creditRatio) || a.transactionKind.localeCompare(b.transactionKind)),
+      monthlyDateUnknownEntryCount,
       exemptPurchaseProvenanceByUse,
       unsupportedEntries,
       problemEntries,

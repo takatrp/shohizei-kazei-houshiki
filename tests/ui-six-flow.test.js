@@ -31,6 +31,11 @@ function harness(names){
     BUSINESS_TYPES:[{key:'type2'}], EXEMPT_PURCHASE_BUCKETS:[{key:'80'}],
     importedActualOnePercent:null, importedCsvRecovery:null, appliedJournalImport:null, foodConfirmationSignatures:{},
     workflowStep:1, switchDecisionOpen:false, visibleBusinessTypes:new Set(),
+    WORKFLOW_STEPS:[{id:1},{id:2},{id:4},{id:5}],
+    adjacentWorkflowStep(id,direction){
+      const steps = [1,2,4,5];
+      return steps[Math.max(0,Math.min(steps.length-1,steps.indexOf(id)+direction))];
+    },
     comparisonMethodAttempted:false, refreshTaxRowTableLayout(){}, selectedComparisonMethods:()=>['regular'],
     selectedValue:()=> 'included', taxScenarioKey:()=> 'foodProposal',
     escapeHtml:String, yen:n=>`${n}円`, amountClass:()=>'',
@@ -54,7 +59,7 @@ function navigationHarness(step){
   h.context.importedUnsupportedEntries = [];
   h.context.renderExemptFields = () => {};
   const moves = [];
-  for(const screen of [1, 2, 4]){
+  for(const screen of [1, 2, 4, 5]){
     const parent = h.element('workflowScreen' + screen);
     parent.append = node => {
       moves.push({ kind:'append', screen });
@@ -173,6 +178,24 @@ test('[U07-U08] 未入力・不正額は照合済みにできず、有効な保�
   assert.equal(status.querySelector().disabled,false);
 });
 
+test('[STEP4] 現在のTKC行の食品内数を確認でき、行変更時は確認状態へ戻す',()=>{
+  const h=harness(foodFunctions);
+  h.context.entryMode='rows';
+  h.context.taxEntryRows={sales:[{code:'1',rate:'8',amount:'1,080',foodAmount:'1,080'}],
+    purchases:[{code:'5',rate:'8',amount:'540',foodAmount:'540'}]};
+  h.context.normalizeFoodConfirmations();
+  assert.equal(h.element('proposalFoodClassificationState').querySelector().disabled,false);
+  assert.equal(h.element('proposalPurchaseClassificationState').querySelector().disabled,false);
+  h.element('proposalFoodClassificationState').value='confirmed';
+  h.element('proposalPurchaseClassificationState').value='confirmed';
+  h.context.normalizeFoodConfirmations();
+  assert.equal(h.element('proposalFoodClassificationState').value,'confirmed');
+  h.context.taxEntryRows.sales[0].foodAmount='540';
+  h.context.normalizeFoodConfirmations();
+  assert.equal(h.element('proposalFoodClassificationState').value,'unknown');
+  assert.equal(h.element('proposalPurchaseClassificationState').value,'confirmed');
+});
+
 test('[U08] 食品金額変更は該当側だけ解除し、期間の変更は両側の確認を解除する',()=>{
   const h=harness(foodFunctions);
   for(const [base,target] of [['type2Sale8','type2SaleFood1'],['purchase8','purchaseFood1']]){
@@ -207,7 +230,7 @@ test('[U09-U25] 明示1％の純額0円の元行は確認の根拠として保�
   assert.equal(entries[1].transactionKind,'adjustment');
 });
 
-test('[U10-U12] 実イベントで次へと戻るは費用の開閉に関係なく3段階を通る',()=>{
+test('[U10-U12] 実イベントで次へと戻るは費用の開閉に関係なく4段階を通る',()=>{
   const h=harness(['bindEvents']);
   h.context.bindEvents();
   for(const opened of [false,true]){
@@ -217,12 +240,16 @@ test('[U10-U12] 実イベントで次へと戻るは費用の開閉に関係な�
     assert.equal(h.context.workflowStep,2);
     h.element('workflowNext').listeners.click();
     assert.equal(h.context.workflowStep,4);
+    h.element('workflowNext').listeners.click();
+    assert.equal(h.context.workflowStep,5);
+    h.element('workflowBack').listeners.click();
+    assert.equal(h.context.workflowStep,4);
     h.element('workflowBack').listeners.click();
     assert.equal(h.context.workflowStep,2);
     h.element('workflowBack').listeners.click();
     assert.equal(h.context.workflowStep,1);
   }
-  assert.deepEqual([...html.matchAll(/<button[^>]*data-workflow-step="(\d)"/g)].map(m=>Number(m[1])),[1,2,4]);
+  assert.deepEqual([...html.matchAll(/<button[^>]*data-workflow-step="(\d)"/g)].map(m=>Number(m[1])),[1,2,4,5]);
 });
 
 test('[r27導線] CSV入口は取込領域を開くだけでファイル選択を自動起動しない',()=>{

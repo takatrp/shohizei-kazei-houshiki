@@ -61,10 +61,14 @@
     if(!months.length || !Number.isSafeInteger(total)) return [];
     const sum = weights.reduce((value, weight) => value + weight, 0);
     if(!Number.isFinite(sum) || Math.abs(sum) < 1e-9) return [];
+    // Put the rounding residual on the final eligible, non-zero-weight month.
+    // The last calendar month can be outside the food proposal period.
+    const lastActive = weights.findLastIndex(weight => Math.abs(weight) >= 1e-9);
     let allocated = 0;
     const result = [];
     for(let index = 0; index < months.length; index++){
-      const amount = index === months.length - 1 ? total - allocated : Math.round(total * weights[index] / sum);
+      const amount = index === lastActive ? total - allocated
+        : Math.abs(weights[index]) < 1e-9 ? 0 : Math.round(total * weights[index] / sum);
       if(!Number.isSafeInteger(amount)) return [];
       allocated += amount;
       result.push({month:months[index],amount});
@@ -81,7 +85,7 @@
   }
 
   function csvMonthDistribution(kind, rows, groups, months, periodStart, periodEnd, sourceStart, sourceEnd,
-    sourcePeriodConfirmed, dateUnknownCount, annualDelta){
+    sourcePeriodConfirmed, dateUnknownCount, annualDelta, priceBasis){
     const notes = [];
     if(sourcePeriodConfirmed !== true)
       return {deltas:null, reason:'元資料期間と全月網羅が未確認のため、CSV月別構成を使えません。'};
@@ -165,6 +169,26 @@
       }
     }
     const weights = months.map(month => targetWeights.get(month));
+    const weightSum = weights.reduce((sum,weight) => sum + weight,0);
+    if(annualDelta === 0 && Math.abs(weightSum) < 1e-9 && weights.some(weight => Math.abs(weight) >= 1e-9)){
+      // A sale and its later full return cancel annually but not month by month.
+      // Use the same 8%-to-1% price projection helper as the main calculation,
+      // and accept the restored shape only if it reconciles to STEP3's annual 0.
+      const projected = taxEngine.projectPrice({netAmount:100,grossAmount:108,ratePercent:1,
+        priceBasis:priceBasis === 'grossFixed' ? 'grossFixed' : 'netFixed'});
+      const factor = (projected.grossAmount - 108) / 108;
+      const amounts = weights.map(weight => roundedYen(weight * factor));
+      if(amounts.some(amount => amount === null))
+        return {deltas:null, reason:'CSVの正負月別構成を円単位へ換算できません。'};
+      const remainder = -amounts.reduce((sum,amount) => sum + amount,0);
+      if(Math.abs(remainder) > weights.filter(weight => Math.abs(weight) >= 1e-9).length)
+        return {deltas:null, reason:'CSVの正負月別構成とSTEP3の年間差額が一致しません。'};
+      if(remainder) amounts[weights.findLastIndex(weight => Math.abs(weight) >= 1e-9)] += remainder;
+      notes.push('売上と返品等の年間差引が0円でも、復元できる月別の正負は保持しています。');
+      notes.push('CSV月別構成比による配分概算です。実際の入出金を再現したものではありません。');
+      notes.push('CSVに食品商品別の月次区分はないため、食品内数は同じ課税区分グループの月別構成と仮定しています。');
+      return {deltas:months.map((month,index) => ({month,amount:amounts[index]})),notes};
+    }
     const deltas = allocateExact(annualDelta, months, weights);
     if(!deltas.length) return {deltas:null, reason:'CSVの対象月構成比が差引0円となり、現在の年額差を配分できません。'};
     notes.push('CSV月別構成比による配分概算です。実際の入出金を再現したものではありません。');
@@ -221,24 +245,41 @@
     if(annualSalesDelta === null || annualPurchaseDelta === null)
       reasons.push('STEP3の両案の税込売上・仕入額を確認できません。');
     const distributionNotes = [];
-    let used = distribution === 'csv' ? 'csv' : 'uniform';
+    const bySide = {sales:'uniform',purchases:'uniform'};
+    const signedZeroNetSales = annualSalesDelta === 0 && calc?.ctx?.foodSalesPriceBasis !== 'grossFixed'
+      && (taxEntryRows?.sales || []).some(row => String(row.code) === '11'
+        && String(row.rate) === '8' && Number(String(row.foodAmount || '').replace(/,/g,'')) > 0);
     const allocate = (kind,total) => {
       if(total === null || !months.length) return null;
       if(distribution === 'csv'){
         const source = csvMonthDistribution(kind,taxEntryRows,csvMonthlyGroups,months,periodStart,periodEnd,
-          sourcePeriodStart,sourcePeriodEnd,sourcePeriodConfirmed,csvMonthlyDateUnknownCount,total);
+          sourcePeriodStart,sourcePeriodEnd,sourcePeriodConfirmed,csvMonthlyDateUnknownCount,total,
+          kind === 'sales' ? calc?.ctx?.foodSalesPriceBasis : calc?.ctx?.foodPurchasePriceBasis);
         if(source.deltas){
+          bySide[kind] = 'csv';
           distributionNotes.push(...(source.notes || []));
           return source.deltas;
         }
-        used = 'uniform';
+        if(kind === 'sales' && signedZeroNetSales){
+          reasons.push(`年間差引0円の食品売上・返品について、月別の正負を復元できません。${source.reason}`);
+          return null;
+        }
         distributionNotes.push(`${kind === 'sales' ? '売上' : '仕入'}：${source.reason}日数均等配分へ切り替えました。`);
+      }
+      if(kind === 'sales' && signedZeroNetSales){
+        reasons.push('年間差引0円の食品売上・返品について、月別内訳がないため資金の増減時期を算定できません。CSV月別構成を確認してください。');
+        return null;
       }
       return uniformDistribution(total,months,periodStart,periodEnd);
     };
     const salesDeltas = allocate('sales',annualSalesDelta);
     const purchaseDeltas = allocate('purchases',annualPurchaseDelta);
-    if(!salesDeltas || !purchaseDeltas) reasons.push('食品1％の対象期間と対象期が重ならず、STEP3の取引差額を配分できません。');
+    const used = bySide.sales === bySide.purchases ? bySide.sales : 'mixed';
+    if(!salesDeltas || !purchaseDeltas){
+      reasons.push(months.some(month => eligibleMonthDays(month,periodStart,periodEnd) > 0)
+        ? 'STEP3の取引差額を月別に配分できません。CSV月別内訳と配分前提を確認してください。'
+        : '食品1％の対象期間と対象期が重ならず、STEP3の取引差額を配分できません。');
+    }
     if(used === 'uniform') distributionNotes.push('対象期の取引差額を食品1％対象期間と重なる各月の日数で均等配分した概算です。');
     return {
       ready:reasons.length === 0,
@@ -249,7 +290,8 @@
         raw:{base:row?.currentAmount ?? null,changed:row?.proposalAmount ?? null}},
       annualSalesDelta, annualPurchaseDelta,
       salesDeltas:salesDeltas || [], purchaseDeltas:purchaseDeltas || [],
-      distribution:{requested:distribution === 'csv' ? 'csv' : 'uniform',used,notes:[...new Set(distributionNotes)]},
+      distribution:{requested:distribution === 'csv' ? 'csv' : 'uniform',used,bySide,
+        notes:[...new Set(distributionNotes)]},
       assumptions:[...new Set(assumptions)],reasons,
       source:{policyStart:POLICY.start,policyEnd:POLICY.end,
         originalSalesDelta:rawSalesDelta,originalPurchaseDelta:rawPurchaseDelta,

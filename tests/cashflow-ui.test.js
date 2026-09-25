@@ -16,7 +16,7 @@ function functionSource(name){
 function screenFunctions(){
   const context = vm.createContext({yen:value => `${value}円`,escapeHtml:value => String(value)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'),sanitizeCsvCell:tax.sanitizeCsvCell});
-  vm.runInContext(['cashflowChartHtml','cashflowTableHtml','cashflowExportText','cashflowCsvText']
+  vm.runInContext(['parseCashflowInterim','cashflowDistributionLabel','cashflowChartHtml','cashflowTableHtml','cashflowExportText','cashflowCsvText']
     .map(functionSource).join('\n'),context);
   return context;
 }
@@ -65,7 +65,8 @@ test('CF29 対象期後の月を表とグラフで分け、税金未反映を単
   const chart=ui.cashflowChartHtml(rows,true,null);
   const table=ui.cashflowTableHtml(rows,true);
   assert.match(chart,/税金未反映・取引差額のみ/);
-  assert.match(chart,/対象期後の精算/);
+  assert.match(chart,/対象期後の資金イベント/);
+  assert.match(chart,/x="785" y="28" text-anchor="end"[^>]*>対象期後の資金イベント/);
   assert.match(table,/class="after-period"/);
   assert.match(table,/未反映/);
 });
@@ -74,4 +75,35 @@ test('CF25 顧客用の専用帳票と資金繰り印刷をCSSで分離する',(
   assert.match(html,/body\[data-print-target="cashflow"\] \.wrap > :not\(#cashflowPrintReport\)/);
   assert.match(html,/body\[data-print-target="customer"\] \.wrap > :not\(#customerPrintReport\)/);
   assert.match(functionSource('prepareComparisonPrint'),/dataset\.printTarget === 'customer'\) return/);
+});
+
+test('R06 支払・納付の月別列は支出額差ではなく資金増減と明記する',()=>{
+  const ui=screenFunctions();
+  const table=ui.cashflowTableHtml(example.engine.rows,false);
+  const copied=ui.cashflowExportText(example);
+  const csv=ui.cashflowCsvText(example);
+  for(const output of [table,copied,csv]){
+    assert.match(output,/仕入支払による資金増減|仕入支払<br>資金増減/);
+    assert.match(output,/確定納付による資金増減|確定納付<br>資金増減/);
+    assert.doesNotMatch(output,/仕入支払差|確定納付差/);
+  }
+  assert.match(table,/基準案の支出−変更案の支出|支出額の差とは逆符号/);
+  assert.match(table,/期後の回収・支払・税金精算月/);
+});
+
+test('R07 不正なカンマだけの中間納付を0円に変換せず、明示0円を受ける',()=>{
+  const parse=screenFunctions().parseCashflowInterim;
+  assert.throws(()=>parse('2028-08,,','基準案'),/YYYY-MM,金額/);
+  assert.throws(()=>parse('2028-08,1,23','基準案'),/YYYY-MM,金額/);
+  assert.deepEqual(JSON.parse(JSON.stringify(parse('2028-08,0','基準案'))),[{month:'2028-08',amount:0}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(parse('2028-08,300,000','基準案'))),[{month:'2028-08',amount:300000}]);
+});
+
+test('R08 売上CSV・仕入均等の混在配分をコピーとCSVへ側別表示する',()=>{
+  const ui=screenFunctions();
+  const mixed={...example,adapter:{...example.adapter,distribution:{used:'mixed',bySide:{sales:'csv',purchases:'uniform'}}}};
+  const expected='売上：CSV月別構成比／仕入：対象日数均等配分（概算）';
+  assert.equal(ui.cashflowDistributionLabel(mixed.adapter.distribution),expected);
+  assert.match(ui.cashflowExportText(mixed),new RegExp(expected));
+  assert.match(ui.cashflowCsvText(mixed),new RegExp(expected));
 });

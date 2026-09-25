@@ -162,7 +162,7 @@ test('CSV後に同じ区分の金額を手修正しても年額差を正本と�
   assert.equal(sum(result.salesDeltas),result.annualSalesDelta);
 });
 
-test('区分不一致と差引ゼロで構成比が使えない場合は、負値を0へ変えず均等に戻す', () => {
+test('区分不一致の売上は均等へ戻し、検算できた仕入CSVは維持する', () => {
   const rows = {sales:[{code:'1',rate:'8',businessType:'type2',amount:'108000000',foodAmount:'108000000',source:'csv'}],
     purchases:[{code:'5',rate:'8',amount:'75600000',foodAmount:'75600000',source:'csv'}]};
   const groups = [
@@ -171,7 +171,8 @@ test('区分不一致と差引ゼロで構成比が使えない場合は、負�
   ];
   const result = adapter.create(input({distribution:'csv',sourcePeriodStart:'2027-04-01',
     sourcePeriodEnd:'2028-03-31',sourcePeriodConfirmed:true,taxEntryRows:rows,csvMonthlyGroups:groups}));
-  assert.equal(result.distribution.used,'uniform');
+  assert.equal(result.distribution.used,'mixed');
+  assert.deepEqual(result.distribution.bySide,{sales:'uniform',purchases:'csv'});
   assert.match(result.distribution.notes.join(''),/対応するCSV月別構成がありません/);
   assert.equal(sum(result.salesDeltas),-7000000);
 });
@@ -189,7 +190,7 @@ test('取引日不明のCSVは全月網羅チェックがあっても月別構�
   assert.match(result.distribution.notes.join(''),/取引日不明明細が1件/);
 });
 
-test('未修正CSV行と月次総額が食い違えば手修正とみなさず均等へ戻す', () => {
+test('未修正CSV売上と月次総額が食い違えば売上だけ均等へ戻し、仕入CSVは維持する', () => {
   const rows = {sales:[{code:'1',rate:'8',businessType:'type2',amount:'108000000',foodAmount:'108000000',source:'csv'}],
     purchases:[{code:'5',rate:'8',amount:'75600000',foodAmount:'75600000',source:'csv'}]};
   const result = adapter.create(input({distribution:'csv',sourcePeriodStart:'2027-04-01',
@@ -197,7 +198,8 @@ test('未修正CSV行と月次総額が食い違えば手修正とみなさず�
       {kind:'sales',code:'1',rate:'8',businessType:'type2',month:'2027-04',amount:107000000},
       {kind:'purchases',code:'5',rate:'8',month:'2027-04',amount:75600000}
     ]}));
-  assert.equal(result.distribution.used,'uniform');
+  assert.equal(result.distribution.used,'mixed');
+  assert.deepEqual(result.distribution.bySide,{sales:'uniform',purchases:'csv'});
   assert.match(result.distribution.notes.join(''),/未修正の入力行が一致しません/);
 });
 
@@ -227,4 +229,84 @@ test('別月の返品による負の月別構成を0円に丸めず、正負を�
   assert.equal(result.salesDeltas[0].amount,-8750000);
   assert.equal(result.salesDeltas[1].amount,1750000);
   assert.equal(sum(result.salesDeltas),-7000000);
+});
+
+test('R03: 食品売上と同額の返品で年額差が0円でも、CSVの4月・5月の資金差を残す', () => {
+  const data = input({distribution:'csv',sourcePeriodStart:'2028-01-01',sourcePeriodEnd:'2028-12-31',sourcePeriodConfirmed:true,
+    taxEntryRows:{sales:[
+      {code:'1',rate:'8',businessType:'type2',amount:'10800000',foodAmount:'10800000',source:'csv'},
+      {code:'11',rate:'8',businessType:'type2',amount:'10800000',foodAmount:'10800000',source:'csv'}
+    ],purchases:[]},
+    csvMonthlyGroups:[
+      {kind:'sales',code:'1',rate:'8',businessType:'type2',month:'2028-04',amount:10800000},
+      {kind:'sales',code:'11',rate:'8',businessType:'type2',month:'2028-05',amount:-10800000}
+    ]});
+  data.ctx.start = data.calc.ctx.start = '2028-01-01';
+  data.ctx.end = data.calc.ctx.end = '2028-12-31';
+  data.calc.sales.totalAmount = data.comparison.current.sales.totalAmount;
+  data.calc.purchases.totalAmount = data.comparison.current.purchases.totalAmount;
+  data.comparison.rows[0].proposalAmount = data.comparison.rows[0].currentAmount;
+  const result = adapter.create(data);
+  assert.equal(result.ready,true);
+  assert.equal(result.annualSalesDelta,0);
+  assert.equal(result.salesDeltas.find(item => item.month === '2028-04').amount,-700000);
+  assert.equal(result.salesDeltas.find(item => item.month === '2028-05').amount,700000);
+  assert.equal(sum(result.salesDeltas),0);
+  assert.equal(result.distribution.bySide.sales,'csv');
+});
+
+test('R03: 年間0円の売上返品で月別内訳を復元できなければ、全月0円確定にしない', () => {
+  const data = input({distribution:'csv',taxEntryRows:{sales:[
+    {code:'1',rate:'8',businessType:'type2',amount:'10800000',foodAmount:'10800000',source:'csv'},
+    {code:'11',rate:'8',businessType:'type2',amount:'10800000',foodAmount:'10800000',source:'csv'}
+  ],purchases:[]}});
+  data.calc.sales.totalAmount = data.comparison.current.sales.totalAmount;
+  const result = adapter.create(data);
+  assert.equal(result.ready,false);
+  assert.deepEqual(result.salesDeltas,[]);
+  assert.match(result.reasons.join(''),/月別の正負を復元できません/);
+});
+
+test('R05: 2029年3月までの食品1％差額は4月以降へ丸め残差を押し込まない', () => {
+  const data = input();
+  data.ctx.start = data.calc.ctx.start = '2029-01-01';
+  data.ctx.end = data.calc.ctx.end = '2029-12-31';
+  data.calc.sales.totalAmount = data.comparison.current.sales.totalAmount - 1726027;
+  data.calc.purchases.totalAmount = data.comparison.current.purchases.totalAmount - 1208219;
+  const result = adapter.create(data);
+  assert.equal(result.ready,true);
+  assert.equal(sum(result.salesDeltas),-1726027);
+  assert.equal(sum(result.purchaseDeltas),-1208219);
+  assert.ok(result.salesDeltas.filter(item => item.month > '2029-03').every(item => item.amount === 0));
+  assert.ok(result.purchaseDeltas.filter(item => item.month > '2029-03').every(item => item.amount === 0));
+});
+
+test('R05: CSVで明示的に取引0の対象月・対象期間外月へ丸め残差を押し込まない', () => {
+  const data = input({distribution:'csv',sourcePeriodStart:'2029-01-01',sourcePeriodEnd:'2029-12-31',sourcePeriodConfirmed:true,
+    taxEntryRows:{sales:[{code:'1',rate:'8',businessType:'type2',amount:'108000000',foodAmount:'108000000',source:'csv'}],purchases:[]},
+    csvMonthlyGroups:[
+      {kind:'sales',code:'1',rate:'8',businessType:'type2',month:'2029-01',amount:54000000},
+      {kind:'sales',code:'1',rate:'8',businessType:'type2',month:'2029-02',amount:54000000}
+    ]});
+  data.ctx.start = data.calc.ctx.start = '2029-01-01';
+  data.ctx.end = data.calc.ctx.end = '2029-12-31';
+  data.calc.sales.totalAmount = data.comparison.current.sales.totalAmount - 1726027;
+  data.calc.purchases.totalAmount = data.comparison.current.purchases.totalAmount;
+  const result = adapter.create(data);
+  assert.equal(result.ready,true);
+  assert.equal(result.distribution.bySide.sales,'csv');
+  assert.equal(sum(result.salesDeltas),-1726027);
+  assert.ok(result.salesDeltas.filter(item => item.month >= '2029-03').every(item => item.amount === 0));
+});
+
+test('R08: 売上CSV・仕入均等の採用状態を側別とmixedで返す', () => {
+  const result = adapter.create(input({distribution:'csv',sourcePeriodStart:'2027-04-01',sourcePeriodEnd:'2028-03-31',sourcePeriodConfirmed:true,
+    taxEntryRows:{sales:[{code:'1',rate:'8',businessType:'type2',amount:'108000000',foodAmount:'108000000',source:'csv'}],
+      purchases:[{code:'5',rate:'8',amount:'75600000',foodAmount:'75600000',source:'manual'}]},
+    csvMonthlyGroups:[{kind:'sales',code:'1',rate:'8',businessType:'type2',month:'2027-04',amount:108000000}] }));
+  assert.equal(result.ready,true);
+  assert.equal(result.distribution.used,'mixed');
+  assert.deepEqual(result.distribution.bySide,{sales:'csv',purchases:'uniform'});
+  assert.equal(result.salesDeltas[0].amount,-7000000);
+  assert.equal(sum(result.purchaseDeltas),-4900000);
 });

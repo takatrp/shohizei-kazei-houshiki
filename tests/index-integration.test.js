@@ -21,6 +21,7 @@ function functionSource(name){
   return html.slice(start, end < 0 ? undefined : end);
 }
 const names = [
+  'cashflowScopeDigest', 'cashflowImportScopeKey', 'currentCashflowConfirmationScope', 'clearCashflowSourceConfirmation',
   'normalizeCsvRecovery', 'csvRecoverySummaryText', 'renderJournalRecovery', 'journalRowHasInput', 'journalManualRows', 'journalImportHasExistingInput',
   'journalImportTotals', 'currentJournalImportTotals', 'journalImportTotalsText', 'updateJournalRecovery', 'excludeUnresolvedJournalEntries', 'openAppliedJournalRecovery',
   'formatInput', 'amountState', 'formatCtxAmount', 'confirmationLabel', 'simpleElectionLabel', 'taxScenarioKey', 'taxScenarioConfig', 'selectedValue', 'selectedComparisonMethods', 'showBusinessTypeColumn', 'showFoodAmountColumn', 'purchaseRowsForScenario', 'foodConfirmationEvidence', 'conditionInputLinks', 'percent',
@@ -112,6 +113,7 @@ function harness(csv){
     importedUnsupportedEntries:[],
     importedCsvRecovery:null,
     importedCsvOrigin:null,
+    importedCsvCashflowScopeKey:'', cashflowConfirmedScope:'',
     importedReturnEvidence:null,
     taxEntryRows:{sales:[],purchases:[]},rowCsvKnownZeros:{},latestTaxRowAggregate:null,
     appliedJournalImport:null,

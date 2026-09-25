@@ -66,6 +66,7 @@ function flowHarness(names){
     importedUnsupportedEntries:[],
     importedCsvRecovery:null,
     importedCsvOrigin:null,
+    importedCsvCashflowScopeKey:'', cashflowConfirmedScope:'',
     importedReturnEvidence:null,
     appliedJournalImport:null,
     importedExemptTransactionCount:0,
@@ -78,7 +79,8 @@ function flowHarness(names){
     analyzeTkcJournalText(){ return { errors:[], actualOnePercentEntries:[] }; },
     aggregateReturnInputs(){ return null; }
   });
-  vm.runInContext([...new Set(['normalizeCsvRecovery', 'csvRecoverySummaryText', ...names])].map(functionSource).join('\n'), context);
+  vm.runInContext([...new Set(['normalizeCsvRecovery', 'csvRecoverySummaryText',
+    'cashflowScopeDigest','cashflowImportScopeKey','currentCashflowConfirmationScope','clearCashflowSourceConfirmation',...names])].map(functionSource).join('\n'), context);
   return { context, element, updates:() => updates };
 }
 

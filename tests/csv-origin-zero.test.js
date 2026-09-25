@@ -56,6 +56,7 @@ function harness(text){
     appliedJournalImport:null,
     importedCsvRecovery:null,
     importedCsvOrigin:null,
+    importedCsvCashflowScopeKey:'', cashflowConfirmedScope:'',
     importedReturnEvidence:null,
     importedExemptTransactionCount:0,
     importedUnsupportedEntries:[],
@@ -70,7 +71,8 @@ function harness(text){
     currentJournalImportTotals:() => ({totals:{sales:0,nonTaxableSales:0,invoicePurchases:0,exemptPurchases:0},invalid:false}),
     renderJournalImport(){}, update(){}
   });
-  vm.runInContext(['formatInput','normalizeCsvRecovery','csvRecoverySummaryText','journalRowHasInput',
+  vm.runInContext(['formatInput','normalizeCsvRecovery','csvRecoverySummaryText',
+    'cashflowScopeDigest','cashflowImportScopeKey','currentCashflowConfirmationScope','clearCashflowSourceConfirmation','journalRowHasInput',
     'journalManualRows','journalImportHasExistingInput','journalImportTotals','journalImportTotalsText',
     'setImportedAmount','applyJournalImport'].map(source).join('\n'),context);
   return {context, element};

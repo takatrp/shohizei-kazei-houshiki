@@ -116,12 +116,13 @@
           addError(side, index, '食品1％対象額が行の税込金額を超えるか、符号が異なります。');
         }
         const legacyValue = (side === 'sales' && code === '11' ? -1 : 1) * legacyAmount(amount.value, rate, amountMode);
-        const legacyFood = food.entered && food.valid ? legacyAmount(food.value, rate, amountMode) : 0;
+        const legacyFood = food.entered && food.valid
+          ? (side === 'sales' && code === '11' ? -1 : 1) * legacyAmount(food.value, rate, amountMode) : 0;
         if(side === 'sales'){
           const type = String(row.businessType ?? '').trim();
           if(!BUSINESS_TYPES.includes(type)){
             unclassifiedSales.push({ index, code, rate, amount:code === '11' ? -amount.value : amount.value,
-              foodAmount:food.entered && food.valid ? food.value : null,
+              foodAmount:food.entered && food.valid ? (code === '11' ? -food.value : food.value) : null,
               source:row.source || 'manual' });
             unclassifiedSalesTotals[rate] += legacyValue;
             if(rate === '8' && food.entered && food.valid) unclassifiedFoodTotal += legacyFood;

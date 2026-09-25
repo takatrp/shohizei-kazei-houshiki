@@ -7,6 +7,18 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r31.1',
+      date:'2026-09-25',
+      title:'STEP4の返品・月別配分と確認状態を修正',
+      category:'correction',
+      recalcRecommended:true,
+      changes:Object.freeze([
+        '売上返還等の食品内数を減算し、年間差引0円でも復元できる月別の資金増減を維持',
+        'リセットと別CSV反映で納付予定・元資料確認状態を適切に初期化し、対象外月への端数配分を防止',
+        '支払・納付の資金寄与と売上／仕入別の月別配分方法を画面・コピー・CSV・印刷で明示'
+      ])
+    }),
+    Object.freeze({
       version:'r31',
       date:'2026-09-25',
       title:'食品1％試算に資金繰りへの影響（STEP4）を追加',

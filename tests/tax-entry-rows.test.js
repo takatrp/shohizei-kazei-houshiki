@@ -113,6 +113,40 @@ test('食品内数の返品は符号を保って換算し、差引後の正額�
   closeTo(result.purchaseTaxByUse.taxableOnly,1000);
 });
 
+test('R02: 区分11の食品内数は分類済み・未分類とも減算し、部分返品と全額返品を保持する', () => {
+  const classified = aggregateTaxRows({sales:[
+    sale('1','108000000','8','type2','54000000'),
+    sale('11','10800000','8','type2','5400000'),
+    sale('1','11000000','10','type2')
+  ]});
+  assert.equal(classified.ready,true);
+  assert.equal(value(classified,'type2Sale8'),97200000);
+  assert.equal(value(classified,'type2SaleFood1'),48600000);
+  assert.equal(value(classified,'type2Sale10'),11000000);
+  const food1Gross = engine.projectPrice({netAmount:48600000 / 1.08,grossAmount:48600000,
+    ratePercent:1,priceBasis:'netFixed'}).grossAmount;
+  assert.equal(food1Gross - 48600000,-3150000);
+  assert.equal(engine.taxFromAmount(97200000,8,'included') + engine.taxFromAmount(11000000,10,'included'),8200000);
+  assert.equal(engine.taxFromAmount(48600000,8,'included') + engine.taxFromAmount(food1Gross,1,'included')
+    + engine.taxFromAmount(11000000,10,'included'),5050000);
+  const unknown = aggregateTaxRows({sales:[
+    sale('1','108000000','8','','54000000'),
+    sale('11','10800000','8','','5400000')
+  ]});
+  assert.equal(unknown.unclassifiedSalesTotals['8'],97200000);
+  assert.equal(unknown.unclassifiedFoodTotal,48600000);
+  assert.equal(unknown.unclassifiedSales[1].foodAmount,-5400000);
+  assert.equal(unknown.errors.length,0,'事業区分未確認を勝手に確認済みにしない');
+  assert.equal(unknown.ready,false);
+  const allReturn = aggregateTaxRows({sales:[
+    sale('1','10800000','8','type2','10800000'),
+    sale('11','10800000','8','type2','10800000')
+  ]});
+  assert.equal(allReturn.ready,true);
+  assert.equal(value(allReturn,'type2Sale8'),0);
+  assert.equal(value(allReturn,'type2SaleFood1'),0);
+});
+
 test('TKC行モデルは8区分と売上返還等11を定義し、空の末尾行を取引にしない', () => {
   assert.deepEqual(Object.keys(CODE_DETAILS), ['1','3','5','6','7','11','52','62','72']);
   const result = aggregateTaxRows({ sales:[createTaxEntryRow('sales')], purchases:[createTaxEntryRow('purchases')] });

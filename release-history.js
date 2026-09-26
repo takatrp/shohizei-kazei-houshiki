@@ -7,6 +7,17 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r34',date:'2026-09-26',
+      title:'未算定理由の入力導線と両案の納付・還付グラフ',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        '税率前提の必須表示を選択群見出しへ移し、新規売上入力を課税売上・非課税売上の空欄2行で開始',
+        '方式別の未算定理由を共通入力要否から表示し、対象行への移動・フォーカスを追加',
+        '課税期間短縮特例の新規・リセット時初期値を適用なしとし、明示値・保存値は保持',
+        'STEP4は同じ計算結果の両案の月別中間納付・確定納付・還付実額を主表示、累積差額を補助表示へ変更'
+      ])
+    }),
+    Object.freeze({
       version:'r33',
       date:'2026-09-26',
       title:'方式別資金推移とR33-01〜07再レビュー修正',

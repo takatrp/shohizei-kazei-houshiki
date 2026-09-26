@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const engine = require('../tax-engine.js');
 const switchDecision = require('../switch-decision.js');
+const inputDiagnostics = require('../input-diagnostics.js');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
@@ -25,6 +26,9 @@ function traceHarness(){
   };
   const context = vm.createContext({
     $:element,
+    ShohizeiInputDiagnostics:inputDiagnostics,
+    latestTaxRowAggregate:null,
+    inputRequirementContext(calc){ return {values:calc.ctx || {},comparisonMethods:calc.ctx?.comparisonMethods || calc.methods.map(item=>item.key),taxScenario:calc.ctx?.taxScenario,entryMode:'legacy',rows:{sales:[],purchases:[]}}; },
     document:{ activeElement:null, querySelectorAll(){ return []; } },
     yen:value => `${Math.round(value).toLocaleString('ja-JP')}円`,
     escapeHtml:value => String(value ?? '').replace(/[&<>"']/g, char => ({

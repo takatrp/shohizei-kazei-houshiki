@@ -47,7 +47,7 @@ function harness(names){
     handleJournalCsvFile(){}, applyJournalImport(){}, clearJournalImport(){}, resetAll(){},
     navigator:{}, setTimeout(){}
   });
-  vm.runInContext([...new Set(['normalizeCsvRecovery', 'csvRecoverySummaryText', ...names])].map(source).join('\n'), context);
+  vm.runInContext([...new Set(['normalizeCsvRecovery', 'csvRecoverySummaryText', 'focusInputTarget', ...names])].map(source).join('\n'), context);
   return {context,element};
 }
 const foodFunctions = ['amountState','exemptPurchaseInputId','foodConfirmationEvidence','normalizeFoodConfirmations'];

@@ -353,6 +353,11 @@
   .cashflow-mode-switch label:has(input:checked){border-color:var(--brand);background:var(--brand-100);font-weight:700}
   .field-badge{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap;vertical-align:baseline;background:#eaf1f4;color:#395567}
   .field-badge.required{background:#fff0cf;color:#754600}
+  .calculation-issues{margin:6px 0;padding-left:20px;color:#a52222}
+  .calculation-issue-link{border:0;background:none;color:#a52222;text-decoration:underline;text-underline-offset:3px;text-align:left;padding:4px 0;font:inherit;cursor:pointer}
+  .calculation-issue-link:focus-visible{outline:2px solid #a52222;outline-offset:3px}
+  .input-jump-highlight{outline:3px solid #d48c00!important;outline-offset:3px}
+  .cashflow-difference{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
   @media print{.field-badge{display:none!important}}
   /* Dedicated A4 report. Readability takes priority when notes require a second page. */
   #comparisonPrintReport.is-measuring{display:block;position:absolute;left:-10000px;top:0;visibility:hidden}
@@ -530,7 +535,7 @@
         <div class="cashflow-fields">
           <div class="field"><label for="cashflowAutoBasis">前期の国税額の出典</label><select id="cashflowAutoBasis"><option value="step3">STEP3の税額を前期額と仮定（概算）</option><option value="actual">前期確定国税額を入力</option></select></div>
           <div class="field is-hidden" id="cashflowPriorProxyMethodField"><label for="cashflowPriorProxyMethod">STEP3代理額に使う方式</label><select id="cashflowPriorProxyMethod"><option value="">方式を選択</option><option value="regular">一般課税</option><option value="simplified">簡易課税</option><option value="special2">2割特例</option><option value="special3">3割特例</option></select><small>両案で共通の前期仮定です。A・Bを入れ替えても変えません。</small><small id="cashflowPriorProxyScenarioNote"></small></div>
-          <div class="field"><label for="cashflowPeriodShortening">課税期間短縮特例</label><select id="cashflowPeriodShortening"><option value="unknown">未確認</option><option value="none">適用なし</option><option value="yes">適用あり（自動計算対象外）</option></select></div>
+          <div class="field"><label for="cashflowPeriodShortening">課税期間短縮特例</label><select id="cashflowPeriodShortening"><option value="unknown">未確認</option><option value="none" selected>適用なし</option><option value="yes">適用あり（自動計算対象外）</option></select></div>
         </div>
         <div id="cashflowActualPriorFields" class="cashflow-fields is-hidden">
           <div class="field"><label for="cashflowPriorNationalTax">前期確定消費税額（国税分・中間納付控除前）</label><input id="cashflowPriorNationalTax" type="text" inputmode="numeric" class="money js-amount" placeholder="円"></div>
@@ -551,7 +556,7 @@
       <p class="mini">回収・支払の月ずれや中間納付は、確認前の初期仮定です。税額の比較そのものには影響しません。</p>
     </section>
     <section class="panel" id="cashflowResultsPanel"><h3>資金差額の結果</h3><div id="cashflowResult"></div></section>
-    <section class="panel"><h3>月別の累積資金差額</h3><div id="cashflowChart"></div></section>
+    <section class="panel"><h3>両案の月別納付・還付と資金差額</h3><div id="cashflowChart"></div></section>
     <section class="panel"><h3>月別内訳</h3><div id="cashflowMonthlyTable"></div></section>
     <details class="panel"><summary>配分根拠・未確認事項・除外事項を見る</summary><div id="cashflowDetails"></div></details>
     <button type="button" class="btn secondary" id="cashflowEditAmounts">金額の入力を修正する</button>
@@ -668,8 +673,8 @@
           <label for="modeTaxExcluded">税抜</label>
         </div>
 
-        <h3>消費税率の前提</h3>
-        <div class="segmented">
+        <h3 id="taxScenarioHeading">消費税率の前提</h3>
+        <div class="segmented" role="radiogroup" aria-labelledby="taxScenarioHeading">
           <input type="radio" name="taxScenario" id="taxScenarioCurrent" value="current" checked>
           <label for="taxScenarioCurrent">現行税率（標準10％・軽減8％）</label>
         </div>
@@ -964,7 +969,7 @@
 
       <section class="panel">
         <div class="panel-title">
-          <h2 id="salesInputHeading" tabindex="-1">売上・仕入の金額を入力・確認</h2>
+          <h2 id="salesInputHeading" tabindex="-1">売上の金額を入力・確認</h2>
           <span class="mini" id="salesBusinessHint">簡易課税の事業区分ごと</span>
         </div>
         <p class="screen-note" id="salesInputGuide">お手元の資料を見ながら、金額を入力してください。CSVは不要です。</p>
@@ -1334,6 +1339,8 @@
 <script src="method-cashflow-adapter.js"></script>
 <script src="cashflow-defaults.js"></script>
 <script src="input-requirements.js"></script>
+<script src="input-diagnostics.js"></script>
+<script src="cashflow-event-chart.js"></script>
 <script src="interim-tax-engine.js"></script>
 <script>
 'use strict';
@@ -1452,7 +1459,7 @@ const CASHFLOW_INPUT_DEFAULTS = Object.freeze({
   cashflowBaseSettlementMonth:'', cashflowBaseRefundMonth:'',cashflowChangedSettlementMonth:'',cashflowChangedRefundMonth:'',
   cashflowSourceConfirmed:false, cashflowSameInterim:true, cashflowSameSettlement:true,
   cashflowBaseNoInterim:false, cashflowChangedNoInterim:false,
-  cashflowAutoBasis:'step3', cashflowPeriodShortening:'unknown',
+  cashflowAutoBasis:'step3', cashflowPeriodShortening:'none',
   cashflowPriorNationalTax:'', cashflowPriorStart:'', cashflowPriorEnd:'',
   cashflowAutoSeparate:false, cashflowPriorChangedNationalTax:'',
   cashflowCorporateExtension:'unknown', cashflowSpecialCircumstances:'none'
@@ -1670,12 +1677,40 @@ function normalizeFoodConfirmations(){
   });
 }
 
+function focusInputTarget(target){
+  if(!target) return;
+  for(let parent=target.parentElement;parent;parent=parent.parentElement){
+    if(parent.tagName === 'DETAILS') parent.open=true;
+  }
+  target.scrollIntoView({block:'center'});
+  target.focus();
+  target.classList.add('input-jump-highlight');
+  setTimeout(() => target.classList.remove('input-jump-highlight'),2200);
+}
+
 function goToInput(id){
   if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length){
     comparisonMethodAttempted = true;
     workflowStep = 1;
     update();
     $('comparisonMethodLabel').scrollIntoView({block:'center'});
+    return;
+  }
+  const rowTarget = /^(sales|purchases):(.+?)(?::(code|rate|amount|foodAmount|businessType|creditRatio))?$/.exec(id);
+  if(rowTarget){
+    workflowStep=2;
+    update();
+    const [,side,key,field='amount']=rowTarget;
+    const row=[...document.querySelectorAll('tr[data-tax-row-key]')].find(tr => tr.dataset.rowSide === side && tr.dataset.taxRowKey === key);
+    focusInputTarget(row?.querySelector(`[data-row-field="${field}"]`) || $(side === 'sales' ? 'addTaxSalesRow' : 'addTaxPurchaseRow'));
+    return;
+  }
+  const recoveryTarget = /^recovery:(.+):([^:]+)$/.exec(id);
+  if(recoveryTarget){
+    openAppliedJournalRecovery();
+    const [,key,field]=recoveryTarget;
+    const target=[...document.querySelectorAll('[data-recovery-key]')].find(control => control.dataset.recoveryKey === key && control.dataset.recoveryField === field);
+    focusInputTarget(target || $('journalCsvFile'));
     return;
   }
   const input = $(id);
@@ -1692,8 +1727,7 @@ function goToInput(id){
     const selector = row ? `tr[data-tax-row-key="${row.id}"] [data-row-field="${id.endsWith('Food1') ? 'foodAmount' : 'amount'}"]` : '';
     const target = selector ? $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').querySelector(selector)
       : $(side === 'sales' ? 'addTaxSalesRow' : 'addTaxPurchaseRow');
-    target?.scrollIntoView({block:'center'});
-    target?.focus();
+    focusInputTarget(target);
     return;
   }
   const business = BUSINESS_TYPES.find(type => id.startsWith(type.key + 'Sale'));
@@ -1704,8 +1738,7 @@ function goToInput(id){
   for(let parent = input.parentElement; parent; parent = parent.parentElement){
     if(parent.tagName === 'DETAILS') parent.open = true;
   }
-  input.scrollIntoView({ block:'center' });
-  input.focus();
+  focusInputTarget(input);
 }
 
 function conditionInputLinks(calc){
@@ -1883,6 +1916,10 @@ function singleExemptCreditRatio(){
 
 function newTaxEntry(side){
   return createTaxEntryRow(side, { id:`manual-${nextTaxEntryId++}` });
+}
+
+function initialSalesTaxEntries(){
+  return ['1','3'].map(code => ({...newTaxEntry('sales'),code}));
 }
 
 function taxRowCodeName(code){
@@ -4976,6 +5013,7 @@ function renderCalculationTrace(calc, method){
 }
 
 function renderMethodCards(calc, comparison = null){
+  const diagnostics = ShohizeiInputDiagnostics.evaluate({context:inputRequirementContext(calc),calc,aggregate:latestTaxRowAggregate || {}});
   const opened = new Set(Array.from(document.querySelectorAll('#methodCards details[data-method]'))
     .filter(detail => detail.open).map(detail => detail.dataset.method));
   const focusedMethod = document.activeElement?.closest?.('#methodCards details[data-method]')?.dataset.method;
@@ -5023,9 +5061,10 @@ function renderMethodCards(calc, comparison = null){
     printRows.push(rowHtml);
     return `${rowHtml}
       <tr class="method-trace-row no-print"><td colspan="${comparingRates ? 5 : 3}">
+        ${diagnostics.byMethod[method.key]?.length ? `<ul class="calculation-issues" aria-label="${escapeHtml(METHOD_LABELS[method.key])}の未算定理由">${diagnostics.byMethod[method.key].map(issue => `<li data-cause-key="${escapeHtml(issue.key)}"><button type="button" class="calculation-issue-link" data-input-target="${escapeHtml(issue.target || (method.key === 'regular' ? 'regularDetailMethod' : 'salesInputHeading'))}">${escapeHtml(issue.text)}</button></li>`).join('')}</ul>` : ''}
         <div class="method-conditions">
           <div class="method-reason">計算方法: ${escapeHtml(method.calculationMethod || '')}</div>
-          <div class="method-reason">${escapeHtml(method.reason || '')}</div>
+          ${!diagnostics.byMethod[method.key]?.length ? `<div class="method-reason">${escapeHtml(method.reason || '')}</div>` : ''}
           ${rateRow?.reasons.length ? `<div class="method-reason">${escapeHtml(rateRow.reasons.join(' / '))}</div>` : ''}
           ${diffText ? `<div class="method-reason">${escapeHtml(diffText)}</div>` : ''}
           ${adjustmentNotice}
@@ -6110,6 +6149,19 @@ function cashflowAutoExportRows(auto){
   return rows;
 }
 
+function cashflowPlanCharts(engine, partial, labels){
+  // Presentation only: both charts consume the same engine rows used by the table.
+  if(!document.getElementById('cashflowEventChartStyles')){
+    const style=document.createElement('style');
+    style.id='cashflowEventChartStyles';
+    style.textContent=ShohizeiCashflowEventChart.styles;
+    document.head.appendChild(style);
+  }
+  const actual=ShohizeiCashflowEventChart.render({rows:engine.rows,taxComplete:!partial,
+    labels:{...labels,title:'月別の納付・還付予定額（実額）'}});
+  return actual + `<details class="cashflow-difference"><summary>補助：累積資金差額（B−A）${partial ? '・取引差額のみ' : ''}</summary>${cashflowChartHtml(engine.rows,partial,engine.maxDrawdown?.month)}</details>`;
+}
+
 function cashflowChartHtml(rows, partial, maxMonth){
   if(!rows?.length) return '<p class="mini">月別差額を表示できません。</p>';
   const values = [0,...rows.map(row => row.cumulative)];
@@ -6303,12 +6355,12 @@ function renderMethodCashflow(calc, comparison){
     return `<tr><th scope="row">${escapeHtml(label)}・${escapeHtml(plan.label)}</th><td>${escapeHtml(methodPlanStatusLabel(plan))}</td><td>${yen(plan.amount)}</td><td>${yen(interimTotal)}</td><td>${yen(Math.max(0,q))}</td><td>${yen(Math.max(0,-q))}</td><td>${escapeHtml(month)}</td></tr>`;
   }).join('')}</tbody></table></div>` : '';
   $('cashflowResult').innerHTML = `${complete ? '<div class="notice">税額はSTEP3と同じ現在入力の結果です。中間納付を控除した確定差額だけを期後に計上しています。</div>' : `<div class="notice warn">資金推移は未算定です。${escapeHtml(status + ' ' + reason)}</div>`}${complete && staleMonthIds.length ? '<div class="notice warn">予定月に再確認が必要な値があります。資金推移は参考仮定です。</div>' : ''}${taxRows}${methodComparisonTable}`;
-  $('cashflowChart').innerHTML = complete ? cashflowChartHtml(engine.rows,false,engine.maxDrawdown.month) : '<p class="mini">税額・予定条件がそろうまで、月別資金推移は表示しません。</p>';
+  $('cashflowChart').innerHTML = complete ? cashflowPlanCharts(engine,false,{base:`基準案 A・${adapter.plans.base.label}`,changed:`変更案 B・${adapter.plans.changed.label}`}) : '<p class="mini">税額・予定条件がそろうまで、月別資金推移は表示しません。</p>';
   $('cashflowMonthlyTable').innerHTML = complete ? methodCashflowTableHtml(engine.rows) : '';
   $('cashflowDetails').innerHTML = `${autoInterim ? `<h4>前期実績方式の中間納付</h4>${cashflowAutoHtml(autoInterim)}` : ''}<h4>前提・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
   latestCashflow = {mode:'methodImpact',adapter,engine:complete ? engine : null,methodLabel:`${adapter.plans.base.label} → ${adapter.plans.changed.label}`,
     notes:[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))],autoInterim,partial:!complete};
-  $('cashflowPrintReport').innerHTML = `<h1>課税方式別の資金推移</h1><p>対象期 ${escapeHtml(calc.ctx.start || '')}〜${escapeHtml(calc.ctx.end || '')}／${escapeHtml(calc.ctx.taxScenario === 'foodProposal' ? '食品1％政策試算' : '現行制度')}</p>${$('cashflowResult').innerHTML}${complete ? `<h2>累積資金差</h2>${$('cashflowChart').innerHTML}<h2>月別内訳</h2>${$('cashflowMonthlyTable').innerHTML}` : ''}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
+  $('cashflowPrintReport').innerHTML = `<h1>課税方式別の資金推移</h1><p>対象期 ${escapeHtml(calc.ctx.start || '')}〜${escapeHtml(calc.ctx.end || '')}／${escapeHtml(calc.ctx.taxScenario === 'foodProposal' ? '食品1％政策試算' : '現行制度')}</p>${$('cashflowResult').innerHTML}${complete ? `<h2>月別の納付・還付予定額</h2>${$('cashflowChart').innerHTML}<h2>月別内訳</h2>${$('cashflowMonthlyTable').innerHTML}` : ''}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
 }
 
 function renderCashflow(calc, comparison){
@@ -6443,8 +6495,9 @@ function renderCashflow(calc, comparison){
     const cards = `<div class="cashflow-summary"><div>対象食品売上の入金差<strong>${yen(engine.totals.sales)}</strong></div><div>仕入支払による資金増減<strong>${yen(engine.totals.purchase)}</strong></div><div>当期税額差（変更−基準）<strong>${taxLabel === '未算定' ? '未算定' : yen(adapter.annualTax.changed - adapter.annualTax.base)}</strong></div><div>対象期末の累積差<strong>${partial ? '取引のみ ' : ''}${yen(engine.periodEndCumulative)}</strong></div><div>最大の一時資金減少（月末）<strong>${partial ? '税金込みは未算定' : yen(engine.maxDrawdown.amount)}</strong>${!partial ? `<small>${maxMonth ? escapeHtml(maxMonth) + ' 月末' : '減少なし'}</small>` : ''}</div><div>精算後の累積差<strong>${partial ? '未算定' : yen(engine.finalCumulative)}</strong></div></div>`;
     const state = partial ? `<div class="notice warn">部分試算：取引差額のみを表示。税額・中間納付・確定納付／還付を含む最終差額と最大減少は未算定です。${escapeHtml(engine.reasons.join(' / '))}</div>`
       : `<div class="notice">税額はSTEP3の同じ方式・同じ政策比較の${taxLabel}を使用。中間納付を差し引いた確定差額だけを後日計上しています。</div>`;
-    $('cashflowResult').innerHTML = state + cards;
-    $('cashflowChart').innerHTML = cashflowChartHtml(engine.rows,partial,maxMonth);
+    const planHeading=`<div class="notice"><strong>税率変更による比較（${escapeHtml(methodLabel)}）</strong><br>基準案 A：現行税率（10％・軽減8％）／変更案 B：食品1％政策試算。同じ課税方式で税率・価格の前提を比較します。</div>`;
+    $('cashflowResult').innerHTML = planHeading + state + cards;
+    $('cashflowChart').innerHTML = cashflowPlanCharts(engine,partial,{base:`基準案 A・現行税率・${methodLabel}`,changed:`変更案 B・食品1％試算・${methodLabel}`});
     $('cashflowMonthlyTable').innerHTML = cashflowTableHtml(engine.rows,partial);
     const originalFood = calc.sales.rows.reduce((sum,row) => sum + Number(row.foodOneOriginalAmount || 0),0);
     const proposalFood = calc.sales.rows.reduce((sum,row) => sum + Number(row.forecastFood1 || 0),0);
@@ -6458,7 +6511,7 @@ function renderCashflow(calc, comparison){
         Object.values(row.baseTax).some(Boolean) || Object.values(row.changedTax).some(Boolean)).map(row => `<tr><td>${escapeHtml(row.month)}</td><td>${yen(row.baseTax.interim)}</td><td>${yen(row.changedTax.interim)}</td><td>${yen(row.baseTax.settlement)}</td><td>${yen(row.changedTax.settlement)}</td><td>${yen(row.baseTax.refund)}</td><td>${yen(row.changedTax.refund)}</td></tr>`).join('')}</tbody></table></div>`;
     $('cashflowDetails').innerHTML = foodBasis + taxBasis + (autoInterim ? `<h4>中間納付の自動設定</h4>${cashflowAutoHtml(autoInterim)}` : '') + `<h4>配分・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...engine.reasons])].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
     latestCashflow = {adapter,engine,methodLabel,notes:[...uniqueNotes,...engine.reasons],state,partial,autoInterim};
-    $('cashflowPrintReport').innerHTML = `<h1>食品1％試算：資金繰りへの影響</h1><p>改正案・法案成立前の政策試算／${escapeHtml(calc.ctx.start)}〜${escapeHtml(calc.ctx.end)}／${escapeHtml(methodLabel)}／${escapeHtml(cashflowDistributionLabel(adapter.distribution))}</p>${state}${cards}<h2>月別の累積資金差額</h2>${$('cashflowChart').innerHTML}<h2>月別内訳</h2>${$('cashflowMonthlyTable').innerHTML}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
+    $('cashflowPrintReport').innerHTML = `<h1>食品1％試算：資金繰りへの影響</h1><p>改正案・法案成立前の政策試算／${escapeHtml(calc.ctx.start)}〜${escapeHtml(calc.ctx.end)}／${escapeHtml(methodLabel)}／${escapeHtml(cashflowDistributionLabel(adapter.distribution))}</p>${planHeading}${state}${cards}<h2>月別の納付・還付予定額</h2>${$('cashflowChart').innerHTML}<h2>月別内訳</h2>${$('cashflowMonthlyTable').innerHTML}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
   }catch(error){
     $('cashflowResult').innerHTML = `<div class="notice warn">資金繰りの予定条件を確認してください：${escapeHtml(error.message)}</div>`;
     $('cashflowChart').innerHTML = '';
@@ -6607,7 +6660,7 @@ function renderInputRequirementBadges(calc){
     comparisonMethods:() => $('comparisonMethodLabel'),
     entityType:() => $('entityIndividual').closest('.field')?.querySelector('label:not([for])'),
     amountMode:() => $('amountModeHeading'),
-    taxScenario:() => $('policySimulationDetails').previousElementSibling,
+    taxScenario:() => $('taxScenarioHeading'),
     workflowPurpose:() => $('purposeRegular').closest('.field')?.querySelector('label:not([for])'),
     cashflowComparisonType:() => $('cashflowComparisonTypeLabel')
   };
@@ -6771,7 +6824,7 @@ function resetAll(){
   $('officeInternalMemo').value = '';
   switchDecisionOpen = false;
   entryMode = 'rows';
-  taxEntryRows = {sales:[newTaxEntry('sales')],purchases:[newTaxEntry('purchases')]};
+  taxEntryRows = {sales:initialSalesTaxEntries(),purchases:[newTaxEntry('purchases')]};
   rowCsvKnownZeros = {};
   document.body.dataset.entryMode = entryMode;
   $('modeTaxExcluded').disabled = true;
@@ -7125,7 +7178,7 @@ function init(){
   renderSalesRows();
   renderProposalInputs();
   initWorkflow();
-  taxEntryRows = {sales:[newTaxEntry('sales')],purchases:[newTaxEntry('purchases')]};
+  taxEntryRows = {sales:initialSalesTaxEntries(),purchases:[newTaxEntry('purchases')]};
   renderTaxEntryRows('sales');
   renderTaxEntryRows('purchases');
   document.body.dataset.entryMode = entryMode;

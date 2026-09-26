@@ -122,7 +122,7 @@ test('方式別の画面・印刷はSTEP3の同じ税額を受け取り、案別
     CASHFLOW_MONTH_LABELS:{cashflowSettlementMonth:'確定納付予定月',cashflowRefundMonth:'還付入金予定月',
       cashflowBaseSettlementMonth:'基準案A・確定納付予定月',cashflowBaseRefundMonth:'基準案A・還付入金予定月',
       cashflowChangedSettlementMonth:'変更案B・確定納付予定月',cashflowChangedRefundMonth:'変更案B・還付入金予定月'},
-    cashflowChartHtml:()=>'<svg>graph</svg>',methodCashflowTableHtml:()=>'<table>month</table>',
+    cashflowPlanCharts:(result,partial,labels)=>require('../cashflow-event-chart').render({rows:result.rows,taxComplete:!partial,labels}),methodCashflowTableHtml:()=>'<table>month</table>',
     cashflowAutoHtml:()=>'',yen:value=>`${value.toLocaleString('ja-JP')}円`,escapeHtml:value=>String(value),
     latestCashflow:null});
   vm.runInContext(`${source('methodPlanDisplay')}\n${source('methodPlanStatusLabel')}\n${source('renderMethodCashflow')}`,context);

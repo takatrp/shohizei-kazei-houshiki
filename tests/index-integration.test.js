@@ -11,6 +11,7 @@ const returnEngine = require('../tax-return-engine.js');
 const electionDeadline = require('../election-deadline.js');
 const switchDecision = require('../switch-decision.js');
 const taxRows = require('../tax-entry-rows.js');
+const inputDiagnostics = require('../input-diagnostics.js');
 const { rowsFromJournalAnalysis } = require('../tax-entry-csv.js');
 const { DEFERRED_LIMITATIONS } = require('../release-history.js');
 
@@ -74,6 +75,8 @@ function harness(csv){
     summarizeActualOnePercentEntries:taxRows.summarizeActualOnePercentEntries,
     weightedExemptPurchaseRatio:engine.weightedExemptPurchaseRatio,
     ShohizeiTaxEngine:engine,
+    ShohizeiInputDiagnostics:inputDiagnostics,
+    inputRequirementContext(calc){ return {values:{...Object.fromEntries([...elements].map(([id,input])=>[id,input.value])),...calc.ctx},comparisonMethods:calc.ctx?.comparisonMethods || calc.methods.map(item=>item.key),taxScenario:calc.ctx?.taxScenario,entryMode:context.entryMode || 'legacy',rows:context.taxEntryRows}; },
     ShohizeiElectionDeadline:electionDeadline,
     normalizeExemptPurchaseRatio:engine.normalizeExemptPurchaseRatio,
     calculateSimplifiedTax:engine.calculateSimplifiedTax,
@@ -239,6 +242,40 @@ function exactRowsHarness({sales=11000123,purchases=5500321,methods=['regular']}
   h.context.syncTaxEntryRows();
   return h;
 }
+
+test('[R34診断UI] 非課税売上不足は本則だけを未算定とし算定済み簡易に赤字理由を出さない',()=>{
+  const h=exactRowsHarness({methods:['regular','simplified']});
+  h.context.taxEntryRows.sales=h.context.taxEntryRows.sales.filter(row=>row.code!=='3');
+  h.context.syncTaxEntryRows();
+  const calc=h.context.calculate();
+  assert.equal(calc.methods.find(item=>item.key==='regular').amount,null);
+  assert.equal(calc.methods.find(item=>item.key==='simplified').amount,500000);
+  vm.runInContext(['renderComparisonPrint','renderMethodCards'].map(functionSource).join('\n'),h.context);
+  h.context.renderMethodCards(calc);
+  const output=h.element('methodCards').innerHTML;
+  assert.match(output,/data-input-target="addTaxSalesRow"/);
+  assert.match(output,/非課税売上等を入力・確認/);
+  assert.doesNotMatch(output,/aria-label="簡易課税の未算定理由"/);
+  assert.match(output,/500000円/);
+});
+
+test('[R34診断UI] 食品仕入不足は実計算から特定行への修正リンクを生成する',()=>{
+  const h=exactRowsHarness({methods:['regular','simplified']});
+  h.context.ShohizeiInputRequirements=require('../input-requirements.js');
+  vm.runInContext(functionSource('missingFoodRowInputs'),h.context);
+  h.context.taxEntryRows.purchases[0].rate='8';
+  h.context.taxEntryRows.purchases[0].foodAmount='';
+  h.context.syncTaxEntryRows();
+  const calc=h.context.calculate({...h.context.getContext(),taxScenario:'foodProposal',foodForecastMethod:'manual',foodSalesPriceBasis:'netFixed',foodPurchasePriceBasis:'netFixed'});
+  assert.equal(calc.methods.find(item=>item.key==='regular').amount,null);
+  assert.ok(Number.isFinite(calc.methods.find(item=>item.key==='simplified').amount));
+  vm.runInContext(['renderComparisonPrint','renderMethodCards'].map(functionSource).join('\n'),h.context);
+  h.context.renderMethodCards(calc);
+  const output=h.element('methodCards').innerHTML;
+  assert.match(output,/data-input-target="purchases:p5:foodAmount"/);
+  assert.match(output,/仕入1行目：食品1％対象額/);
+  assert.doesNotMatch(output,/aria-label="簡易課税の未算定理由"/);
+});
 
 function provisionalCsvHarness(source, methods=['regular']){
   const h = harness(source);

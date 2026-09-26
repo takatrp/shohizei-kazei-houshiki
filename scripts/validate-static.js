@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const htmlPath = path.join(root, 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8');
 
-for(const file of ['input-diagnostics.js','cashflow-event-chart.js']){
+for(const file of ['input-diagnostics.js','cashflow-event-chart.js','cashflow-panel-data.js','cashflow-panel-view.js']){
   if(!html.includes(`src="${file}"`)) throw new Error(`Missing presentation module: ${file}`);
   new Function(fs.readFileSync(path.join(root,file),'utf8'));
 }

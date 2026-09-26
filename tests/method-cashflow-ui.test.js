@@ -110,7 +110,7 @@ test('方式別の画面・印刷はSTEP3の同じ税額を受け取り、案別
     periodEndCumulative:0,settlement:{base:100000,changed:70000},
     settlementMonths:{base:{paymentMonth:'2029-02'},changed:{paymentMonth:'2029-03'}},rows:[{
     month:'2029-03',baseTax:{interim:0,settlement:0,refund:0},changedTax:{interim:0,settlement:70000,refund:0},net:-70000,cumulative:30000}]};
-  let received;
+  let received, panelReceived;
   const context=vm.createContext({$,ELIGIBILITY,METHOD_LABELS:{regular:'一般課税',simplified:'簡易課税'},
     selectedValue:()=> 'individual',
     selectedComparisonMethods:()=>['regular','simplified'],cashflowMethodPairTouched:false,
@@ -122,7 +122,8 @@ test('方式別の画面・印刷はSTEP3の同じ税額を受け取り、案別
     CASHFLOW_MONTH_LABELS:{cashflowSettlementMonth:'確定納付予定月',cashflowRefundMonth:'還付入金予定月',
       cashflowBaseSettlementMonth:'基準案A・確定納付予定月',cashflowBaseRefundMonth:'基準案A・還付入金予定月',
       cashflowChangedSettlementMonth:'変更案B・確定納付予定月',cashflowChangedRefundMonth:'変更案B・還付入金予定月'},
-    cashflowPlanCharts:(result,partial,labels)=>require('../cashflow-event-chart').render({rows:result.rows,taxComplete:!partial,labels}),methodCashflowTableHtml:()=>'<table>month</table>',
+    buildStep4Panel:(...args)=>{ panelReceived=args; return {status:{renderable:true}}; },
+    cashflowPanelPrintHtml:()=>'<section class="cf-panel">月別資金推移</section>',
     cashflowAutoHtml:()=>'',yen:value=>`${value.toLocaleString('ja-JP')}円`,escapeHtml:value=>String(value),
     latestCashflow:null});
   vm.runInContext(`${source('methodPlanDisplay')}\n${source('methodPlanStatusLabel')}\n${source('renderMethodCashflow')}`,context);
@@ -130,6 +131,8 @@ test('方式別の画面・印刷はSTEP3の同じ税額を受け取り、案別
   assert.deepEqual(JSON.parse(JSON.stringify(received.annualTax)),{base:100000,changed:70000});
   assert.equal(received.settlementByPlan.base.paymentMonth,'2029-02');
   assert.equal(received.settlementByPlan.changed.paymentMonth,'2029-03');
+  assert.equal(panelReceived[0],engine);
+  assert.equal(panelReceived[4],'methodImpact');
   assert.match($('cashflowResult').innerHTML,/100,000円/);
   assert.match($('cashflowResult').innerHTML,/70,000円/);
   assert.match($('cashflowPrintReport').innerHTML,/100,000円/);

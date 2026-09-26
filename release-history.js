@@ -7,6 +7,16 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r35',date:'2026-09-27',
+      title:'STEP4の月別資金推移をグラフ・表の統合パネルへ変更',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        'A/Bの月末累積を同じ月列の階段線と月別内訳表に統合し、納付・還付・最大差を表示',
+        '月別表示のB−Aを既存STEP4の差額と照合し、不一致や未確認額のゼロ補完を防止',
+        '狭幅の横スクロール、A4印刷の分割表示、円単位の縦持ちCSVに対応'
+      ])
+    }),
+    Object.freeze({
       version:'r34',date:'2026-09-26',
       title:'未算定理由の入力導線と両案の納付・還付グラフ',
       category:'usability',recalcRecommended:false,

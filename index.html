@@ -556,8 +556,7 @@
       <p class="mini">回収・支払の月ずれや中間納付は、確認前の初期仮定です。税額の比較そのものには影響しません。</p>
     </section>
     <section class="panel" id="cashflowResultsPanel"><h3>資金差額の結果</h3><div id="cashflowResult"></div></section>
-    <section class="panel"><h3>両案の月別納付・還付と資金差額</h3><div id="cashflowChart"></div></section>
-    <section class="panel"><h3>月別内訳</h3><div id="cashflowMonthlyTable"></div></section>
+    <section class="panel" id="cashflowPanel"><h3>両案の月別資金推移と内訳</h3><div id="cashflowChart"></div><div id="cashflowMonthlyTable" class="is-hidden" aria-hidden="true"></div></section>
     <details class="panel"><summary>配分根拠・未確認事項・除外事項を見る</summary><div id="cashflowDetails"></div></details>
     <button type="button" class="btn secondary" id="cashflowEditAmounts">金額の入力を修正する</button>
   </div>
@@ -1341,6 +1340,8 @@
 <script src="input-requirements.js"></script>
 <script src="input-diagnostics.js"></script>
 <script src="cashflow-event-chart.js"></script>
+<script src="cashflow-panel-data.js"></script>
+<script src="cashflow-panel-view.js"></script>
 <script src="interim-tax-engine.js"></script>
 <script>
 'use strict';
@@ -6248,6 +6249,32 @@ function methodCashflowTableHtml(rows){
   if(!rows?.length) return '<p class="mini">月別資金差額は未算定です。</p>';
   return `<div class="cashflow-table-wrap"><table class="cashflow-table"><thead><tr><th>月</th><th>A 中間納付</th><th>B 中間納付</th><th>A 確定納付</th><th>B 確定納付</th><th>A 還付</th><th>B 還付</th><th>当月資金差 B−A</th><th>累積差</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.month)}</td><td>${yen(row.baseTax.interim)}</td><td>${yen(row.changedTax.interim)}</td><td>${yen(row.baseTax.settlement)}</td><td>${yen(row.changedTax.settlement)}</td><td>${yen(row.baseTax.refund)}</td><td>${yen(row.changedTax.refund)}</td><td>${yen(row.net)}</td><td>${yen(row.cumulative)}</td></tr>`).join('')}</tbody></table></div>`;
 }
+function buildStep4Panel(engine, adapter, calc, comparison, mode, labels, interim, notes, lags){
+  try{
+    const panelData = ShohizeiCashflowPanelData.buildPanelData({
+      engine,adapter,calc,comparison,mode,labels,interim,notes,lags,
+      manualFromAuto:cashflowManualFromAuto,
+      priceBasis:{sales:calc.ctx.foodSalesPriceBasis,purchases:calc.ctx.foodPurchasePriceBasis}
+    });
+    if(!document.getElementById('cashflowPanelStyles')){
+      const style=document.createElement('style');
+      style.id='cashflowPanelStyles';
+      style.textContent=ShohizeiCashflowPanelView.styles;
+      document.head.appendChild(style);
+    }
+    ShohizeiCashflowPanelView.renderCashflowPanel($('cashflowChart'),panelData);
+    $('cashflowMonthlyTable').innerHTML='';
+    return panelData;
+  }catch(error){
+    console.error('STEP4パネルの表示に失敗しました。',error);
+    $('cashflowChart').innerHTML=`<div class="notice warn">月別パネルを表示できません。${escapeHtml(error.message)}</div>`;
+    $('cashflowMonthlyTable').innerHTML='';
+    return null;
+  }
+}
+function cashflowPanelPrintHtml(panelData){
+  return panelData ? ShohizeiCashflowPanelView.renderCashflowPanelHtml(panelData,{print:true,width:680}) : '';
+}
 function methodPlanDisplay(plan){
   if(plan.eligibility === ELIGIBILITY.INELIGIBLE) return '適用対象外';
   if(plan.amount === null || plan.amountStatus === 'unavailable') return '未算定';
@@ -6324,7 +6351,7 @@ function renderMethodCashflow(calc, comparison){
     ...(cashflowManualFromAuto && scheduled ? ['中間納付は自動生成後に手修正しています。'] : [])];
   if(importedCsvRecovery) notes.push(csvRecoverySummaryText(importedCsvRecovery));
   const uniqueNotes = [...new Set(notes.filter(Boolean))];
-  let engine = null, failure = '';
+  let engine = null, failure = '', cashflowInput = null;
   if(adapter.ready){
     try{
       let base = [], changed = [];
@@ -6332,7 +6359,7 @@ function renderMethodCashflow(calc, comparison){
         base = parseCashflowInterim($('cashflowBaseInterim').value,'基準案の中間納付');
         changed = $('cashflowSameInterim').checked ? base : parseCashflowInterim($('cashflowChangedInterim').value,'変更案の中間納付');
       }else if(autoInterim?.ready){ base = cashflowAutoEntries(autoInterim.base); changed = base; }
-      engine = ShohizeiCashflow.calculate({periodStart:adapter.periodStart,periodEnd:adapter.periodEnd,periodEndDate:adapter.periodEndDate,
+      cashflowInput = {periodStart:adapter.periodStart,periodEnd:adapter.periodEnd,periodEndDate:adapter.periodEndDate,
         annualTax:{base:adapter.annualTax.base,changed:adapter.annualTax.changed},salesDeltas:[],purchaseDeltas:[],
         interim:{status:autoSelected ? autoInterim?.ready ? 'auto' : 'unknown' : $('cashflowInterimStatus').value,
           base,changed,baseNoInterim:scheduled && $('cashflowBaseNoInterim').checked,
@@ -6341,7 +6368,8 @@ function renderMethodCashflow(calc, comparison){
           base:{paymentMonth:$('cashflowSettlementMonth').value,refundMonth:$('cashflowRefundMonth').value},
           changed:{paymentMonth:$('cashflowSettlementMonth').value,refundMonth:$('cashflowRefundMonth').value}
         } : {base:{paymentMonth:$('cashflowBaseSettlementMonth').value,refundMonth:$('cashflowBaseRefundMonth').value},
-          changed:{paymentMonth:$('cashflowChangedSettlementMonth').value,refundMonth:$('cashflowChangedRefundMonth').value}}});
+          changed:{paymentMonth:$('cashflowChangedSettlementMonth').value,refundMonth:$('cashflowChangedRefundMonth').value}}};
+      engine = ShohizeiCashflow.calculate(cashflowInput);
     }catch(error){ failure = error.message; }
   }
   const complete = engine?.status === 'complete';
@@ -6354,13 +6382,16 @@ function renderMethodCashflow(calc, comparison){
     const month = q > 0 ? engine.settlementMonths[key].paymentMonth : q < 0 ? engine.settlementMonths[key].refundMonth : '精算なし';
     return `<tr><th scope="row">${escapeHtml(label)}・${escapeHtml(plan.label)}</th><td>${escapeHtml(methodPlanStatusLabel(plan))}</td><td>${yen(plan.amount)}</td><td>${yen(interimTotal)}</td><td>${yen(Math.max(0,q))}</td><td>${yen(Math.max(0,-q))}</td><td>${escapeHtml(month)}</td></tr>`;
   }).join('')}</tbody></table></div>` : '';
-  $('cashflowResult').innerHTML = `${complete ? '<div class="notice">税額はSTEP3と同じ現在入力の結果です。中間納付を控除した確定差額だけを期後に計上しています。</div>' : `<div class="notice warn">資金推移は未算定です。${escapeHtml(status + ' ' + reason)}</div>`}${complete && staleMonthIds.length ? '<div class="notice warn">予定月に再確認が必要な値があります。資金推移は参考仮定です。</div>' : ''}${taxRows}${methodComparisonTable}`;
-  $('cashflowChart').innerHTML = complete ? cashflowPlanCharts(engine,false,{base:`基準案 A・${adapter.plans.base.label}`,changed:`変更案 B・${adapter.plans.changed.label}`}) : '<p class="mini">税額・予定条件がそろうまで、月別資金推移は表示しません。</p>';
-  $('cashflowMonthlyTable').innerHTML = complete ? methodCashflowTableHtml(engine.rows) : '';
+  $('cashflowResult').innerHTML = `${complete ? '<div class="notice">税額はSTEP3と同じ現在入力の結果です。中間納付を控除した確定差額だけを期後に計上しています。</div>' : `<div class="notice warn">税金込みの最終資金差額は未算定です。${escapeHtml(status + ' ' + reason)}</div>`}${complete && staleMonthIds.length ? '<div class="notice warn">予定月に再確認が必要な値があります。資金推移は参考仮定です。</div>' : ''}${taxRows}${methodComparisonTable}`;
+  const panelData = engine ? buildStep4Panel(engine,adapter,calc,comparison,'methodImpact',
+    {A:`基準案 A・${adapter.plans.base.label}`,B:`変更案 B・${adapter.plans.changed.label}`},
+    cashflowInput.interim,[],{sales:0,purchases:0}) : null;
+  if(!engine) $('cashflowChart').innerHTML = '<p class="mini">税額・予定条件がそろうまで、月別資金推移は表示しません。</p>';
+  $('cashflowMonthlyTable').innerHTML = '';
   $('cashflowDetails').innerHTML = `${autoInterim ? `<h4>前期実績方式の中間納付</h4>${cashflowAutoHtml(autoInterim)}` : ''}<h4>前提・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
-  latestCashflow = {mode:'methodImpact',adapter,engine:complete ? engine : null,methodLabel:`${adapter.plans.base.label} → ${adapter.plans.changed.label}`,
+  latestCashflow = {mode:'methodImpact',adapter,engine:complete ? engine : null,panelData,methodLabel:`${adapter.plans.base.label} → ${adapter.plans.changed.label}`,
     notes:[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))],autoInterim,partial:!complete};
-  $('cashflowPrintReport').innerHTML = `<h1>課税方式別の資金推移</h1><p>対象期 ${escapeHtml(calc.ctx.start || '')}〜${escapeHtml(calc.ctx.end || '')}／${escapeHtml(calc.ctx.taxScenario === 'foodProposal' ? '食品1％政策試算' : '現行制度')}</p>${$('cashflowResult').innerHTML}${complete ? `<h2>月別の納付・還付予定額</h2>${$('cashflowChart').innerHTML}<h2>月別内訳</h2>${$('cashflowMonthlyTable').innerHTML}` : ''}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
+  $('cashflowPrintReport').innerHTML = `<h1>課税方式別の資金推移</h1><p>対象期 ${escapeHtml(calc.ctx.start || '')}〜${escapeHtml(calc.ctx.end || '')}／${escapeHtml(calc.ctx.taxScenario === 'foodProposal' ? '食品1％政策試算' : '現行制度')}</p>${$('cashflowResult').innerHTML}${panelData ? `<h2>月別資金推移と内訳</h2>${cashflowPanelPrintHtml(panelData)}` : ''}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
 }
 
 function renderCashflow(calc, comparison){
@@ -6493,12 +6524,14 @@ function renderCashflow(calc, comparison){
     const taxLabel = adapter.annualTax.status === 'unavailable' ? '未算定' : adapter.annualTax.reference ? '参考額' : '概算額';
     const maxMonth = engine.maxDrawdown?.month || null;
     const cards = `<div class="cashflow-summary"><div>対象食品売上の入金差<strong>${yen(engine.totals.sales)}</strong></div><div>仕入支払による資金増減<strong>${yen(engine.totals.purchase)}</strong></div><div>当期税額差（変更−基準）<strong>${taxLabel === '未算定' ? '未算定' : yen(adapter.annualTax.changed - adapter.annualTax.base)}</strong></div><div>対象期末の累積差<strong>${partial ? '取引のみ ' : ''}${yen(engine.periodEndCumulative)}</strong></div><div>最大の一時資金減少（月末）<strong>${partial ? '税金込みは未算定' : yen(engine.maxDrawdown.amount)}</strong>${!partial ? `<small>${maxMonth ? escapeHtml(maxMonth) + ' 月末' : '減少なし'}</small>` : ''}</div><div>精算後の累積差<strong>${partial ? '未算定' : yen(engine.finalCumulative)}</strong></div></div>`;
-    const state = partial ? `<div class="notice warn">部分試算：取引差額のみを表示。税額・中間納付・確定納付／還付を含む最終差額と最大減少は未算定です。${escapeHtml(engine.reasons.join(' / '))}</div>`
+    const state = partial ? `<div class="notice warn">部分試算：既存の最終差額は取引差額のみです。月別パネルには両案の差額と整合する確認済み予定だけを参考表示する場合があります。税金込みの最終差額と最大減少は未算定です。${escapeHtml(engine.reasons.join(' / '))}</div>`
       : `<div class="notice">税額はSTEP3の同じ方式・同じ政策比較の${taxLabel}を使用。中間納付を差し引いた確定差額だけを後日計上しています。</div>`;
     const planHeading=`<div class="notice"><strong>税率変更による比較（${escapeHtml(methodLabel)}）</strong><br>基準案 A：現行税率（10％・軽減8％）／変更案 B：食品1％政策試算。同じ課税方式で税率・価格の前提を比較します。</div>`;
     $('cashflowResult').innerHTML = planHeading + state + cards;
-    $('cashflowChart').innerHTML = cashflowPlanCharts(engine,partial,{base:`基準案 A・現行税率・${methodLabel}`,changed:`変更案 B・食品1％試算・${methodLabel}`});
-    $('cashflowMonthlyTable').innerHTML = cashflowTableHtml(engine.rows,partial);
+    const panelData = buildStep4Panel(engine,adapter,calc,comparison,'rateImpact',
+      {A:`基準案 A・現行税率・${methodLabel}`,B:`変更案 B・食品1％試算・${methodLabel}`},
+      cashflowInput.interim,[],
+      {sales:cashflowInput.salesLag,purchases:cashflowInput.purchaseLag});
     const originalFood = calc.sales.rows.reduce((sum,row) => sum + Number(row.foodOneOriginalAmount || 0),0);
     const proposalFood = calc.sales.rows.reduce((sum,row) => sum + Number(row.forecastFood1 || 0),0);
     const originalPurchaseFood = Number(calc.purchases.foodOneOriginalAmount || 0)
@@ -6506,12 +6539,12 @@ function renderCashflow(calc, comparison){
     const proposalPurchaseFood = Number(calc.purchases.forecastFood1 || 0)
       + calc.purchases.exemptBuckets.reduce((sum,bucket) => sum + Number(bucket.forecastFood1 || 0),0);
     const foodBasis = `<h4>対象食品の取引額（STEP2・3で採用した${calc.ctx.amountMode === 'excluded' ? '税抜' : '税込'}額）</h4><p>対象食品売上：8％元額 ${yen(originalFood)}／1％価格前提後 ${yen(proposalFood)}。対象食品仕入：8％元額 ${yen(originalPurchaseFood)}／1％価格前提後 ${yen(proposalPurchaseFood)}。これらは会社全体の売上・仕入ではありません。</p>`;
-    const taxBasis = partial ? '<p>両案の月別中間納付・確定納付・還付は未反映です。</p>'
+    const taxBasis = partial ? '<p>税金込みの最終差額には未反映です。月別パネルには、差額との整合を確認できた既知の予定のみ参考表示します。</p>'
       : `<h4>両案の納付・還付予定</h4><div class="cashflow-table-wrap"><table class="cashflow-table"><thead><tr><th>月</th><th>基準案 中間</th><th>変更案 中間</th><th>基準案 確定</th><th>変更案 確定</th><th>基準案 還付</th><th>変更案 還付</th></tr></thead><tbody>${engine.rows.filter(row =>
         Object.values(row.baseTax).some(Boolean) || Object.values(row.changedTax).some(Boolean)).map(row => `<tr><td>${escapeHtml(row.month)}</td><td>${yen(row.baseTax.interim)}</td><td>${yen(row.changedTax.interim)}</td><td>${yen(row.baseTax.settlement)}</td><td>${yen(row.changedTax.settlement)}</td><td>${yen(row.baseTax.refund)}</td><td>${yen(row.changedTax.refund)}</td></tr>`).join('')}</tbody></table></div>`;
     $('cashflowDetails').innerHTML = foodBasis + taxBasis + (autoInterim ? `<h4>中間納付の自動設定</h4>${cashflowAutoHtml(autoInterim)}` : '') + `<h4>配分・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...engine.reasons])].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
-    latestCashflow = {adapter,engine,methodLabel,notes:[...uniqueNotes,...engine.reasons],state,partial,autoInterim};
-    $('cashflowPrintReport').innerHTML = `<h1>食品1％試算：資金繰りへの影響</h1><p>改正案・法案成立前の政策試算／${escapeHtml(calc.ctx.start)}〜${escapeHtml(calc.ctx.end)}／${escapeHtml(methodLabel)}／${escapeHtml(cashflowDistributionLabel(adapter.distribution))}</p>${planHeading}${state}${cards}<h2>月別の納付・還付予定額</h2>${$('cashflowChart').innerHTML}<h2>月別内訳</h2>${$('cashflowMonthlyTable').innerHTML}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
+    latestCashflow = {adapter,engine,panelData,methodLabel,notes:[...uniqueNotes,...engine.reasons],state,partial,autoInterim};
+    $('cashflowPrintReport').innerHTML = `<h1>食品1％試算：資金繰りへの影響</h1><p>改正案・法案成立前の政策試算／${escapeHtml(calc.ctx.start)}〜${escapeHtml(calc.ctx.end)}／${escapeHtml(methodLabel)}／${escapeHtml(cashflowDistributionLabel(adapter.distribution))}</p>${planHeading}${state}${cards}<h2>月別資金推移と内訳</h2>${cashflowPanelPrintHtml(panelData)}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
   }catch(error){
     $('cashflowResult').innerHTML = `<div class="notice warn">資金繰りの予定条件を確認してください：${escapeHtml(error.message)}</div>`;
     $('cashflowChart').innerHTML = '';
@@ -6547,6 +6580,7 @@ function cashflowExportText(snapshot){
       engine.rows.forEach(row => lines.push([row.month,row.baseTax.interim,row.changedTax.interim,row.baseTax.settlement,
         row.changedTax.settlement,row.baseTax.refund,row.changedTax.refund,row.net,row.cumulative].join(',')));
     }
+    if(snapshot.panelData?.status?.sourceNote) lines.push(`表示用A案日常増減：${snapshot.panelData.status.sourceNote}`);
     if(autoInterim) lines.push('',...cashflowAutoExportRows(autoInterim).map(row => row.join('：')));
     lines.push('',...notes.map(note => `前提・未確認：${note}`));
     return lines.join('\n');
@@ -6567,9 +6601,30 @@ function cashflowExportText(snapshot){
     engine.rows.forEach(row => lines.push([row.month,row.sales,row.purchase,row.interim ?? '未反映',row.settlement ?? '未反映',row.refund ?? '未反映',row.net,row.cumulative,
       row.baseTax?.interim ?? '未反映',row.changedTax?.interim ?? '未反映',row.baseTax?.settlement ?? '未反映',row.changedTax?.settlement ?? '未反映',row.baseTax?.refund ?? '未反映',row.changedTax?.refund ?? '未反映'].join(',')));
   }else lines.push('月別資金差額：未算定');
+  if(snapshot.panelData?.status?.sourceNote) lines.push(`表示用A案日常増減：${snapshot.panelData.status.sourceNote}`);
   if(snapshot.autoInterim) lines.push('',...cashflowAutoExportRows(snapshot.autoInterim).map(row => row.join('：')));
   lines.push('',...notes.map(note => `前提・未確認：${note}`));
   return lines.join('\n');
+}
+
+function cashflowPanelCsvRows(panelData){
+  const header=['年月','A日常の増減','A中間納付','A確定納付','A還付','A月次計','A月末累積',
+    'B日常の増減','B中間納付','B確定納付','B還付','B月次計','B月末累積','差額月次','差額累積'];
+  if(!panelData?.status?.renderable) return [header,['月別パネル','未算定（表示用内訳の整合を確認してください）']];
+  const sum=(row,kind)=>row.events.filter(event=>event.kind===kind).reduce((total,event)=>total+event.amount,0);
+  const amount=(row,kind,known)=>{
+    const value=sum(row,kind);
+    return value || known ? value : '';
+  };
+  return [header,...panelData.months.map((month,index)=>{
+    const a=panelData.cases.A.rows[index], b=panelData.cases.B.rows[index];
+    const plan=row=>[row.flow,
+      amount(row,'interim',panelData.status.interim!=='unconfirmed'),
+      amount(row,'final',panelData.status.taxComplete===true),
+      amount(row,'refund',panelData.status.taxComplete===true),
+      row.monthTotal,row.cumulative];
+    return [month,...plan(a),...plan(b),b.monthTotal-a.monthTotal,b.cumulative-a.cumulative];
+  })];
 }
 
 function cashflowCsvText(snapshot){
@@ -6584,10 +6639,15 @@ function cashflowCsvText(snapshot){
       ['資金推移',engine ? '算定' : '未算定']];
     if(engine){
       rows.push(['最大一時資金減少',engine.maxDrawdown.amount],['最大資金減少月',engine.maxDrawdown.month || '減少なし'],
-        ['精算後累積差',engine.finalCumulative],[],['月','基準案A中間','変更案B中間','基準案A確定','変更案B確定','基準案A還付','変更案B還付','当月資金差','累積差']);
-      engine.rows.forEach(row => rows.push([row.month,row.baseTax.interim,row.changedTax.interim,row.baseTax.settlement,
-        row.changedTax.settlement,row.baseTax.refund,row.changedTax.refund,row.net,row.cumulative]));
-    }
+        ['精算後累積差',engine.finalCumulative],[]);
+      if(snapshot.panelData) rows.push(...cashflowPanelCsvRows(snapshot.panelData));
+      else{
+        rows.push(['月','基準案A中間','変更案B中間','基準案A確定','変更案B確定','基準案A還付','変更案B還付','当月資金差','累積差']);
+        engine.rows.forEach(row => rows.push([row.month,row.baseTax.interim,row.changedTax.interim,row.baseTax.settlement,
+          row.changedTax.settlement,row.baseTax.refund,row.changedTax.refund,row.net,row.cumulative]));
+      }
+    }else if(snapshot.panelData) rows.push([], ...cashflowPanelCsvRows(snapshot.panelData));
+    if(snapshot.panelData?.status?.sourceNote) rows.push(['表示用A案日常増減',snapshot.panelData.status.sourceNote]);
     if(autoInterim) rows.push([], ...cashflowAutoExportRows(autoInterim));
     rows.push([],['前提・未確認事項','内容'],...notes.map(note => ['前提・未確認',note]));
     return rows.map(row => row.map(cell => { const value = sanitizeCsvCell(cell); return /[",\r\n]/.test(value) ? `"${value.replace(/"/g,'""')}"` : value; }).join(',')).join('\r\n');
@@ -6598,12 +6658,16 @@ function cashflowCsvText(snapshot){
     ['表示方式',methodLabel],['配分',cashflowDistributionLabel(adapter.distribution)],
     ['基準案税額',adapter.annualTax.base ?? '未算定'],['変更案税額',adapter.annualTax.changed ?? '未算定']];
   if(engine){
-    rows.push(['最大一時資金減少',engine.maxDrawdown?.amount ?? '税金込みは未算定'],['精算後累積',engine.finalCumulative ?? '未算定'],[],
-      ['月','対象食品売上入金差','仕入支払による資金増減','中間納付による資金増減','確定納付による資金増減','還付入金による資金増減','当月差','累積差',
+    rows.push(['最大一時資金減少',engine.maxDrawdown?.amount ?? '税金込みは未算定'],['精算後累積',engine.finalCumulative ?? '未算定'],[]);
+    if(snapshot.panelData) rows.push(...cashflowPanelCsvRows(snapshot.panelData));
+    else{
+      rows.push(['月','対象食品売上入金差','仕入支払による資金増減','中間納付による資金増減','確定納付による資金増減','還付入金による資金増減','当月差','累積差',
         '基準案中間納付','変更案中間納付','基準案確定納付','変更案確定納付','基準案還付','変更案還付']);
-    engine.rows.forEach(row => rows.push([row.month,row.sales,row.purchase,row.interim ?? '未反映',row.settlement ?? '未反映',row.refund ?? '未反映',row.net,row.cumulative,
-      row.baseTax?.interim ?? '未反映',row.changedTax?.interim ?? '未反映',row.baseTax?.settlement ?? '未反映',row.changedTax?.settlement ?? '未反映',row.baseTax?.refund ?? '未反映',row.changedTax?.refund ?? '未反映']));
+      engine.rows.forEach(row => rows.push([row.month,row.sales,row.purchase,row.interim ?? '未反映',row.settlement ?? '未反映',row.refund ?? '未反映',row.net,row.cumulative,
+        row.baseTax?.interim ?? '未反映',row.changedTax?.interim ?? '未反映',row.baseTax?.settlement ?? '未反映',row.changedTax?.settlement ?? '未反映',row.baseTax?.refund ?? '未反映',row.changedTax?.refund ?? '未反映']));
+    }
   }else rows.push(['月別資金差額','未算定']);
+  if(snapshot.panelData?.status?.sourceNote) rows.push(['表示用A案日常増減',snapshot.panelData.status.sourceNote]);
   if(snapshot.autoInterim) rows.push([], ...cashflowAutoExportRows(snapshot.autoInterim));
   rows.push([],['前提・未確認事項','内容'],...notes.map(note => ['前提・未確認',note]));
   return rows.map(row => row.map(cell => { const value = sanitizeCsvCell(cell); return /[",\r\n]/.test(value) ? `"${value.replace(/"/g,'""')}"` : value; }).join(',')).join('\r\n');

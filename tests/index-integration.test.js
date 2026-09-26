@@ -8,6 +8,7 @@ const vm = require('node:vm');
 const engine = require('../tax-engine.js');
 const journal = require('../journal-csv.js');
 const returnEngine = require('../tax-return-engine.js');
+const electionDeadline = require('../election-deadline.js');
 const switchDecision = require('../switch-decision.js');
 const taxRows = require('../tax-entry-rows.js');
 const { rowsFromJournalAnalysis } = require('../tax-entry-csv.js');
@@ -72,6 +73,8 @@ function harness(csv){
     aggregateScenarioPurchases:taxRows.aggregateScenarioPurchases,
     summarizeActualOnePercentEntries:taxRows.summarizeActualOnePercentEntries,
     weightedExemptPurchaseRatio:engine.weightedExemptPurchaseRatio,
+    ShohizeiTaxEngine:engine,
+    ShohizeiElectionDeadline:electionDeadline,
     normalizeExemptPurchaseRatio:engine.normalizeExemptPurchaseRatio,
     calculateSimplifiedTax:engine.calculateSimplifiedTax,
     projectPrice:engine.projectPrice,
@@ -441,6 +444,64 @@ test('[再レビューB07] 現行4期の各期と累計は現在行から申告�
   const projectionCalc = {...calc,ctx:{...calc.ctx,viewMode:'projection'}};
   assert.match(h.context.buildSummaryText(projectionCalc),/4期累計: (?:1,999,200|1999200)円/);
   assert.match(h.context.buildCsvText(projectionCalc),/1999200/);
+});
+
+test('[P11-P12] 6か月と12か月の往復・4期は各期の正式期間で全額控除を再判定する', () => {
+  const h = exactRowsHarness({sales:363000000,purchases:55000000,methods:['regular']});
+  h.context.taxEntryRows.sales[1].amount = '10000000';
+  h.context.taxEntryRows.purchases.push(
+    {id:'p6',code:'6',rate:'10',amount:'11000000',source:'manual'},
+    {id:'p7',code:'7',rate:'10',amount:'44000000',source:'manual'}
+  );
+  h.context.syncTaxEntryRows();
+  h.element('periodStart').value = '2026-01-01';
+  h.element('periodEnd').value = '2026-06-30';
+  const short = h.context.calculate();
+  assert.equal(short.methods[0].amount,null);
+  assert.match(short.inputUnconfirmedItems.join(' '),/全額控除|個別対応/);
+  h.element('regularDetailMethod').value = 'individual';
+  const selected = h.context.calculate();
+  assert.equal(selected.methods[0].amount,24117500);
+  assert.match(h.context.buildSummaryText(selected),/24117500/);
+  assert.match(h.context.buildCsvText(selected),/24117500/);
+  h.element('periodEnd').value = '2026-12-31';
+  h.element('regularDetailMethod').value = 'auto';
+  const fullYear = h.context.calculate();
+  assert.equal(fullYear.methods[0].amount,23000000);
+  h.element('periodEnd').value = '2026-06-30';
+  assert.equal(h.context.calculate().methods[0].amount,null,'short period must not reuse the full-year result');
+  const ctx = selected.ctx;
+  const futureSix = h.context.returnInputForProjection({...ctx,start:'2027-01-01',end:'2027-06-30'},1);
+  const futureTwelve = h.context.returnInputForProjection({...ctx,start:'2028-01-01',end:'2028-12-31'},2);
+  assert.equal(futureSix.input.periodMonths,6);
+  assert.equal(futureTwelve.input.periodMonths,12);
+  assert.equal(returnEngine.calculateCurrentLawReturn(futureSix.input,'individual').mainReturn.totalBeforeInterim,24117500);
+  assert.equal(returnEngine.calculateCurrentLawReturn(futureTwelve.input,'auto').mainReturn.totalBeforeInterim,23000000);
+});
+
+test('[D13] 当期の届出期限と確認状態を画面・コピー・CSV・印刷の同じ前提へ渡す', () => {
+  const h = exactRowsHarness({methods:['simplified']});
+  const calc = h.context.calculate();
+  const deadlineInput = {
+    previousMethod:'special2',
+    previousPeriod:{start:'2024-10-01',end:'2025-09-30'},
+    targetPeriod:{start:'2025-10-01',end:'2026-09-30'},
+    entityType:'corporation',consumptionTaxExtension:'none',
+    filingStatus:'filed',filingDate:'2026-09-30',asOfDate:'2026-09-25'
+  };
+  calc.ctx = {...calc.ctx,start:'2025-10-01',end:'2026-09-30',entity:'corporation',
+    comparisonMethods:['simplified'],electionDeadlineInput:deadlineInput};
+  vm.runInContext(functionSource('renderElectionDeadlineNotice'),h.context);
+  h.context.renderElectionDeadlineNotice(calc);
+  assert.match(h.element('currentElectionDeadlineNotice').textContent,/2026-09-30.*期限内/);
+  const outputs=[h.context.buildSummaryText(calc),h.context.buildCsvText(calc)];
+  h.context.renderPrintAssumptions(calc);
+  outputs.push(h.element('printAssumptions').innerHTML);
+  for(const output of outputs){
+    assert.match(output,/2026-09-30/);
+    assert.match(output,/eligible|期限内/);
+    assert.doesNotMatch(output,/2026-11-30/);
+  }
 });
 
 test('[R6-R8] 仮除外の本則・簡易・特例と4期累計は同じ端数処理後の参考額を使う', () => {
@@ -1280,6 +1341,14 @@ test('[第2次P1-1] 保存復元後も届出の確認状態と選択可否を保
   h.element('advancedMode').checked = false;
   h.element('simpleElectionStatus').value = 'free';
   h.element('currentDiscontinuanceReady').value = 'unknown';
+  h.element('priorTaxMethod').value = 'special2';
+  h.element('priorPeriodStart').value = '2027-01-01';
+  h.element('priorPeriodEnd').value = '2027-12-31';
+  h.element('electionFilingStatus').value = 'filed';
+  h.element('electionFilingDate').value = '2028-01-01';
+  h.element('electionAsOfDate').value = '2028-01-02';
+  h.element('consumptionTaxExtension').value = 'none';
+  h.element('confirmedReturnDeadline').value = '2029-03-31';
   const before = regularChoiceSnapshot(h.context.calculate());
   h.context.saveState();
   assert.ok(saved);
@@ -1287,11 +1356,14 @@ test('[第2次P1-1] 保存復元後も届出の確認状態と選択可否を保
   h.element('currentDiscontinuanceReady').value = 'no';
   h.element('currentReturnMethod').value = 'regular';
   h.element('advancedMode').checked = true;
+  for(const id of ['priorTaxMethod','priorPeriodStart','priorPeriodEnd','electionFilingStatus','electionFilingDate','electionAsOfDate','consumptionTaxExtension','confirmedReturnDeadline']) h.element(id).value = '';
   h.context.restoreState();
   assert.equal(h.element('currentReturnMethod').value,'simplified');
   assert.equal(h.element('simpleElectionStatus').value,'free');
   assert.equal(h.element('currentDiscontinuanceReady').value,'unknown');
   assert.equal(h.element('advancedMode').checked,false);
+  assert.deepEqual(['priorTaxMethod','priorPeriodStart','priorPeriodEnd','electionFilingStatus','electionFilingDate','electionAsOfDate','consumptionTaxExtension','confirmedReturnDeadline'].map(id => h.element(id).value),
+    ['special2','2027-01-01','2027-12-31','filed','2028-01-01','2028-01-02','none','2029-03-31']);
   assert.deepEqual(regularChoiceSnapshot(h.context.calculate()),before);
   h.element('advancedMode').checked = true;
   assert.deepEqual(regularChoiceSnapshot(h.context.calculate()),before);

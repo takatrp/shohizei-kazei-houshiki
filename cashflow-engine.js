@@ -134,6 +134,24 @@
 
   function zeroTaxEvents(){ return {interim:0, settlement:0, refund:0}; }
 
+  function settlementMonths(input){
+    // An explicitly supplied plan is authoritative, including an empty field.
+    // Only older callers with no plan object use the shared month fields.
+    if(!Object.prototype.hasOwnProperty.call(input, 'settlementByPlan')){
+      const shared = {paymentMonth:input.settlementMonth || '', refundMonth:input.refundMonth || ''};
+      return {base:shared,changed:shared,byPlan:false};
+    }
+    const plans = input.settlementByPlan;
+    if(!plans || typeof plans !== 'object' || Array.isArray(plans)){
+      throw new TypeError('案別の納付・還付予定月を確認してください。');
+    }
+    return {
+      base:{paymentMonth:plans.base?.paymentMonth || '',refundMonth:plans.base?.refundMonth || ''},
+      changed:{paymentMonth:plans.changed?.paymentMonth || '',refundMonth:plans.changed?.refundMonth || ''},
+      byPlan:true
+    };
+  }
+
   function calculate(input){
     if(!input || typeof input !== 'object') throw new TypeError('資金繰りの入力を指定してください。');
     const periodStart = monthIndex(input.periodStart, '対象期開始月');
@@ -145,6 +163,7 @@
     shiftMonth(input.periodStart, purchaseLag);
     const salesDeltas = normalizeEntries(input.salesDeltas, '売上入金差', periodStart, periodEnd);
     const purchaseDeltas = normalizeEntries(input.purchaseDeltas, '仕入支払差', periodStart, periodEnd);
+    const months = settlementMonths(input);
     const interim = input.interim || {status:'unknown'};
     if(!['unknown', 'none', 'scheduled', 'auto'].includes(interim.status)) throw new TypeError('中間納付の確認状態を指定してください。');
 
@@ -188,24 +207,51 @@
     if(taxComplete){
       settlement.base = safeAdd(annualTax.base, -baseInterimTotal, '基準案の精算差額');
       settlement.changed = safeAdd(annualTax.changed, -changedInterimTotal, '変更案の精算差額');
-      if((settlement.base > 0 || settlement.changed > 0) && !input.settlementMonth){
-        taxComplete = false;
-        reasons.push('確定差額の納付予定月が未設定のため、消費税の納付・還付は未反映です。');
-      }
-      if((settlement.base < 0 || settlement.changed < 0) && !input.refundMonth){
-        taxComplete = false;
-        reasons.push('還付入金予定月が未設定のため、消費税の納付・還付は未反映です。');
+      for(const plan of ['base','changed']){
+        const label = plan === 'base' ? '基準案' : '変更案';
+        if(settlement[plan] > 0 && !months[plan].paymentMonth){
+          taxComplete = false;
+          reasons.push(`${months.byPlan ? label + 'の' : ''}確定差額の納付予定月が未設定のため、消費税の納付・還付は未反映です。`);
+        }
+        if(settlement[plan] < 0 && !months[plan].refundMonth){
+          taxComplete = false;
+          reasons.push(`${months.byPlan ? label + 'の' : ''}還付入金予定月が未設定のため、消費税の納付・還付は未反映です。`);
+        }
       }
     }
-    for(const [field, label] of [['settlementMonth','納付予定月'],['refundMonth','還付予定月']]){
-      if(input[field] !== null && input[field] !== undefined && input[field] !== ''){
-        const index = monthIndex(input[field], label);
-        if(index < periodEnd) throw new RangeError(`${label}は対象期の終了月以降にしてください。`);
+    // Shared and plan-specific fields use the same requirement: only a month
+    // selected by a known settlement amount can affect the current result.
+    // An unused manual value is retained, but is checked if a later change
+    // makes that month necessary. A null settlement is not a confirmed zero.
+    for(const plan of ['base','changed']){
+      for(const [field,label,required] of [
+        ['paymentMonth','納付予定月',settlement[plan] > 0],
+        ['refundMonth','還付予定月',settlement[plan] < 0]
+      ]){
+        if(!required) continue;
+        const value = months[plan][field];
+        if(value !== null && value !== undefined && value !== ''){
+          const index = monthIndex(value, `${plan === 'base' ? '基準案' : '変更案'}の${label}`);
+          if(index < periodEnd) throw new RangeError(`${label}は対象期の終了月以降にしてください。`);
+          if(months.byPlan && index === periodEnd){
+            if(!input.periodEndDate || input.periodEndDate.slice(0,7) !== input.periodEnd){
+              throw new RangeError(`${label}を対象期終了月と同月にするには、正式な対象期終了日と処理時期を確認してください。`);
+            }
+            const date = parseDate(input.periodEndDate, '対象期終了日');
+            const nextMonthStart = monthFromIndex(periodEnd + 1) + '-01';
+            if(date + 86400000 === parseDate(nextMonthStart, '翌月初日')){
+              throw new RangeError(`${label}は月末終了の対象期より後の月にしてください。`);
+            }
+            if(input.sameMonthSettlementConfirmed !== true){
+              throw new RangeError(`${label}を対象期終了月と同月にする場合は、申告・処理時期を確認してください。`);
+            }
+          }
+        }
       }
     }
     if(taxComplete){
       for(const [plan, entries] of [['base',baseInterim],['changed',changedInterim]]){
-        const settlementMonth = settlement[plan] > 0 ? input.settlementMonth : settlement[plan] < 0 ? input.refundMonth : null;
+        const settlementMonth = settlement[plan] > 0 ? months[plan].paymentMonth : settlement[plan] < 0 ? months[plan].refundMonth : null;
         if(settlementMonth && entries.some(entry => monthIndex(entry.month) > monthIndex(settlementMonth))){
           throw new RangeError(`${plan === 'base' ? '基準案' : '変更案'}の中間納付予定月が精算予定月より後です。`);
         }
@@ -243,7 +289,7 @@
       for(const plan of ['base','changed']){
         const amount = settlement[plan];
         if(amount === 0) continue;
-        const month = amount > 0 ? input.settlementMonth : input.refundMonth;
+        const month = amount > 0 ? months[plan].paymentMonth : months[plan].refundMonth;
         const item = row(month);
         const tax = plan === 'base' ? item.baseTax : item.changedTax;
         if(amount > 0){
@@ -300,10 +346,11 @@
       status:taxComplete ? 'complete' : 'partial',
       taxPeriod:{start:input.periodStart, end:input.periodEnd},
       reasons, rows, totals, periodEndCumulative,
-      maxDrawdown:taxComplete ? {amount:-minimum, month:minimumMonth} : null,
-      transactionOnlyMaxDrawdown:taxComplete ? null : {amount:-minimum, month:minimumMonth},
+      maxDrawdown:taxComplete ? {amount:minimum < 0 ? -minimum : 0, month:minimumMonth} : null,
+      transactionOnlyMaxDrawdown:taxComplete ? null : {amount:minimum < 0 ? -minimum : 0, month:minimumMonth},
       finalCumulative:taxComplete ? cumulative : null,
       settlement:taxComplete ? settlement : null,
+      settlementMonths:months,
       taxStatus:taxComplete ? 'included' : 'not-included'
     };
   }

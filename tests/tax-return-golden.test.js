@@ -11,6 +11,7 @@ function input(overrides = {}){
     invoiceByUse:{taxableOnly:{'8':286961,'10':284161210},nonTaxableOnly:{'8':0,'10':0},common:{'8':0,'10':0}},
     exemptByUse:{taxableOnly:{'80':{'8':24625,'10':28315922}},nonTaxableOnly:{},common:{}},
     unsupportedCodes:[],unresolvedCount:0,temporaryExcludedCount:0,
+    periodStart:'2026-01-01',periodEnd:'2026-12-31',periodMonths:12,
     ...overrides
   };
 }

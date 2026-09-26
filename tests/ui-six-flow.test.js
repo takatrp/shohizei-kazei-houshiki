@@ -333,7 +333,9 @@ test('[U11-U27] 費用画面を指す旧保存値は費用額と開閉状態を�
     STORAGE_KEY:'test', storageGet:()=>JSON.stringify({saveEnabled:true,workflowStep:3,
       workflowPurpose:'foodSwitch',switchDecisionOpen:true,switchAdditionalFee:'110000',
       type2Sale8:'1080000',periodStart:'2028-01-01'}),
-    migrateSavedState:value=>value, storageRemove(){}, console,
+    migrateSavedState:value=>value, storageRemove(){},
+    console:{warn(...args){throw new Error(`復元に失敗: ${args.map(String).join(' ')}`)}},
+    captureCashflowModeState:()=>({values:{}}),
     importedExemptTransactionCount:0, importedUnsupportedEntries:[]
   });
   h.context.restoreState();

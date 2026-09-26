@@ -5,6 +5,10 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function(){
   'use strict';
 
+  const electionDeadlineApi = typeof module === 'object' && module.exports
+    ? require('./election-deadline.js')
+    : globalThis.ShohizeiElectionDeadline;
+
   const CONFIRMATION = Object.freeze({
     UNKNOWN:'unknown',
     YES:'yes',
@@ -116,6 +120,63 @@
     return Math.max(0, finiteNumber(value));
   }
 
+  function parsePeriodDate(value){
+    if(typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const [year,month,day] = value.split('-').map(Number);
+    const date = new Date(0);
+    date.setUTCHours(0,0,0,0);
+    date.setUTCFullYear(year,month - 1,day);
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null;
+  }
+
+  // Calendar months, with any remaining fraction counted as one month.
+  function periodMonthsForAnnualization(start,end){
+    const first = parsePeriodDate(start);
+    const last = parsePeriodDate(end);
+    if(!first || !last || first > last) return null;
+    const months = (last.getUTCFullYear() - first.getUTCFullYear()) * 12
+      + last.getUTCMonth() - first.getUTCMonth()
+      + (last.getUTCDate() >= first.getUTCDate() ? 1 : 0);
+    return months >= 1 && months <= 12 ? months : null;
+  }
+
+  function assessFullCreditPeriod(input = {}){
+    const reasons = [];
+    const hasDates = input.periodStart !== undefined || input.periodEnd !== undefined;
+    const datedMonths = hasDates ? periodMonthsForAnnualization(input.periodStart,input.periodEnd) : null;
+    if(hasDates && datedMonths === null) reasons.push('課税期間の開始日・終了日を確認してください。');
+    const hasMonths = input.periodMonths !== undefined && input.periodMonths !== null && input.periodMonths !== '';
+    const suppliedMonths = hasMonths ? Number(input.periodMonths) : null;
+    if(hasMonths && (!Number.isInteger(suppliedMonths) || suppliedMonths < 1 || suppliedMonths > 12))
+      reasons.push('課税期間の月数は1～12の整数で確認してください。');
+    if(hasDates && datedMonths !== null && hasMonths && datedMonths !== suppliedMonths)
+      reasons.push('課税期間の日付と明示月数が一致しません。');
+    if(!hasDates && !hasMonths) reasons.push('課税期間の開始日・終了日または確認済み月数が必要です。');
+    const months = hasDates ? datedMonths : suppliedMonths;
+    const taxableSales = input.taxableSales;
+    const nonTaxableSales = input.nonTaxableSales;
+    if(!Number.isFinite(taxableSales) || taxableSales < 0 || !Number.isFinite(nonTaxableSales) || nonTaxableSales < 0)
+      reasons.push('当期の課税売上高・非課税売上高を確認してください。');
+    if(reasons.length) return {valid:false,reasons,periodMonths:months,annualizedTaxableSales:null,
+      actualTaxableSalesRatio:null,fullCreditEligible:false};
+    const exact = Number.isSafeInteger(taxableSales) && Number.isSafeInteger(nonTaxableSales);
+    const denominator = taxableSales + nonTaxableSales;
+    const ratio = denominator > 0 ? taxableSales / denominator : null;
+    // Current-law return inputs are integer yen. Policy-simulation estimates
+    // can retain fractions and must not be silently made uncalculated here.
+    const salesThresholdEligible = exact
+      ? BigInt(taxableSales) * 12n <= 500000000n * BigInt(months)
+      : taxableSales * 12 / months <= 500000000;
+    const ratioEligible = exact
+      ? denominator > 0 && BigInt(taxableSales) * 100n >= (BigInt(taxableSales) + BigInt(nonTaxableSales)) * 95n
+      : ratio !== null && ratio + Number.EPSILON >= 0.95;
+    return {valid:true,reasons:[],periodMonths:months,
+      annualizedTaxableSales:months < 12 ? taxableSales * 12 / months : taxableSales,
+      actualTaxableSalesRatio:ratio,salesThresholdEligible,ratioEligible,
+      precision:exact ? 'integer-exact' : 'provisional-fractional',
+      fullCreditEligible:salesThresholdEligible && ratioEligible};
+  }
+
   function calculateDetailedRegular(input = {}){
     const salesTax = nonNegativeNumber(input.salesTax);
     const purchaseTax = nonNegativeNumber(input.purchaseTax);
@@ -125,15 +186,13 @@
     const taxableSalesRatio = totalSales > 0
       ? Math.min(1, Math.max(0, taxableSales / totalSales))
       : 0;
-    const suppliedPeriodMonths = finiteNumber(input.periodMonths, 12);
-    const periodMonths = suppliedPeriodMonths > 0 && suppliedPeriodMonths < 12
-      ? suppliedPeriodMonths
-      : 12;
-    const annualizedTaxableSales = periodMonths < 12
-      ? taxableSales * 12 / periodMonths
-      : taxableSales;
-    const fullCreditEligible = annualizedTaxableSales <= 500000000
-      && taxableSalesRatio + Number.EPSILON >= 0.95;
+    const periodAssessment = assessFullCreditPeriod({
+      periodStart:input.periodStart,periodEnd:input.periodEnd,periodMonths:input.periodMonths,
+      taxableSales,nonTaxableSales:Math.max(0,totalSales - taxableSales)
+    });
+    const periodMonths = periodAssessment.periodMonths;
+    const annualizedTaxableSales = periodAssessment.annualizedTaxableSales;
+    const fullCreditEligible = periodAssessment.fullCreditEligible;
 
     let regularCredit;
     let appliedMethod;
@@ -159,6 +218,7 @@
       taxableSalesRatio,
       periodMonths,
       annualizedTaxableSales,
+      periodReasons:periodAssessment.reasons,
       fullCreditEligible,
       appliedMethod,
       purchaseTax,
@@ -418,7 +478,9 @@
       state.simplifiedApplied ? 1 : 0,
       state.binding,
       state.assetRestriction,
-      state.previousMethod || ''
+      state.previousMethod || '',
+      JSON.stringify(state.pendingElection || null),
+      JSON.stringify(state.electionBasis || null)
     ].join('|');
   }
 
@@ -434,9 +496,12 @@
     }
     if(methodKey === 'simplified'){
       if(context.newElection){
-        return context.relaxedElectionDeadline
-          ? '直前期の2割・3割特例後の経過措置により、当期の確定申告期限までに簡易課税制度選択届出書を提出して簡易課税を適用'
-          : '課税期間の初日の前日までに簡易課税制度選択届出書を提出して簡易課税を適用';
+        if(context.electionDeadline){
+          const conditional = context.electionDeadline.filingAssessment === 'conditional'
+            ? '（期限内提出計画が実行された場合の条件付き）' : '';
+          return `${context.electionDeadline.basisLabel}。簡易課税を適用${conditional}`;
+        }
+        return '確認済みの有効な簡易課税制度選択届出書により簡易課税を適用';
       }
       return '有効な届出により簡易課税を適用';
     }
@@ -445,11 +510,30 @@
     return `${methodKey}を適用`;
   }
 
-  function futureElectionAction(methodKey){
-    if(methodKey === 'special2' || methodKey === 'special3'){
-      return '翌期の確定申告期限までに簡易課税制度選択届出書を提出する計画を反映';
-    }
-    return '翌期の課税期間の初日の前日までに簡易課税制度選択届出書を提出する計画を反映';
+  function futureElectionAction(deadline){
+    return `${deadline.basisLabel}。翌期の届出計画を条件付きで反映`;
+  }
+
+  function routeElectionDeadline(state, period){
+    const supplied = period.electionDeadlineInput;
+    const pending = state.pendingElection;
+    if(!supplied && !pending) return null;
+    const targetPeriod = supplied?.targetPeriod || (period.start && period.end
+      ? { start:period.start,end:period.end } : null);
+    const pendingMatches = pending && targetPeriod
+      && pending.targetPeriod?.start === targetPeriod.start && pending.targetPeriod?.end === targetPeriod.end
+      && pending.previousMethod === state.previousMethod;
+    const basedOn = pendingMatches ? pending : supplied;
+    if(!basedOn) return null;
+    const previousMethod = period.routeIndex > 0 ? state.previousMethod : (supplied?.previousMethod || state.previousMethod);
+    const previousPeriod = period.routeIndex > 0 ? period.previousPeriod : (supplied?.previousPeriod || period.previousPeriod);
+    return electionDeadlineApi.assessElectionDeadline({
+      ...supplied,...basedOn,targetPeriod,previousPeriod,previousMethod,
+      // A planned later-period election must be established in the preceding
+      // transition, never by a global yes attached directly to the new period.
+      filingStatus:period.routeIndex > 0 && !pendingMatches
+        ? 'unknown' : basedOn.filingStatus
+    });
   }
 
   function transitionRouteStates(state, period, method, noticeReady){
@@ -460,23 +544,34 @@
     const simplifiedUnavailablePreservesElection = period.simplifiedUnavailablePreservesElection === true;
     const context = {
       newElection:false,
-      relaxedElectionDeadline:false,
+      electionDeadline:null,
       discontinue:false,
-      preserveElection:false
+      preserveElection:false,
+      conditionalElection:state.electionBasis?.status === 'conditional'
     };
     let election = state.election;
+    let electionBasis = state.electionBasis || null;
     let simplifiedApplied = state.simplifiedApplied;
     let binding = Math.max(0, state.binding - 1);
 
     if(key === 'simplified'){
       if(state.assetRestriction > 0) return [];
       if(!election){
-        const relaxedElectionDeadline = (state.previousMethod === 'special2' || state.previousMethod === 'special3')
-          && futureElectionReady === CONFIRMATION.YES;
-        if(effectiveNoticeReady !== CONFIRMATION.YES && !relaxedElectionDeadline) return [];
+        const deadline = routeElectionDeadline(state, period);
+        if(deadline){
+          if(!['eligible','conditional'].includes(deadline.filingAssessment)) return [];
+          context.electionDeadline = deadline;
+        }else if(effectiveNoticeReady !== CONFIRMATION.YES || state.previousMethod === 'special2' || state.previousMethod === 'special3'){
+          return [];
+        }
         election = true;
         context.newElection = true;
-        context.relaxedElectionDeadline = relaxedElectionDeadline;
+        electionBasis = context.electionDeadline ? {
+          status:context.electionDeadline.filingAssessment,
+          targetPeriod:context.electionDeadline.targetPeriod,
+          deadline:context.electionDeadline.effectiveDeadline,
+          rule:context.electionDeadline.rule
+        } : {status:'eligible',basis:'legacyConfirmed'};
       }
       if(!simplifiedApplied){
         simplifiedApplied = true;
@@ -487,6 +582,7 @@
       if(!simplifiedUnavailablePreservesElection){
         if(discontinuanceReady !== CONFIRMATION.YES) return [];
         election = false;
+        electionBasis = null;
         simplifiedApplied = false;
         binding = 0;
         context.discontinue = true;
@@ -500,6 +596,7 @@
     const highValueAssetTriggered = key === 'regular' && period.highValueAssetTrigger === true;
     if(highValueAssetTriggered){
       election = false;
+      electionBasis = null;
       simplifiedApplied = false;
       binding = 0;
     }
@@ -507,24 +604,49 @@
       ? 2
       : Math.max(0, state.assetRestriction - 1);
     const action = routeAction(key, context)
+      + (context.conditionalElection && !context.discontinue && !context.newElection
+        ? '（先の届出計画が実行された場合の条件付き）' : '')
       + (highValueAssetTriggered ? '。高額資産取得による簡易課税届出の制限を反映' : '');
     const transitions = [{
-      state:{ election, simplifiedApplied, binding, assetRestriction, previousMethod:key },
+      state:{ election, simplifiedApplied, binding, assetRestriction, previousMethod:key,
+        pendingElection:null,electionBasis },
       action
     }];
 
+    // A valid election can take effect in this period even when the taxpayer
+    // uses the 2/3-tenths special calculation for its return. Validate the
+    // target period now, not when the plan was entered in the prior period.
+    if(!election && state.pendingElection && (key === 'special2' || key === 'special3')){
+      const deadline = routeElectionDeadline(state,period);
+      if(deadline && ['eligible','conditional'].includes(deadline.filingAssessment)){
+        transitions.push({
+          state:{election:true,simplifiedApplied:true,binding:1,assetRestriction,
+            previousMethod:key,pendingElection:null,
+            electionBasis:{status:deadline.filingAssessment,targetPeriod:deadline.targetPeriod,
+              deadline:deadline.effectiveDeadline,rule:deadline.rule}},
+          action:`${action}。${deadline.basisLabel}。届出計画が実行された場合の条件付き経路`
+        });
+      }
+    }
+
     if(!election && !highValueAssetTriggered && assetRestriction === 0
-      && futureElectionReady === CONFIRMATION.YES){
-      transitions.push({
-        state:{
-          election:true,
-          simplifiedApplied:false,
-          binding:0,
-          assetRestriction,
-          previousMethod:key
-        },
-        action:`${action}。${futureElectionAction(key)}`
-      });
+      && futureElectionReady === CONFIRMATION.YES && period.nextPeriod?.start && period.nextPeriod?.end){
+      const details = period.futureElectionDetails || {};
+      const pending = {
+        ...details,
+        targetPeriod:{start:period.nextPeriod.start,end:period.nextPeriod.end},
+        previousPeriod:{start:period.start,end:period.end},
+        previousMethod:key,
+        filingStatus:details.filingStatus || 'planned'
+      };
+      const deadline = electionDeadlineApi.assessElectionDeadline(pending);
+      if(['eligible','conditional'].includes(deadline.filingAssessment)){
+        transitions.push({
+          state:{ election:false,simplifiedApplied:false,binding:0,assetRestriction,
+            previousMethod:key,pendingElection:pending,electionBasis:null },
+          action:`${action}。${futureElectionAction(deadline)}`
+        });
+      }
     }
     return transitions;
   }
@@ -545,18 +667,15 @@
         return { eligibility:ELIGIBILITY.INELIGIBLE, reasons:['高額資産取得による簡易課税の選択制限があります。'], transitions };
       }
       if(!state.election){
-        const relaxed = (state.previousMethod === 'special2' || state.previousMethod === 'special3')
-          && period.futureElectionReady === CONFIRMATION.YES;
-        if(!relaxed){
-          const unknown = noticeReady !== CONFIRMATION.NO;
-          return {
-            eligibility:unknown ? ELIGIBILITY.UNKNOWN : ELIGIBILITY.INELIGIBLE,
-            reasons:[unknown
-              ? '簡易課税制度選択届出書の有効性・提出期限が未確認です。'
-              : '簡易課税制度選択届出書が当該課税期間に有効ではなく、適用可能な期限内にも提出できません。'],
-            transitions
-          };
-        }
+        const deadline = routeElectionDeadline(state,period);
+        const unknown = deadline ? deadline.filingAssessment === 'unknown' : noticeReady !== CONFIRMATION.NO;
+        return {
+          eligibility:unknown ? ELIGIBILITY.UNKNOWN : ELIGIBILITY.INELIGIBLE,
+          reasons:deadline?.reasons?.length ? deadline.reasons : [unknown
+            ? '簡易課税制度選択届出書の有効性・提出期限が未確認です。'
+            : '簡易課税制度選択届出書が当該課税期間に有効ではなく、適用可能な期限内にも提出できません。'],
+          transitions
+        };
       }
     }
     if(methodKey === 'regular' && state.election && period.simplifiedUnavailablePreservesElection !== true){
@@ -586,12 +705,51 @@
     if(!state){
       return { eligibility:ELIGIBILITY.UNKNOWN, reasons:['簡易課税制度選択届出書の現在の状態を確認してください。'], transitions:[] };
     }
-    return assessRouteMethodChoice(state, {
+    const ordinary = assessRouteMethodChoice(state, {
       discontinuanceReady:input.discontinuanceReady ?? CONFIRMATION.UNKNOWN,
       futureElectionReady:input.futureElectionReady ?? CONFIRMATION.UNKNOWN,
       simplifiedUnavailablePreservesElection:input.simplifiedUnavailablePreservesElection === true,
-      highValueAssetTrigger:input.highValueAssetTrigger === true
+      highValueAssetTrigger:input.highValueAssetTrigger === true,
+      electionDeadlineInput:input.electionDeadlineInput,
+      start:input.electionDeadlineInput?.targetPeriod?.start,
+      end:input.electionDeadlineInput?.targetPeriod?.end,
+      routeIndex:0
     }, input.methodKey, input.noticeReady ?? CONFIRMATION.UNKNOWN);
+    // The proposed food discontinuance is an alternative route for this
+    // period's regular-tax comparison, not a mutation of election history.
+    // The four-period optimizer intentionally keeps the ordinary transitions.
+    if(input.methodKey !== 'regular' || !input.foodDiscontinuanceInput
+      || ordinary.eligibility === ELIGIBILITY.ELIGIBLE) return ordinary;
+    if(!state.election || !state.simplifiedApplied) return ordinary;
+
+    const proposal = assessFoodSimplifiedDiscontinuance(input.foodDiscontinuanceInput);
+    if(proposal.eligibility === ELIGIBILITY.INELIGIBLE){
+      return { ...ordinary, reasons:[...new Set([...ordinary.reasons, ...proposal.reasons])],
+        route:'ordinary', foodDiscontinuance:proposal };
+    }
+    if(proposal.eligibility === ELIGIBILITY.UNKNOWN){
+      return { ...ordinary, eligibility:ELIGIBILITY.UNKNOWN,
+        reasons:[...new Set([...ordinary.reasons, ...proposal.confirmations])],
+        route:'foodProposal-unconfirmed', reference:true, foodDiscontinuance:proposal };
+    }
+
+    const condition = proposal.filingExecution === 'planned'
+      ? '簡易課税制度選択不適用届出書を予定日に提出することが条件です。提出済みではありません。'
+      : '不適用届出書は提出済みとの入力仮定です。届出書と受付記録を確認してください。';
+    const premise = '飲食料品1％は未施行の改正案に基づく参考試算であり、現行法の確定適用ではありません。';
+    return {
+      eligibility:ELIGIBILITY.ELIGIBLE,
+      reasons:[condition,premise],
+      transitions:[{
+        state:{...state,election:false,simplifiedApplied:false,binding:0,
+          previousMethod:'regular',pendingElection:null,electionBasis:null},
+        action:`食品の届出特例を条件として当期から本則課税を適用。${condition}${premise}`
+      }],
+      route:'foodProposal',conditional:true,reference:true,
+      filingExecution:proposal.filingExecution,
+      waivedRestrictions:['簡易課税の2年継続要件','通常の期首前提出時期'],
+      foodDiscontinuance:proposal
+    };
   }
 
   function optimizeFourPeriodRoutes(input = {}){
@@ -625,7 +783,15 @@
           const currentNoticeReady = periodIndex === 0
             ? (period.noticeReady ?? input.noticeReady)
             : CONFIRMATION.UNKNOWN;
-          const transitions = assessRouteMethodChoice(candidate.state, period, method.key, currentNoticeReady).transitions;
+          const routePeriod = {
+            ...period,routeIndex:periodIndex,
+            previousPeriod:periodIndex > 0 ? {
+              start:input.periods[periodIndex - 1].start,
+              end:input.periods[periodIndex - 1].end
+            } : period.electionDeadlineInput?.previousPeriod,
+            nextPeriod:input.periods[periodIndex + 1] || null
+          };
+          const transitions = assessRouteMethodChoice(candidate.state, routePeriod, method.key, currentNoticeReady).transitions;
           transitions.forEach(transition => {
             const amount = finiteNumber(method.amount);
             const next = {
@@ -1011,6 +1177,8 @@
     taxableBaseFromAmount,
     calculateRegularAmount,
     calculateDetailedRegular,
+    periodMonthsForAnnualization,
+    assessFullCreditPeriod,
     calculateDeclarationAmount,
     calculateNationalSalesTax,
     taxRateForProposalItem,

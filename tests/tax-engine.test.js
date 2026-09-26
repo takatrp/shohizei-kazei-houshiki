@@ -118,8 +118,9 @@ test('課税売上割合95％かつ5億円以下では方式にかかわらず�
     purchaseTax:30000000,
     adjustment:100,
     method:'proportional',
-    taxableSales:500000000,
-    totalSales:500000000 / 0.95,
+    taxableSales:475000000,
+    totalSales:500000000,
+    periodMonths:12,
     taxableOnlyTax:0,
     commonTax:0
   });
@@ -318,21 +319,23 @@ test('2割特例期に将来届出を計画し3割特例後に簡易課税へ移
         regular:500000,
         simplified:300000,
         special2:200000
-      }, { futureElectionReady:'yes' }),
+      }, { start:'2026-01-01',end:'2026-12-31',futureElectionReady:'yes',
+        futureElectionDetails:{entityType:'individual',filingStatus:'planned',asOfDate:'2026-09-26',
+          confirmedReturnDeadline:'2028-03-31'} }),
       routePeriod('令和9年', {
         regular:500000,
         simplified:300000,
         special3:250000
-      }),
+      }, { start:'2027-01-01',end:'2027-12-31' }),
       routePeriod('令和10年', {
         regular:500000,
         simplified:300000,
         special3:250000
-      }),
+      }, { start:'2028-01-01',end:'2028-12-31' }),
       routePeriod('令和11年', {
         regular:500000,
         simplified:300000
-      })
+      }, { start:'2029-01-01',end:'2029-12-31' })
     ]
   });
   assert.equal(result.ok, true);
@@ -340,7 +343,8 @@ test('2割特例期に将来届出を計画し3割特例後に簡易課税へ移
     'special2', 'special3', 'special3', 'simplified'
   ]);
   assert.equal(result.cumulative, 1000000);
-  assert.match(result.bestRoute[0].action, /翌期の確定申告期限まで/);
+  assert.match(result.bestRoute[0].action, /対象期確定申告期限（2028-03-31）までに届出/);
+  assert.match(result.bestRoute[0].action, /条件付き/);
 });
 
 test('届出有効かつ2年継続済みでも当期の不適用届出確認なしに本則へ移さない', () => {
@@ -465,16 +469,19 @@ test('5000万円超で簡易課税が使えない期も届出効力を保って�
 });
 
 test('高額資産取得後2期は簡易の新規選択と2割・3割特例を除外する', () => {
+  // The year-bound prior filing plan is not the old undated boolean.
   const result = optimizeFourPeriodRoutes({
     initialElectionStatus:'none',
     noticeReady:'yes',
     periods:[
-      routePeriod('1期', { regular:0 }, { highValueAssetTrigger:true }),
-      routePeriod('2期', { regular:100, simplified:1, special2:0, special3:0 }),
+      routePeriod('1期', { regular:0 }, { start:'2026-01-01',end:'2026-12-31',highValueAssetTrigger:true }),
+      routePeriod('2期', { regular:100, simplified:1, special2:0, special3:0 }, {start:'2027-01-01',end:'2027-12-31'}),
       routePeriod('3期', { regular:100, simplified:1, special2:0, special3:0 }, {
-        futureElectionReady:'yes'
+        start:'2028-01-01',end:'2028-12-31',futureElectionReady:'yes',
+        futureElectionDetails:{entityType:'corporation',consumptionTaxExtension:'none',
+          filingStatus:'planned',asOfDate:'2026-09-26'}
       }),
-      routePeriod('4期', { regular:100, simplified:1, special2:50, special3:50 })
+      routePeriod('4期', { regular:100, simplified:1, special2:50, special3:50 }, {start:'2029-01-01',end:'2029-12-31'})
     ]
   });
   assert.equal(result.ok, true);
@@ -519,6 +526,7 @@ test('現在期の届出可を将来期の新規届出へ自動流用しない',
 
 test('届出有効中でも本則で高額資産を取得した後は簡易課税へ復帰させない', () => {
   const first = routePeriod('1期', { regular:0, simplified:1 }, {
+    start:'2026-01-01',end:'2026-12-31',
     highValueAssetTrigger:true,
     discontinuanceReady:'yes'
   });
@@ -528,9 +536,11 @@ test('届出有効中でも本則で高額資産を取得した後は簡易課�
     noticeReady:'yes',
     periods:[
       first,
-      routePeriod('2期', { regular:100, simplified:1 }),
-      routePeriod('3期', { regular:100, simplified:1 }, { futureElectionReady:'yes' }),
-      routePeriod('4期', { regular:100, simplified:1 })
+      routePeriod('2期', { regular:100, simplified:1 }, {start:'2027-01-01',end:'2027-12-31'}),
+      routePeriod('3期', { regular:100, simplified:1 }, {start:'2028-01-01',end:'2028-12-31',futureElectionReady:'yes',
+        futureElectionDetails:{entityType:'corporation',consumptionTaxExtension:'none',
+          filingStatus:'planned',asOfDate:'2026-09-26'}}),
+      routePeriod('4期', { regular:100, simplified:1 }, {start:'2029-01-01',end:'2029-12-31'})
     ]
   });
   assert.equal(result.ok, true);
@@ -663,16 +673,19 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r32.1');
+  assert.equal(release.APP_META.version, 'r33');
   assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
-  assert.equal(release.RELEASE_HISTORY[1].version,'r32');
-  assert.equal(release.RELEASE_HISTORY[1].recalcRecommended,false);
-  assert.equal(release.RELEASE_HISTORY[2].version,'r31.1');
-  assert.equal(release.RELEASE_HISTORY[2].recalcRecommended,true);
-  assert.equal(release.RELEASE_HISTORY[3].version,'r31');
+  assert.equal(release.RELEASE_HISTORY[1].version,'r32.2');
+  assert.equal(release.RELEASE_HISTORY[1].recalcRecommended,true);
+  assert.equal(release.RELEASE_HISTORY[2].version,'r32.1');
+  assert.equal(release.RELEASE_HISTORY[3].version,'r32');
   assert.equal(release.RELEASE_HISTORY[3].recalcRecommended,false);
-  assert.equal(release.RELEASE_HISTORY[4].version,'r30');
+  assert.equal(release.RELEASE_HISTORY[4].version,'r31.1');
   assert.equal(release.RELEASE_HISTORY[4].recalcRecommended,true);
+  assert.equal(release.RELEASE_HISTORY[5].version,'r31');
+  assert.equal(release.RELEASE_HISTORY[5].recalcRecommended,false);
+  assert.equal(release.RELEASE_HISTORY[6].version,'r30');
+  assert.equal(release.RELEASE_HISTORY[6].recalcRecommended,true);
   assert.match(release.APP_META.currentLawBasisLabel, /国税庁/);
   assert.match(release.APP_META.proposalBasisLabel, /未施行/);
 });

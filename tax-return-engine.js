@@ -6,6 +6,9 @@
   'use strict';
 
   const RATES = Object.freeze({ '8':{national:624,total:10800,base:10000}, '10':{national:78,total:1100,base:1000} });
+  const fullCreditPeriod = typeof module === 'object' && module.exports
+    ? require('./tax-engine.js').assessFullCreditPeriod
+    : globalThis.ShohizeiTaxEngine?.assessFullCreditPeriod;
   const USAGES = Object.freeze(['taxableOnly','nonTaxableOnly','common']);
   const floorUnit = (value, unit) => Math.floor(value / unit) * unit;
   const emptyRates = () => ({'8':0,'10':0});
@@ -174,12 +177,25 @@
     const ratioRaw = denominator > 0 ? taxableSales / denominator : null;
     if(ratioRaw === null) throw new RangeError('課税売上割合の分母が0円のため、申告書計算を確定できません。');
     const ratioDisplayPercent = ratioRaw === null ? null : Math.floor(ratioRaw * 10000) / 100;
-    const fullCreditEligible = taxableSales <= 500000000 && ratioRaw !== null && ratioRaw >= 0.95;
+    if(typeof fullCreditPeriod !== 'function') throw new Error('課税期間の全額控除判定を読み込めません。');
+    const periodAssessment = fullCreditPeriod({
+      periodStart:input.periodStart,periodEnd:input.periodEnd,periodMonths:input.periodMonths,
+      taxableSales,nonTaxableSales:input.nonTaxableSales
+    });
+    const fullCreditEligible = periodAssessment.valid && periodAssessment.fullCreditEligible;
     if(method === 'auto'){
-      if(!fullCreditEligible) throw new RangeError('全額控除の要件を満たしません。個別対応方式か一括比例配分方式を選択してください。');
+      if(!periodAssessment.valid) throw new RangeError(`${periodAssessment.reasons.join(' ')}全額控除の可否を確認してください。`);
+      if(!fullCreditEligible){
+        const threshold = periodAssessment.salesThresholdEligible ? ''
+          : `5億円判定用の年換算額は${Math.ceil(periodAssessment.annualizedTaxableSales).toLocaleString('ja-JP')}円（1円未満切上げ表示）です。`;
+        const ratio = periodAssessment.ratioEligible ? '' : '当期の課税売上割合は95％未満です。';
+        throw new RangeError(`当期${periodAssessment.periodMonths}か月・課税売上${taxableSales.toLocaleString('ja-JP')}円。${threshold}${ratio}全額控除の要件を満たしません。個別対応方式か一括比例配分方式を選択してください。`);
+      }
       method = 'full';
     }
-    if(method === 'full' && !fullCreditEligible) throw new RangeError('課税売上5億円超または課税売上割合95％未満のため全額控除は選択できません。');
+    if(method === 'full' && !periodAssessment.valid)
+      throw new RangeError(`${periodAssessment.reasons.join(' ')}全額控除の可否を確認してください。`);
+    if(method === 'full' && !fullCreditEligible) throw new RangeError('年換算課税売上5億円超または当期の課税売上割合95％未満のため全額控除は選択できません。');
     if(method === 'individual' && useRoundingDifferences.length)
       throw new RangeError(`${[...new Set(useRoundingDifferences)].join(' ')}申告書で端数配賦を確認してください。`);
     const creditableByRate = emptyRates();
@@ -189,7 +205,9 @@
           : Math.floor(purchaseTaxTotal[rate] * (ratioRaw ?? 0));
     }
     return {
-      method, fullCreditEligible, taxableTransfer, returnTransfer, taxableSalesNet, taxableSales,
+      method, fullCreditEligible, periodAssessment, periodMonths:periodAssessment.periodMonths,
+      annualizedTaxableSales:periodAssessment.annualizedTaxableSales,
+      periodReasons:periodAssessment.reasons,taxableTransfer, returnTransfer, taxableSalesNet, taxableSales,
       nonTaxableSales:input.nonTaxableSales, denominator, ratioRaw, ratioDisplayPercent,
       invoiceGross, invoiceNationalTax, exemptGross, exemptCreditableTax, exemptGrossByRatio, exemptTaxByRatio, purchaseTaxTotal,
       purchaseTaxByUse, creditableByRate, creditableTotal:sumRates(creditableByRate), returnNationalTax,
@@ -247,6 +265,104 @@
     return {national,local,totalBeforeInterim:national+local};
   }
 
+  // Schedule 5-3 keeps the tax base in ④ separate from the business-type
+  // composition in ⑬. Use integer ratios for every intermediate yen floor.
+  function floorPositiveRatio(value, numerator, denominator){
+    if(!Number.isSafeInteger(value) || value < 0 || !Number.isSafeInteger(numerator) || numerator < 0
+      || !Number.isSafeInteger(denominator) || denominator <= 0) throw new RangeError('付表5-3の計算基礎を確認してください。');
+    const result = Number(BigInt(value) * BigInt(numerator) / BigInt(denominator));
+    if(!Number.isSafeInteger(result)) throw new RangeError('付表5-3の計算額が整数円の範囲外です。');
+    return result;
+  }
+
+  function simplifiedSchedule53(input, stage, deemedByType){
+    const keys = Object.keys(input.salesByType || {});
+    const statutoryPercent = {type1:90,type2:80,type3:70,type4:60,type5:50,type6:40};
+    const basisTaxByRate = Object.fromEntries(Object.keys(RATES).map(rate =>
+      [rate,stage.grossTax[rate] - stage.returnsTax[rate]]));
+    const grossByRate = emptyRates(), returnsByRate = emptyRates(), divisorByRate = emptyRates();
+    const rows = keys.map(key => {
+      const deemedPercent = statutoryPercent[key];
+      if(!deemedPercent || Number(deemedByType[key]) !== deemedPercent / 100)
+        throw new RangeError('簡易課税の事業区分とみなし仕入率を確認してください。');
+      const group = input.salesByType[key];
+      const byRate = {};
+      for(const rate of Object.keys(RATES)){
+        const gross = amount(group?.gross,rate,`${key}売上`);
+        const returned = amount(group?.returns,rate,`${key}返還`);
+        if(gross < 0 || returned < 0 || returned > gross)
+          throw new RangeError(`${key}の税込売上・返還額を確認してください。`);
+        const grossBase = floorPositiveRatio(gross,100,100 + Number(rate));
+        const returnBase = floorPositiveRatio(returned,100,100 + Number(rate));
+        const base = grossBase - returnBase;
+        const grossTax = floorPositiveRatio(gross,RATES[rate].national,RATES[rate].total);
+        const returnTax = floorPositiveRatio(returned,RATES[rate].national,RATES[rate].total);
+        const national = grossTax - returnTax;
+        if(base < 0 || national < 0) throw new RangeError(`${key}の返還等控除後の税額を確認してください。`);
+        grossByRate[rate] += gross;
+        returnsByRate[rate] += returned;
+        divisorByRate[rate] += national;
+        byRate[rate] = {gross,returned,grossBase,returnBase,base,grossTax,returnTax,national};
+      }
+      return {key,deemed:deemedPercent / 100,deemedPercent,byRate,
+        national:Object.values(byRate).reduce((sum,rate) => sum + rate.national,0),
+        base:Object.values(byRate).reduce((sum,rate) => sum + rate.base,0)};
+    });
+    for(const rate of Object.keys(RATES)){
+      if(grossByRate[rate] !== amount(input.taxableSalesGross,rate,'課税売上')
+        || returnsByRate[rate] !== amount(input.salesReturnGross,rate,'売上返還'))
+        throw new RangeError(`税率${rate}％の税込売上・返還額と事業区分別の内訳が一致しません。`);
+      if(basisTaxByRate[rate] < 0 || (basisTaxByRate[rate] > 0 && divisorByRate[rate] <= 0))
+        throw new RangeError(`税率${rate}％の付表5-3計算基礎・事業区分別税額を確認してください。`);
+    }
+    const totalBase = rows.reduce((sum,row) => sum + row.base,0);
+    if(!Number.isSafeInteger(totalBase) || totalBase <= 0)
+      throw new RangeError('簡易課税の事業区分別課税売上高を確認してください。');
+    const active = rows.filter(row => row.base > 0);
+    const candidates = [];
+    const addCandidate = (kind,label,numeratorForRate) => {
+      const byRate = {}, numeratorByRate = {};
+      for(const rate of Object.keys(RATES)){
+        const denominator = divisorByRate[rate];
+        const numerator = numeratorForRate(rate,denominator);
+        numeratorByRate[rate] = numerator;
+        byRate[rate] = denominator === 0 ? 0
+          : floorPositiveRatio(basisTaxByRate[rate],numerator,denominator);
+      }
+      candidates.push({kind,label,byRate,numeratorByRate,credit:sumRates(byRate)});
+    };
+    if(active.length === 1){
+      const row = active[0];
+      const byRate = Object.fromEntries(Object.keys(RATES).map(rate =>
+        [rate,floorPositiveRatio(basisTaxByRate[rate],row.deemedPercent,100)]));
+      candidates.push({kind:'normal',label:'通常計算',byRate,numeratorByRate:null,credit:sumRates(byRate)});
+    }else{
+      addCandidate('normal','通常計算',rate => rows.reduce((sum,row) =>
+        sum + floorPositiveRatio(row.byRate[rate].national,row.deemedPercent,100),0));
+      for(const row of active){
+        if(BigInt(row.base) * 4n >= BigInt(totalBase) * 3n){
+          const byRate = Object.fromEntries(Object.keys(RATES).map(rate =>
+            [rate,floorPositiveRatio(basisTaxByRate[rate],row.deemedPercent,100)]));
+          candidates.push({kind:'single75',label:`75％特例（${row.key}）`,byRate,
+            numeratorByRate:null,credit:sumRates(byRate),businessTypes:[row.key]});
+        }
+      }
+      if(active.length >= 3) for(let i=0;i<active.length-1;i++) for(let j=i+1;j<active.length;j++){
+        const a = active[i],b = active[j];
+        if(BigInt(a.base + b.base) * 4n < BigInt(totalBase) * 3n) continue;
+        const high = a.deemedPercent >= b.deemedPercent ? a : b;
+        const low = high === a ? b : a;
+        addCandidate('pair75',`75％特例（${high.key}・${low.key}）`,rate =>
+          floorPositiveRatio(high.byRate[rate].national,high.deemedPercent,100)
+          + floorPositiveRatio(divisorByRate[rate]-high.byRate[rate].national,low.deemedPercent,100));
+        candidates[candidates.length-1].businessTypes = [high.key,low.key];
+      }
+    }
+    const chosen = candidates.reduce((best,item) => item.credit > best.credit ? item : best,candidates[0]);
+    return {rows,totalBase,grossByRate,returnsByRate,basisTaxByRate,divisorByRate,candidates,chosen,
+      source:'付表5-3（R1.10.1以後終了課税期間用）',selectionReason:'税率を通じて同一方式を適用し、控除額合計が最大の候補を採用'};
+  }
+
   function calculateCurrentLawSalesMethod(input, method, deemedByType = {}, options = {}){
     if(!['simplified','special2','special3'].includes(method)) throw new TypeError('申告方式を確認してください。');
     const reasons = [];
@@ -259,52 +375,21 @@
     const exactComplete = provisionalReasons.length === 0;
     const stage = salesStage(input);
     let credit = 0, methodLabel = '', selection = null, basisRows = [];
+    let schedule53 = null;
     if(method === 'simplified'){
-      const rows = Object.entries(input.salesByType || {}).map(([key,group]) => {
-        const deemed = Number(deemedByType[key]);
-        if(!Number.isFinite(deemed) || deemed < 0 || deemed > 1) throw new RangeError('簡易課税の事業区分を確認してください。');
-        let national = 0, base = 0;
-        for(const rate of Object.keys(RATES)){
-          const gross = amount(group.gross,rate,`${key}売上`);
-          const returned = amount(group.returns,rate,`${key}返還`);
-          const grossBase = Math.floor(gross * 100 / (100 + Number(rate)));
-          const returnBase = Math.floor(returned * 100 / (100 + Number(rate)));
-          const roundedBase = floorUnit(grossBase,1000);
-          national += Math.floor(roundedBase * RATES[rate].national / RATES[rate].base) - nationalFromGross(returned,rate);
-          base += grossBase - returnBase;
-        }
-        if(national < 0 || base < 0) throw new RangeError('事業区分別の売上返還等が売上額を超えています。');
-        return {key,deemed,national,base};
-      });
-      if(rows.reduce((sum,row) => sum+row.national,0) !== stage.nationalSales)
-        return {complete:false,reasons:['事業区分別と税率別の売上税額に端数差があります。申告書で区分別の端数配賦を確認してください。']};
-      const totalBase = rows.reduce((sum,row) => sum+row.base,0);
-      if(totalBase <= 0) return {complete:false,reasons:['簡易課税の事業区分別課税売上高を確認してください。']};
-      const candidates = [{kind:'normal',credit:rows.reduce((sum,row) => sum+Math.floor(row.national*row.deemed),0),label:'通常計算'}];
-      const active = rows.filter(row => row.base > 0);
-      if(active.length >= 2) for(const row of active){
-        if(row.base / totalBase >= 0.75)
-          candidates.push({kind:'single75',credit:Math.floor(stage.nationalSales*row.deemed),label:`75％特例（${row.key}）`});
-      }
-      if(active.length >= 3) for(let i=0;i<active.length-1;i++) for(let j=i+1;j<active.length;j++){
-        const a=active[i],b=active[j];
-        if((a.base+b.base)/totalBase < 0.75) continue;
-        const high=a.deemed>=b.deemed?a:b, low=high===a?b:a;
-        candidates.push({kind:'pair75',credit:Math.floor(high.national*high.deemed)
-          + Math.floor((stage.nationalSales-high.national)*low.deemed),label:`75％特例（${high.key}・${low.key}）`});
-      }
-      const chosen = candidates.reduce((best,item) => item.credit > best.credit ? item : best,candidates[0]);
-      credit = chosen.credit;
-      methodLabel = chosen.label;
-      selection = { ...chosen,totalBase,candidates };
-      basisRows = rows;
+      schedule53 = simplifiedSchedule53(input,stage,deemedByType);
+      credit = schedule53.chosen.credit;
+      methodLabel = schedule53.chosen.label;
+      selection = {...schedule53.chosen,totalBase:schedule53.totalBase,candidates:schedule53.candidates,
+        reason:schedule53.selectionReason};
+      basisRows = schedule53.rows;
     }else{
       credit = Math.floor(stage.nationalSales * (method === 'special2' ? 0.8 : 0.7));
       methodLabel = method === 'special2' ? '2割特例' : '3割特例';
     }
     return {complete:exactComplete,exactComplete,referenceCalculable:true,reasons:provisionalReasons,
       precision:exactComplete ? 'declaration' : 'provisional-declaration',...finishNational(stage.nationalSales-credit),
-      stage,credit,methodLabel,selection,basisRows};
+      stage,credit,methodLabel,selection,basisRows,schedule53};
   }
 
   function calculateCurrentLawReturn(input, method = 'individual', options = {}){

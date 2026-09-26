@@ -40,6 +40,11 @@ function realCase(purchases = [{code:'5',rate:'10',amount:'8800000'}]){
   h.element('baseTaxableSales').value = '10,000,000';
   h.element('currentReturnMethod').value = 'regular';
   h.element('simpleElectionStatus').value = 'none';
+  // The new-election comparison needs the actual ordinary-prior-period
+  // filing fact; the former broad "yes" had no dated evidence.
+  h.element('priorTaxMethod').value = 'regular';
+  h.element('electionFilingStatus').value = 'filed';
+  h.element('electionFilingDate').value = '2027-03-31';
   h.element('regularDetailMethod').value = 'auto';
   h.element('exemptPurchaseState').value = 'no';
   h.context.taxEntryRows.sales.find(row => row.code === '3').amount = '0';

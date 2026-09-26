@@ -16,6 +16,7 @@ function source(name){
 
 function harness(){
   const context = vm.createContext({
+    ShohizeiTaxEngine:engine,
     calculateDetailedRegular:engine.calculateDetailedRegular,
     calculateRegularAmount:engine.calculateRegularAmount,
     ELIGIBILITY:engine.ELIGIBILITY,
@@ -188,7 +189,8 @@ test('[R07-R08] 本則の不正な必要入力を0円扱いせず未算定にす
 
 test('[R10] 本則固有の不足は本則だけ未算定とし独立した簡易・特例の計算を維持する', () => {
   const h = harness();
-  const { ctx, sales, purchases } = fixture({ nonTaxableSalesEntered:false, inputErrors:[], returnCalculationEnabled:false });
+  const { ctx, sales, purchases } = fixture({ nonTaxableSalesEntered:false, inputErrors:[], returnCalculationEnabled:false,
+    simpleElectionStatus:'free', simpleNoticeReady:'yes' });
   sales.errors = [];
   sales.simplified = { amount:160000, deemedCredit:640000, foodOnePercentTax:0, methodLabel:'事業区分別計算' };
   Object.assign(h, {

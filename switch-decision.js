@@ -313,7 +313,14 @@
       : !source.switchAdditionalFee ? source.legacyAdditionalFeeValue : '';
     return {
       ...source,
-      schemaVersion:18,
+      schemaVersion:19,
+      // r32.1 did not retain the target period or the applicable filing
+      // deadline. Its broad yes cannot prove a new simplified-tax election.
+      futureElectionPlan:sourceVersion < 19 && source.futureElectionPlan === 'yes'
+        ? 'unknown' : (source.futureElectionPlan || 'unknown'),
+      simpleNoticeReadyState:sourceVersion < 19 && source.simpleElectionStatus === 'none'
+        && source.simpleNoticeReadyState === 'yes' ? 'unknown' : source.simpleNoticeReadyState,
+      electionFilingStatus:sourceVersion < 19 ? 'unknown' : (source.electionFilingStatus || 'unknown'),
       switchAdditionalFee:legacyFeeBasisUnknown ? '' : source.switchAdditionalFee,
       legacyAdditionalFeeValue:legacyFeeBasisUnknown ? source.switchAdditionalFee : (source.legacyAdditionalFeeValue || ''),
       taxScenario:legacyFoodScenario ? 'foodProposal' : (source.taxScenario || 'current'),
@@ -327,7 +334,10 @@
         legacyFoodScenario ? '旧1％試算は軽減8％欄全体を対象としていたため、食品・新聞等・旧税率の区分を再確認してください。' : '',
         unresolvedLegacyFee ? `旧版の追加報酬「${String(unresolvedLegacyFee)}」は税抜・税込・精算後の基準が特定できません。新しい見積額と税区分を再入力してください。` : '',
         purposeScenarioMismatch ? '旧版で検討目的と税率前提が不一致でした。税率前提と食品区分を再確認してください。' : '',
-        oldFoodInner ? '旧版の1％内数は実績・予測の出所を判別できません。CSVから再取込するか、食品内数を再確認してください。' : ''
+        oldFoodInner ? '旧版の1％内数は実績・予測の出所を判別できません。CSVから再取込するか、食品内数を再確認してください。' : '',
+        sourceVersion < 19 && (source.futureElectionPlan === 'yes'
+          || source.simpleElectionStatus === 'none' && source.simpleNoticeReadyState === 'yes')
+          ? '旧版の「期限内提出」確認は新しい届出期限に紐付かないため、該当する届出状況と対象期を再確認してください。' : ''
       ].filter(Boolean).join(' ')
     };
   }

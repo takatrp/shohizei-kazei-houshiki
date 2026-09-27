@@ -12,7 +12,7 @@ for(const file of ['input-diagnostics.js','cashflow-event-chart.js','cashflow-pa
   new Function(fs.readFileSync(path.join(root,file),'utf8'));
 }
 
-for(const file of ['tax-engine.js', 'tax-return-engine.js', 'switch-decision.js', 'journal-csv.js', 'tax-entry-rows.js', 'tax-entry-csv.js', 'cashflow-engine.js', 'cashflow-adapter.js', 'method-cashflow-adapter.js', 'cashflow-defaults.js', 'input-requirements.js', 'tax-calendar.js', 'election-deadline.js', 'interim-tax-engine.js', 'release-history.js', 'forstaff.png']){
+for(const file of ['tax-engine.js', 'tax-return-engine.js', 'switch-decision.js', 'journal-csv.js', 'tax-entry-rows.js', 'tax-entry-csv.js', 'cashflow-engine.js', 'cashflow-adapter.js', 'method-cashflow-adapter.js', 'cashflow-defaults.js', 'input-requirements.js', 'tax-calendar.js', 'election-deadline.js', 'interim-tax-engine.js', 'release-history.js', 'forstaff.png', 'manual/usage-manual.pdf']){
   if(!fs.existsSync(path.join(root, file))) throw new Error(`Missing static asset: ${file}`);
 }
 

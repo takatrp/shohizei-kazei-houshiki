@@ -9,7 +9,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(__dirname, '..');
 const output = path.resolve(process.env.SAMPLE_PRINT_RESULTS_DIR || path.join(root, '..', 'shohizei-sample-print-evidence'));
 if(output === root || output.startsWith(root + path.sep)) throw new Error('Evidence must stay outside the repository.');
-const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.png':'image/png'};
+const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.png':'image/png','.pdf':'application/pdf'};
 const server = http.createServer((request,response) => {
   const target = path.resolve(root, '.' + decodeURIComponent(new URL(request.url,'http://localhost').pathname));
   if(target !== root && !target.startsWith(root + path.sep)){response.writeHead(403).end();return;}
@@ -31,6 +31,18 @@ const server = http.createServer((request,response) => {
     const page = await context.newPage();
     page.on('pageerror',error => evidence.errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/`,{waitUntil:'domcontentloaded'});
+    const manualLink = page.getByRole('link',{name:'利用マニュアル（PDFを新しいタブで開く）'});
+    assert.equal(await manualLink.count(),1);
+    assert.equal(await manualLink.getAttribute('target'),'_blank');
+    const manualUrl = await manualLink.getAttribute('href');
+    assert.equal(manualUrl,'./manual/usage-manual.pdf');
+    const manualResponse = await context.request.get(new URL(manualUrl,page.url()).href);
+    assert.equal(manualResponse.status(),200);
+    assert.match(manualResponse.headers()['content-type'],/^application\/pdf/);
+    assert.equal((await manualResponse.body()).subarray(0,5).toString(),'%PDF-');
+    const [manualPage] = await Promise.all([page.waitForEvent('popup'),manualLink.click()]);
+    assert.match(manualPage.url(),/\/manual\/usage-manual\.pdf$/);
+    await manualPage.close();
     const header = await page.locator('.head-actions button').evaluateAll(buttons => buttons.map(button => {
       const rect = button.getBoundingClientRect();return {top:rect.top,left:rect.left,right:rect.right};
     }));

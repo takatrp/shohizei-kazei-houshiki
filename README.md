@@ -24,6 +24,7 @@
 - `cashflow-panel-view.js`: 月列を共有するSVG階段線・月別表、狭幅表示、印刷用の描画層
 - `tax-calendar.js` / `interim-tax-engine.js`: 休日繰延べと前期国税額による中間申告回数・各回税額・法定納期限の純粋計算
 - `release-history.js`: 更新履歴、版数、更新日、制度基準日
+- `manual/usage-manual.pdf`: 画面上部の「利用マニュアル」から開く所内担当者向けPDF
 - `tests/*.test.js`: Node.js標準テスト
 
 ビルド工程や外部APIは使用せず、GitHub PagesとローカルHTMLで動作します。Google Analyticsには通常のページ閲覧以外の入力値・計算値を送信しません。

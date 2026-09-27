@@ -307,11 +307,14 @@
   .internal-only{border:2px solid #94a3b8;background:#f8fafc}
   .workflow-intro{margin:12px 0 0;border-radius:var(--radius) var(--radius) 0 0;box-shadow:none}
   .workflow-sticky{position:sticky;top:0;z-index:30;margin-top:-1px;border-radius:0 0 var(--radius) var(--radius)}
+  .workflow-step-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
   #workflowStepSummary{display:inline-block;max-width:100%;padding:7px 10px;border:1px solid #9dbdc9;border-left:5px solid var(--brand-700);border-radius:6px;background:var(--brand-100);color:#123948;font-size:var(--font-body);font-weight:800;overflow-wrap:anywhere}
-  .workflow-steps{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 6px}
+  .workflow-steps{display:flex;gap:7px;flex:1 1 auto;flex-wrap:wrap;margin:0}
   .workflow-steps button{border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 13px;font:inherit;font-weight:800;cursor:pointer;color:#174156}
   .workflow-steps button:disabled,.workflow-nav .btn:disabled{opacity:.5;cursor:not-allowed}
   .workflow-steps button[aria-current="step"]{background:var(--brand);color:#fff}
+  .workflow-manual-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;white-space:nowrap;text-decoration:none}
+  .workflow-manual-link:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
   .workflow-screen{display:none}
   .workflow-screen.is-active{display:grid;gap:10px}
   .workflow-screen .panel{margin:0}
@@ -433,6 +436,9 @@
     .trace-line small{grid-column:1}
     .workflow-nav .btn{width:100%}
     .workflow-nav.entry-actions{grid-template-columns:1fr}
+    .workflow-step-row{flex-wrap:wrap}
+    .workflow-steps{flex-basis:100%}
+    .workflow-manual-link{margin-left:auto}
     h1{font-size:18px}
   }
   @media print{
@@ -509,12 +515,15 @@
     <div class="notice warn" id="workflowMigrationNotice" style="display:none;margin-top:8px"></div>
   </section>
   <div class="panel workflow-sticky no-print" id="workflowSticky">
-    <nav class="workflow-steps" aria-label="入力の進行">
-      <button type="button" data-workflow-step="1" aria-current="step">1. 事業者・対象期間</button>
-      <button type="button" data-workflow-step="2">2. 金額の入力</button>
-      <button type="button" data-workflow-step="4">3. 税額の比較</button>
-      <button type="button" data-workflow-step="5">4. 資金繰りへの影響</button>
-    </nav>
+    <div class="workflow-step-row">
+      <nav class="workflow-steps" aria-label="入力の進行">
+        <button type="button" data-workflow-step="1" aria-current="step">1. 事業者・対象期間</button>
+        <button type="button" data-workflow-step="2">2. 金額の入力</button>
+        <button type="button" data-workflow-step="4">3. 税額の比較</button>
+        <button type="button" data-workflow-step="5">4. 資金繰りへの影響</button>
+      </nav>
+      <a class="btn secondary workflow-manual-link" href="./manual/usage-manual.pdf" target="_blank" rel="noopener" type="application/pdf" aria-label="利用マニュアル（PDFを新しいタブで開く）">利用マニュアル</a>
+    </div>
     <div class="screen-note" id="workflowStepSummary"></div>
   </div>
   <div id="workflowScreen1" class="workflow-screen is-active no-print"></div>

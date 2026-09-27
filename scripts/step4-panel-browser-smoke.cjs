@@ -217,6 +217,88 @@ async function seed(page,scenario='foodProposal'){
       assert.ok(evidence.print20.widths.every(width=>width<=681),JSON.stringify(evidence.print20));
       await page.locator('#acceptanceCase20').screenshot({path:path.join(output,'step4-acceptance-20months.png')});
     });
+    await check('390pxでも見出しを140pxへ縮め月列の横スクロールを維持',async()=>{
+      await page.evaluate(()=>{document.querySelector('#acceptanceCase1').style.display='none';document.querySelector('#acceptanceCase20').style.display='none';});
+      await page.setViewportSize({width:390,height:800});
+      await page.waitForTimeout(200);
+      evidence.narrow390=await page.evaluate(()=>{
+        const panel=document.querySelector('#cashflowChart');
+        return {axis:panel.querySelector('.cf-yaxis').getBoundingClientRect().width,
+          scroll:panel.querySelector('.cf-scroll').scrollWidth,
+          client:panel.querySelector('.cf-scroll').clientWidth,
+          document:document.documentElement.scrollWidth};
+      });
+      assert.equal(evidence.narrow390.axis,140);
+      assert.ok(evidence.narrow390.scroll>evidence.narrow390.client);
+      assert.equal(evidence.narrow390.document,390);
+      await page.locator('#cashflowPanel').screenshot({path:path.join(output,'step4-rate-390.png')});
+      await page.setViewportSize({width:1440,height:1000});
+    });
+    await check('年11回の共通中間納付は重複せず、A/B表の納付額は両方残る',async()=>{
+      evidence.eleven=await page.evaluate(()=>{
+        const months=Array.from({length:12},(_,i)=>`2027-${String(i+1).padStart(2,'0')}`);
+        const rows=[];let cumulative=0;
+        for(let i=0;i<12;i++){
+          const events=i<11?[{kind:'interim',amount:1000}]:[];
+          cumulative-=i<11?1000:0;
+          rows.push({month:months[i],flow:0,events,monthTotal:i<11?-1000:0,cumulative});
+        }
+        const data={months,unitLabel:'千円',priceBasis:'mixed',status:{mode:'methodImpact',interim:'auto',finalMonthEntered:true,refundMonthEntered:true,notes:[]},
+          cases:{A:{label:'A案',rows:structuredClone(rows)},B:{label:'B案',rows:structuredClone(rows)}},
+          expectedDiff:months.map(month=>({month,monthTotal:0,cumulative:0}))};
+        const container=document.createElement('div');container.id='acceptanceEleven';container.style.width='1000px';
+        document.body.appendChild(container);ShohizeiCashflowPanelView.renderCashflowPanel(container,data);
+        return {common:container.querySelectorAll('.cf-marker-common').length,
+          separate:container.querySelectorAll('.cf-marker-A,.cf-marker-B').length,
+          payments:[...container.querySelectorAll('.cf-payment')].length,
+          flowRows:[...container.querySelectorAll('.cf-row-label')].filter(item=>item.textContent==='日常の増減').length};
+      });
+      assert.deepEqual(evidence.eleven,{common:11,separate:0,payments:22,flowRows:0});
+      await page.locator('#acceptanceEleven').screenshot({path:path.join(output,'step4-11-interims.png')});
+    });
+    await check('部分試算の不足月は未算定表示、不要な予定月は警告しない',async()=>{
+      evidence.partialMonths=await page.evaluate(()=>{
+        const interim={status:'scheduled',base:[{month:'2027-02',amount:3000}],changed:[{month:'2027-02',amount:5000}]};
+        const engine=ShohizeiCashflow.calculate({periodStart:'2027-01',periodEnd:'2027-01',salesDeltas:[],purchaseDeltas:[],
+          annualTax:{base:10000,changed:9000},interim});
+        const data=ShohizeiCashflowPanelData.buildPanelData({engine,interim,mode:'methodImpact',adapter:{annualTax:{base:10000,changed:9000}}});
+        const container=document.createElement('div');container.id='acceptancePartial';document.body.appendChild(container);
+        ShohizeiCashflowPanelView.renderCashflowPanel(container,data);
+        const refund=ShohizeiCashflow.calculate({periodStart:'2027-01',periodEnd:'2027-01',salesDeltas:[],purchaseDeltas:[],
+          annualTax:{base:-1000,changed:-2000},interim:{status:'none'}});
+        const refundData=ShohizeiCashflowPanelData.buildPanelData({engine:refund,interim:{status:'none'},mode:'methodImpact',adapter:{annualTax:{base:-1000,changed:-2000}}});
+        return {integrity:data.status.integrity,text:container.textContent,refundFlags:{payment:refundData.status.finalMonthEntered,refund:refundData.status.refundMonthEntered}};
+      });
+      assert.equal(evidence.partialMonths.integrity,'unavailable');
+      assert.match(evidence.partialMonths.text,/未算定.*納付予定月が未設定/);
+      assert.doesNotMatch(evidence.partialMonths.text,/内部整合エラー/);
+      assert.deepEqual(evidence.partialMonths.refundFlags,{payment:true,refund:false});
+      await page.locator('#acceptancePartial').screenshot({path:path.join(output,'step4-partial-input-wait.png')});
+    });
+    await check('CSV月別構成の安全なA案配分とB−A別前提を実ブラウザに表示',async()=>{
+      evidence.csvBasis=await page.evaluate(()=>{
+        const interim={status:'none'};
+        const engine=ShohizeiCashflow.calculate({periodStart:'2027-01',periodEnd:'2027-03',salesDeltas:[],purchaseDeltas:[],annualTax:{base:0,changed:0},interim});
+        const data=ShohizeiCashflowPanelData.buildPanelData({engine,interim,mode:'rateImpact',lags:{sales:0,purchases:0},
+          calc:{ctx:{start:'2027-01-01',end:'2027-03-31'}},comparison:{current:{sales:{totalTax:12000},purchases:{totalTax:6000}}},
+          adapter:{distribution:{requested:'csv',bySide:{sales:'csv',purchases:'csv'}},source:{sourcePeriodStart:'2025-01-01',sourcePeriodEnd:'2025-03-31',sourcePeriodConfirmed:true,csvMonthlyDateUnknownCount:0}},
+          taxEntryRows:{sales:[{code:'1',rate:'8',amount:'600',source:'csv'}],purchases:[{code:'5',rate:'8',amount:'300',source:'csv'}]},
+          csvMonthlyGroups:[...[100,200,300].map((amount,i)=>({kind:'sales',code:'1',rate:'8',month:`2025-0${i+1}`,amount})),
+            ...[100,100,100].map((amount,i)=>({kind:'purchases',code:'5',rate:'8',month:`2025-0${i+1}`,amount}))]});
+        const container=document.createElement('div');container.id='acceptanceCsv';container.style.width='680px';document.body.appendChild(container);
+        ShohizeiCashflowPanelView.renderCashflowPanel(container,data);
+        const csv=cashflowCsvText({adapter:{periodStart:'2027-01',periodEnd:'2027-03',annualTax:{base:0,changed:0},distribution:{used:'csv',bySide:{sales:'csv',purchases:'csv'}}},
+          engine,methodLabel:'架空例',notes:[],panelData:data});
+        return {flow:data.cases.A.rows.map(row=>row.flow),note:container.querySelector('.cf-notices')?.textContent||'',plot:Boolean(container.querySelector('.cf-plot')),
+          csvBasis:csv.includes('表示用配分前提,B−Aの取引差額：')};
+      });
+      assert.deepEqual(evidence.csvBasis.flow,[0,2000,4000]);
+      assert.match(evidence.csvBasis.note,/照合済みCSV月別構成比/);
+      assert.match(evidence.csvBasis.note,/B−Aの取引差額/);
+      assert.equal(evidence.csvBasis.plot,true);
+      assert.equal(evidence.csvBasis.csvBasis,true);
+      await page.locator('#acceptanceCsv').screenshot({path:path.join(output,'step4-csv-monthly-basis.png')});
+    });
     assert.deepEqual(evidence.pageErrors,[]);
     fs.writeFileSync(path.join(output,'browser-evidence.json'),JSON.stringify(evidence,null,2),'utf8');
     console.log(JSON.stringify({checks:evidence.checks,rate:evidence.rate,alignment:evidence.alignment,narrow:evidence.narrow,method:evidence.method,pageErrors:evidence.pageErrors,output},null,2));

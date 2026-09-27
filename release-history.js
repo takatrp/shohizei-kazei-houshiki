@@ -7,13 +7,48 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r35.3',date:'2026-09-27',
+      title:'STEP4の8％対1％比較を固定し、表示する課税方式を切替',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        'STEP3で選んだ課税方式だけをSTEP4のボタンに表示し、A現行8％・B食品1％を固定',
+        '方式切替では月別の取引差を再生成せず、STEP3年税額と納付・還付予定を切替',
+        '前期代理額の方式を表示方式から分離し、中間納付を不用意に変えない',
+        '承認済みの累積階段線・月別表へ戻し、保存・コピー・CSV・印刷に現在方式を明示',
+        '上部の出力ボタンを横一列にし、食品売上型・食品仕入型の架空サンプル入力とSTEP4のA4横印刷を追加'
+      ])
+    }),
+    Object.freeze({
+      version:'r35.2',date:'2026-09-27',
+      title:'STEP4の資金増減基準を参考額・月別手入力の2方式に整理',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        '通常画面では表示用参考額を初期値とし、CSV現預金実績を詳細設定の試験機能へ移動',
+        '月別の符号付き手入力を千円・1円精度で受け、空欄と明示0円を区別して対象期別に保存',
+        '両方式を同じ共通ベース・案別税イベント・A/B当月増減・B−Aのグラフと表へ接続',
+        '既存STEP4との差額を円単位で照合し、画面・コピー・CSV・印刷に基準と前提を明示'
+      ])
+    }),
+    Object.freeze({
+      version:'r35.1',date:'2026-09-27',
+      title:'CSV現預金実績の月別資金増減とA/B税イベントの重ね合わせ',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        'TKC仕訳帳の元CSVから確認済み資金科目の借方−貸方を月別集計し、資金振替を純額0円として扱う',
+        '開始残高と過去の消費税納付・還付を明示確認して共通ベースから除き、対象期へ月順で対応する',
+        '同じSTEP4税イベントをA/Bの月別資金増減に重ね、既存B−Aを円単位で全月照合する',
+        'CSV実績を使えない場合も従来の表示用参考額を維持し、未確認の統合結果を完成扱いにしない'
+      ])
+    }),
+    Object.freeze({
       version:'r35',date:'2026-09-27',
       title:'STEP4の月別資金推移をグラフ・表の統合パネルへ変更',
       category:'usability',recalcRecommended:false,
       changes:Object.freeze([
         'A/Bの月末累積を同じ月列の階段線と月別内訳表に統合し、納付・還付・最大差を表示',
         '月別表示のB−Aを既存STEP4の差額と照合し、不一致や未確認額のゼロ補完を防止',
-        '狭幅の横スクロール、A4印刷の分割表示、円単位の縦持ちCSVに対応'
+        '狭幅の横スクロール、A4印刷の分割表示、円単位の縦持ちCSVに対応',
+        'r35表示補正：差額帯の階段点列、部分試算の入力待ち、必要な予定月だけの警告、照合済みCSV配分、共通イベント、印刷文字を改善'
       ])
     }),
     Object.freeze({

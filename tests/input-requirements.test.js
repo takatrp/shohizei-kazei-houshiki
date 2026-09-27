@@ -202,3 +202,14 @@ test('DOM input inventory maps to a field or a group, except hidden legacy and d
   const missed=ids.filter(id=>!id.includes('${')&&!ignored.has(id)&&!(groupAliases[id]||id in inventory));
   assert.deepEqual(missed,[]);
 });
+test('CSV現預金実績の確認欄はSTEP4で選択したときだけ必須',()=>{
+  const reference=evaluate({...base,step4Active:true,values:{...base.values,cashActualMode:'reference'}});
+  const actual=evaluate({...base,step4Active:true,values:{...base.values,cashActualMode:'csv'}});
+  for(const id of ['cashAccountConfirmed','cashActualSourceStart','cashActualSourceEnd','cashActualPeriodConfirmed','cashActualCoverageConfirmed','cashTaxCoverageConfirmed']){
+    assert.equal(reference.fields[id].badge,null);
+    assert.equal(actual.fields[id].badge,'required');
+  }
+  const foodMethod=evaluate({...base,step4Active:true,taxScenario:'foodProposal',cashflowMode:'methodImpact',
+    values:{...base.values,cashActualMode:'csv'}});
+  assert.equal(foodMethod.fields.cashActualFoodEightConfirmed.badge,'required');
+});

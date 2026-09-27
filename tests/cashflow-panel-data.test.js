@@ -107,15 +107,16 @@ test('予定月欠落時も同額の既知中間納付を表示でき、精算�
   assert.match(panel.status.notes.join(' '),/確定納付の予定月が未入力/);
 });
 
-test('異なる既知中間納付が部分計算と合わない場合は内部整合エラーで描画禁止',()=>{
+test('異なる既知中間納付がある部分試算は入力待ちで描画停止し、内部エラーにしない',()=>{
   const interim={status:'scheduled',base:[{month:'2027-02',amount:3000}],changed:[{month:'2027-02',amount:5000}]};
   const actual=engine.calculate({periodStart:'2027-01',periodEnd:'2027-01',
     salesDeltas:[],purchaseDeltas:[],annualTax:{base:10000,changed:9000},interim});
   const panel=buildPanelData({engine:actual,mode:'methodImpact',interim,
     adapter:{annualTax:{base:10000,changed:9000}}});
   assert.equal(panel.status.renderable,false);
-  assert.equal(panel.status.integrity,'mismatch');
-  assert.match(panel.status.reason,/内部整合エラー/);
+  assert.equal(panel.status.integrity,'unavailable');
+  assert.match(panel.status.reason,/納付予定月が未設定/);
+  assert.doesNotMatch(panel.status.reason,/内部整合エラー/);
 });
 
 test('現行税率側の税額や月ずれが不明なら日常増減0円で補完しない',()=>{
@@ -136,4 +137,60 @@ test('既存エンジンの累積値の改変を検知し、A/Bの線を提示�
   assert.equal(panel.status.renderable,false);
   assert.equal(panel.status.integrity,'mismatch');
   assert.match(panel.status.reason,/2027-07/);
+});
+
+test('部分試算の必要月はQの符号だけで判定し、不要な納付・還付警告を出さない',()=>{
+  const make=(base,changed,settlementMonth,refundMonth)=>{
+    const interim={status:'none'};
+    const actual=engine.calculate({periodStart:'2027-01',periodEnd:'2027-01',salesDeltas:[],purchaseDeltas:[],
+      annualTax:{base,changed},interim,settlementMonth,refundMonth});
+    return buildPanelData({engine:actual,mode:'methodImpact',interim,adapter:{annualTax:{base,changed}}});
+  };
+  const pay=make(1000,2000,null,null);
+  assert.equal(pay.status.finalMonthEntered,false);
+  assert.equal(pay.status.refundMonthEntered,true);
+  assert.doesNotMatch(pay.status.notes.join(' '),/還付.*未入力/);
+  const refund=make(-1000,-2000,null,null);
+  assert.equal(refund.status.finalMonthEntered,true);
+  assert.equal(refund.status.refundMonthEntered,false);
+  assert.doesNotMatch(refund.status.notes.join(' '),/納付.*未入力/);
+  const mixed=make(1000,-1000,null,null);
+  assert.equal(mixed.status.finalMonthEntered,false);
+  assert.equal(mixed.status.refundMonthEntered,false);
+  const zero=make(0,0,null,null);
+  assert.equal(zero.status.finalMonthEntered,true);
+  assert.equal(zero.status.refundMonthEntered,true);
+  assert.equal(zero.status.taxComplete,true);
+  const oneMissing=make(1000,-1000,'2027-03',null);
+  assert.equal(oneMissing.status.integrity,'unavailable');
+  assert.match(oneMissing.status.reason,/還付入金予定月が未設定/);
+  assert.doesNotMatch(oneMissing.status.reason,/納付予定月が未設定/);
+});
+
+test('安全に照合したCSV月別構成だけをA案表示に使い、不能なら日数均等とB−A別前提を注記',()=>{
+  const interim={status:'none'};
+  const actual=engine.calculate({periodStart:'2027-01',periodEnd:'2027-03',salesDeltas:[],purchaseDeltas:[],
+    annualTax:{base:0,changed:0},interim});
+  const input={engine:actual,mode:'rateImpact',interim,
+    calc:{ctx:{start:'2027-01-01',end:'2027-03-31'}},
+    comparison:{current:{sales:{totalTax:12000},purchases:{totalTax:6000}}},
+    lags:{sales:0,purchases:0},
+    adapter:{distribution:{requested:'csv',bySide:{sales:'csv',purchases:'csv'}},
+      source:{sourcePeriodStart:'2025-01-01',sourcePeriodEnd:'2025-03-31',sourcePeriodConfirmed:true,csvMonthlyDateUnknownCount:0}},
+    taxEntryRows:{sales:[{code:'1',rate:'8',amount:'600',source:'csv'}],
+      purchases:[{code:'5',rate:'8',amount:'300',source:'csv'}]},
+    csvMonthlyGroups:[
+      ...[100,200,300].map((amount,index)=>({kind:'sales',code:'1',rate:'8',month:`2025-0${index+1}`,amount})),
+      ...[100,100,100].map((amount,index)=>({kind:'purchases',code:'5',rate:'8',month:`2025-0${index+1}`,amount}))]
+  };
+  const csv=buildPanelData(input);
+  assert.equal(csv.status.renderable,true);
+  assert.deepEqual(csv.cases.A.rows.map(row=>row.flow),[0,2000,4000]);
+  assert.match(csv.status.sourceNote,/売上は照合済みCSV月別構成比、仕入は照合済みCSV月別構成比/);
+  assert.match(csv.status.notes.join(' '),/B−Aの取引差額：売上はCSV月別構成比/);
+  const fallback=buildPanelData({...input,taxEntryRows:{...input.taxEntryRows,
+    sales:[...input.taxEntryRows.sales,{code:'1',rate:'10',amount:'1',source:'manual'}]}});
+  assert.equal(fallback.status.renderable,true);
+  assert.match(fallback.status.sourceNote,/売上は対象日数均等、仕入は照合済みCSV月別構成比/);
+  assert.notDeepEqual(fallback.cases.A.rows.map(row=>row.flow),csv.cases.A.rows.map(row=>row.flow));
 });

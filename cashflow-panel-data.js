@@ -35,6 +35,39 @@
     return yen(Math.round(value),label);
   }
 
+  // The UI accepts thousand-yen amounts with up to three decimal places. Parse
+  // the string as digits so even a one-yen entry never depends on FP rounding.
+  function parseManualThousand(raw){
+    const value=String(raw ?? '').trim().replace(/,/g,'');
+    if(!value) return null;
+    if(!/^-?(?:0|[1-9]\d*)(?:\.\d{1,3})?$/.test(value))
+      throw new TypeError('月別金額は千円単位で、小数第3位（1円）まで入力してください。');
+    const negative=value.startsWith('-');
+    const [whole,fraction='']=(negative?value.slice(1):value).split('.');
+    const result=BigInt(whole)*1000n+BigInt(fraction.padEnd(3,'0'));
+    const number=Number(negative?-result:result);
+    return yen(number,'手入力の月別資金増減');
+  }
+
+  function buildManualBase(start,end,periodKey,values){
+    const expected=`${start}|${end}`;
+    if(periodKey && periodKey !== expected)
+      return {status:'unconfirmed',reason:'対象期が変更されました。以前の対象期の月別金額は流用せず、現在期の各月を再入力してください。',months:[]};
+    let weights;
+    try{weights=cashflow.monthDayWeights(start,end);}
+    catch{return {status:'unconfirmed',reason:'STEP1の比較対象課税期間を確認してください。',months:[]};}
+    const months=[];
+    for(const {month} of weights){
+      let amount;
+      try{amount=parseManualThousand(values?.[month]);}
+      catch(error){return {status:'unconfirmed',reason:`${month}：${error.message}`,months:[]};}
+      if(amount === null)
+        return {status:'unconfirmed',reason:`${month}の月別資金増減が未入力です。0円の場合は0を入力してください。`,months:[]};
+      months.push({month,amount});
+    }
+    return {status:'complete',periodKey:expected,months};
+  }
+
   function priceBasisOf(input, mode){
     if(mode === 'methodImpact') return 'mixed';
     if(PRICE_BASIS.has(input.priceBasis)) return input.priceBasis;
@@ -51,6 +84,48 @@
     map.set(month,add(map.get(month) || 0,amount,label));
   }
 
+  // A案の表示専用配分。食品差額の月別比率はA案全体の比率ではないため流用しない。
+  function csvBaselineWeights(input, kind, weights){
+    const source = input.adapter?.source || {};
+    if(input.adapter?.distribution?.requested !== 'csv' || source.sourcePeriodConfirmed !== true
+      || source.csvMonthlyDateUnknownCount !== 0) return null;
+    const rows = input.taxEntryRows?.[kind];
+    const groups = input.csvMonthlyGroups;
+    if(!Array.isArray(rows) || !Array.isArray(groups)) return null;
+    const expectedCode = kind === 'sales' ? '1' : '5';
+    const taxable = rows.filter(row => kind === 'sales'
+      ? ['1','11'].includes(String(row.code))
+      : ['5','6','7','52','62','72'].includes(String(row.code)));
+    if(!taxable.length || taxable.some(row => String(row.code) !== expectedCode || row.source !== 'csv')) return null;
+    const rate = String(taxable[0].rate);
+    if(!['8','10'].includes(rate) || taxable.some(row => String(row.rate) !== rate)) return null;
+    const keyOf = row => `${row.code}|${row.rate}|${kind === 'sales' ? row.businessType || '' : ''}`;
+    const current = new Map();
+    for(const row of taxable){
+      const amount = Number(String(row.amount ?? '').replace(/,/g,''));
+      if(!Number.isSafeInteger(amount) || amount <= 0) return null;
+      const key = keyOf(row);
+      current.set(key,(current.get(key) || 0)+amount);
+    }
+    let sourceMonths;
+    try{ sourceMonths = cashflow.monthDayWeights(source.sourcePeriodStart,source.sourcePeriodEnd); }
+    catch{ return null; }
+    if(sourceMonths.length !== weights.length || !sourceMonths.length) return null;
+    const selected = groups.filter(group => (group.kind || group.side) === kind && String(group.code) !== '3');
+    if(!selected.length || selected.some(group => String(group.code) !== expectedCode
+      || String(group.rate) !== rate || !current.has(keyOf(group))
+      || !sourceMonths.some(item => item.month === group.month)
+      || !Number.isSafeInteger(Number(group.amount)) || Number(group.amount) < 0)) return null;
+    for(const [key,amount] of current){
+      if(selected.filter(group => keyOf(group) === key).reduce((sum,group) => sum + Number(group.amount),0) !== amount) return null;
+    }
+    const byMonth = sourceMonths.map(item => selected.filter(group => group.month === item.month)
+      .reduce((sum,group) => sum + Number(group.amount),0));
+    if(byMonth.reduce((sum,value) => sum + value,0) <= 0) return null;
+    // 期間の月順を対象期へ対応付ける。CSVから実際の入出金月は推定しない。
+    return byMonth;
+  }
+
   function baseline(input, mode, sourceNote){
     const map = new Map();
     if(input.baselineFlows !== undefined){
@@ -58,11 +133,14 @@
       for(const item of input.baselineFlows){
         addTo(map,item?.month,yen(item?.amount,'明示した月別A案日常増減'),'月別A案日常増減');
       }
-      sourceNote.push('A案の日常増減は明示された月別円額を使用しています。');
+      if(input.actualCash?.status === 'complete')
+        sourceNote.push(`共通ベースはCSV実績の月別資金増減（過去の消費税納付・還付と開始残高等を確認して除外）です。確認した資金科目：${input.actualCash.selectedAccounts.join('・')}。${input.actualCash.periodMapped ? '元資料の月順を対象期へ対応させた参考試算です。' : '元資料期間と対象期は同じ月順です。'}${Object.values(input.actualCash.commonDelta||{}).some(Boolean) ? '食品1％の取引差額はA/B双方の共通額に加算しています。' : ''}${input.actualCash.restored ? '保存済みの匿名月別集計から復元しました。' : ''}`);
+      else if(input.baseSource?.kind === 'manual') sourceNote.push('共通ベースは対象期の各月へ手入力した資金増減です。入力単位は千円、小数第3位までを円に変換しています。対象期外の共通ベースは0円とし、A/Bの税金イベントは既存STEP4の計算結果を使用します。');
+      else sourceNote.push('A案の表示用参考額は明示された月別円額を使用しています。');
       return map;
     }
     if(mode === 'methodImpact'){
-      sourceNote.push('課税方式比較では両案に共通する日常取引を相殺し、納付・還付による差だけを表示します。日常増減0円は実際の営業収支0円を意味しません。');
+      sourceNote.push('表示用参考額（従来方式）：課税方式比較では両案に共通する取引を相殺し、納付・還付による差だけを表示します。共通ベース0円は実際の営業収支0円を意味しません。');
       return map;
     }
     const start = input.calc?.ctx?.start;
@@ -76,13 +154,17 @@
     const salesTax = roundedYen(input.comparison?.current?.sales?.totalTax,'現行税率の売上税額');
     const purchaseTax = roundedYen(input.comparison?.current?.purchases?.totalTax,'現行税率の仕入税額');
     const weights = cashflow.monthDayWeights(start,end);
-    const saleParts = cashflow.allocateExact(salesTax,weights.map(item => item.days));
-    const purchaseParts = cashflow.allocateExact(purchaseTax,weights.map(item => item.days));
+    const salesCsv = csvBaselineWeights(input,'sales',weights);
+    const purchasesCsv = csvBaselineWeights(input,'purchases',weights);
+    const saleParts = cashflow.allocateExact(salesTax,salesCsv || weights.map(item => item.days));
+    const purchaseParts = cashflow.allocateExact(purchaseTax,purchasesCsv || weights.map(item => item.days));
     weights.forEach((item,index) => {
       addTo(map,cashflow.shiftMonth(item.month,lags.sales),saleParts[index],'売上側の日常増減');
       addTo(map,cashflow.shiftMonth(item.month,lags.purchases),-purchaseParts[index],'仕入側の日常増減');
     });
-    sourceNote.push('A案の日常増減は、STEP3の現行税率側の売上税額・仕入税額を対象期の日数で均等配分し、設定した回収・支払月ずれへ配置した参考額です。実際の月次入出金ではありません。');
+    const basis = side => side ? '照合済みCSV月別構成比' : '対象日数均等';
+    sourceNote.push(`表示用参考額（従来方式）：売上は${basis(salesCsv)}、仕入は${basis(purchasesCsv)}で作成した参考用の月別資金増減です。STEP3の現行税率側の売上税額・仕入税額を設定した回収・支払月ずれへ配置しています。CSV実績や実際の月次入出金ではありません。`);
+    if(input.adapter?.distribution?.requested === 'csv') sourceNote.push(`B−Aの取引差額：売上は${input.adapter.distribution.bySide?.sales === 'csv' ? 'CSV月別構成比' : '対象日数均等'}、仕入は${input.adapter.distribution.bySide?.purchases === 'csv' ? 'CSV月別構成比' : '対象日数均等'}。A/B線は同じ実績月次入出金から作成したものではありません。`);
     return map;
   }
 
@@ -152,6 +234,10 @@
     const mode = input.mode === 'methodImpact' ? 'methodImpact' : 'rateImpact';
     const sourceNote = [];
     try{
+      if(input.baseSource?.status === 'unconfirmed')
+        return unrenderable(input.baseSource.reason || '月別資金増減を確認してください。',input,mode,sourceNote);
+      if(input.actualCash?.status === 'unconfirmed')
+        return unrenderable(`CSV現預金実績を使うには確認が必要です。${input.actualCash.reason || ''}`,input,mode,sourceNote);
       const engine = input.engine;
       if(!engine || !Array.isArray(engine.rows) || !engine.rows.length)
         return unrenderable('STEP4の月別計算結果がありません。',input,mode,sourceNote);
@@ -174,7 +260,7 @@
       const rows = {A:[],B:[]};
       const expectedDiff = [];
       let aCumulative = 0, bCumulative = 0, expectedCumulative = 0;
-      let mismatch = null;
+      let mismatch = null, engineMismatch = null;
       const originalLast = monthIndex(engine.rows.at(-1).month);
       for(const month of months){
         const source = engineRows.get(month);
@@ -195,38 +281,52 @@
         const expectedMonth = source ? yen(source.net,'既存STEP4の月次差額') : 0;
         expectedCumulative = add(expectedCumulative,expectedMonth,'既存STEP4の累積差額');
         expectedDiff.push({month,monthTotal:expectedMonth,cumulative:expectedCumulative});
-        if(source && Math.abs(yen(source.cumulative,'既存STEP4の累積差額')-expectedCumulative) > 1)
-          mismatch ||= month;
-        if(Math.abs(add(bTotal,-aTotal,'月別B−A差額')-expectedMonth) > 1
-          || Math.abs(add(bCumulative,-aCumulative,'累積B−A差額')-expectedCumulative) > 1){
+        const tolerance=input.baseSource || input.actualCash?.status === 'complete' ? 0 : 1;
+        if(source && Math.abs(yen(source.cumulative,'既存STEP4の累積差額')-expectedCumulative) > tolerance)
+          engineMismatch ||= month;
+        if(Math.abs(add(bTotal,-aTotal,'月別B−A差額')-expectedMonth) > tolerance
+          || Math.abs(add(bCumulative,-aCumulative,'累積B−A差額')-expectedCumulative) > tolerance){
           mismatch ||= month;
         }
       }
       if(engine.rows.at(-1).cumulative !== expectedCumulative && months.at(-1) === engine.rows.at(-1).month)
-        mismatch ||= months.at(-1);
+        engineMismatch ||= months.at(-1);
       const interimState = input.interim?.status === 'auto' ? 'auto'
         : input.interim?.status === 'scheduled' ? 'manual'
         : input.interim?.status === 'none' ? 'none'
         : input.interim?.status === 'unknown' || engine.status !== 'complete' ? 'unconfirmed' : 'confirmed';
       const settlements = engine.status === 'complete' ? engine.settlement : null;
+      const reasons = Array.isArray(engine.reasons) ? engine.reasons : [];
       const finalMonthEntered = settlements ? ['base','changed'].every(plan => settlements[plan] <= 0 || Boolean(engine.settlementMonths?.[plan]?.paymentMonth))
-        : ['base','changed'].every(plan => Boolean(engine.settlementMonths?.[plan]?.paymentMonth));
+        : !reasons.some(reason => /納付予定月が未設定/.test(reason));
       const refundMonthEntered = settlements ? ['base','changed'].every(plan => settlements[plan] >= 0 || Boolean(engine.settlementMonths?.[plan]?.refundMonth))
-        : ['base','changed'].every(plan => Boolean(engine.settlementMonths?.[plan]?.refundMonth));
+        : !reasons.some(reason => /還付入金予定月が未設定/.test(reason));
       const notices = [];
       if(interimState === 'unconfirmed') notices.push('中間納付は未確認のため、グラフと表に反映していません。');
-      if(engine.reasons?.some(reason => /納付予定月が未設定/.test(reason))) notices.push('確定納付の予定月が未入力のため、グラフと表に反映していません。');
-      if(engine.reasons?.some(reason => /還付入金予定月が未設定/.test(reason))) notices.push('還付の入金予定月が未入力のため、グラフと表に反映していません。');
+      if(!finalMonthEntered) notices.push('確定納付の予定月が未入力のため、グラフと表に反映していません。');
+      if(!refundMonthEntered) notices.push('還付の入金予定月が未入力のため、グラフと表に反映していません。');
       if(priceBasisOf(input,mode) !== 'taxExclusiveFixed' && mode === 'rateImpact')
         notices.push('税込価格据置の前提のため、B案の線には価格前提による本体（税抜）部分の差を含みます。');
       if(input.manualFromAuto === true) notices.push('中間納付予定は手修正後の値です。');
-      if(mismatch) notices.unshift(`内部整合エラー：${mismatch}のA/B差額が既存STEP4の累積資金差額と一致しません。`);
-      const status = {renderable:!mismatch,integrity:mismatch ? 'mismatch' : 'ok',mode,
+      if(engineMismatch) notices.unshift(`内部整合エラー：${engineMismatch}の既存STEP4累積値が月次差額の累計と一致しません。`);
+      else if(mismatch && engine.status === 'complete') notices.unshift(`内部整合エラー：${mismatch}のA/B差額が既存STEP4の累積資金差額と一致しません。`);
+      else if(mismatch) notices.unshift(`未算定：${reasons.join('／') || '税金の未確認条件があるため'}、税金込みのA/B資金推移を確定できません。`);
+      const integrity = engineMismatch || mismatch && engine.status === 'complete' ? 'mismatch'
+        : mismatch ? 'unavailable' : 'ok';
+      const status = {renderable:!mismatch && !engineMismatch,integrity,mode,
         taxComplete:engine.status === 'complete',
-        reason:mismatch ? notices[0] : '',
+        reason:engineMismatch || mismatch ? notices[0].replace(/^未算定：/,'') : '',
         interim:interimState,finalMonthEntered,refundMonthEntered,
-        sourceNote:sourceNote[0] || '',notes:distinctNotes([...notices,...(Array.isArray(input.notes) ? input.notes : [])])};
-      return {months,unitLabel:'千円',priceBasis:priceBasisOf(input,mode),
+        sourceNote:sourceNote[0] || '',notes:distinctNotes([...sourceNote.slice(1),...notices,...(Array.isArray(input.notes) ? input.notes : [])])};
+      const actualCash=input.actualCash?.status === 'complete' ? input.actualCash : null;
+      const sourceKind=input.baseSource?.kind;
+      const baseSource=sourceKind ? {kind:sourceKind,
+        label:sourceKind === 'manual' ? '手入力の月別資金増減（共通ベース）'
+          : sourceKind === 'csv' ? 'CSV現預金実績（共通ベース）' : '表示用参考額（共通ベース）',
+        months:months.map(month=>({month,base:aFlows.get(month)||0})),
+        commonDelta:actualCash?.commonDelta || {},
+        note:sourceNote[0] || ''} : null;
+      return {months,unitLabel:'千円',priceBasis:priceBasisOf(input,mode),actualCash,baseSource,
         cases:{A:{label:input.labels?.A || 'A案',rows:rows.A},B:{label:input.labels?.B || 'B案',rows:rows.B}},
         expectedDiff,status};
     }catch(error){
@@ -234,5 +334,5 @@
     }
   }
 
-  return Object.freeze({buildPanelData});
+  return Object.freeze({buildPanelData,parseManualThousand,buildManualBase});
 });

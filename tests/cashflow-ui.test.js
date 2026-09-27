@@ -15,8 +15,9 @@ function functionSource(name){
 }
 function screenFunctions(){
   const context = vm.createContext({yen:value => `${value}円`,escapeHtml:value => String(value)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'),sanitizeCsvCell:tax.sanitizeCsvCell});
-  vm.runInContext(['parseCashflowInterim','cashflowDistributionLabel','cashflowChartHtml','cashflowTableHtml','cashflowExportText','cashflowCsvText']
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'),sanitizeCsvCell:tax.sanitizeCsvCell,
+    cashActualMode:()=> 'reference'});
+  vm.runInContext(['parseCashflowInterim','cashflowDistributionLabel','cashflowChartHtml','cashflowTableHtml','cashBaseLabel','cashflowExportText','cashflowCsvText']
     .map(functionSource).join('\n'),context);
   return context;
 }

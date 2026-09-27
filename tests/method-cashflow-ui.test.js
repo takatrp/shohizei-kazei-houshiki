@@ -69,8 +69,8 @@ test('画面接続の初期予定月は区分・期末に追従し、手入力�
 
 test('方式別コピー・CSVは同じ税額と月別イベント、対象外は数値化しない',()=>{
   const context=vm.createContext({ELIGIBILITY,yen:value=>`${value.toLocaleString('ja-JP')}円`,sanitizeCsvCell,
-    cashflowAutoExportRows:()=>[]});
-  vm.runInContext(`${source('methodPlanDisplay')}\n${source('methodPlanStatusLabel')}\n${source('cashflowExportText')}\n${source('cashflowCsvText')}`,context);
+    cashflowAutoExportRows:()=>[],cashActualMode:()=> 'reference'});
+  vm.runInContext(`${source('methodPlanDisplay')}\n${source('methodPlanStatusLabel')}\n${source('cashBaseLabel')}\n${source('cashflowExportText')}\n${source('cashflowCsvText')}`,context);
   const plan=(label,amount)=>({label,amount,amountStatus:'calculated',eligibility:ELIGIBILITY.ELIGIBLE});
   const snapshot={mode:'methodImpact',adapter:{source:{taxPeriod:{start:'2028-01-01',end:'2028-12-31'}},
     scenario:'current',plans:{base:plan('一般課税',100000),changed:plan('簡易課税',70000)}},

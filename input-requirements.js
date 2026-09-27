@@ -80,6 +80,13 @@
     put('returnAdjustmentConfirmed',hasValue(value('returnPurchaseAdjustment10'))?required([TARGETS.csvApply],'照合調整を反映するには根拠と符号を確認します。'):optional('調整額が空欄なら不要です。'));
 
     put('cashflowComparisonType',step4?required(activeCashflow,'比較モードを1つ選択します。'):optional('STEP3税額比較には不要です。'));
+    put('cashActualMode',step4?optional('通常は表示用参考額または手入力した月別金額を選びます。CSV現預金実績は試験機能です。'):absent('STEP4でのみ使用します。'));
+    const actualCash=step4&&value('cashActualMode')==='csv';
+    put('cashAccountConfirmed cashActualSourceStart cashActualSourceEnd cashActualPeriodConfirmed cashActualCoverageConfirmed cashTaxCoverageConfirmed',
+      actualCash?required(activeCashflow,'CSV現預金実績の資金科目・元資料期間・全月網羅を確認します。'):absent('表示用参考額・手入力を選んだ場合は不要です。'));
+    put('cashActualFoodEightConfirmed',actualCash&&methodMode&&food
+      ?required(activeCashflow,'食品1％取引差を両案共通に加えるため、元CSVが軽減8％実績であることを確認します。')
+      :absent('方式比較の食品1％をCSV実績で表示する場合だけ必要です。'));
     put('cashflowMethod',step4&&!methodMode?required(activeCashflow,'税率比較で1方式を選択します。'):absent('方式別資金推移ではA/B方式を利用します。'));
     put('cashflowBaseMethod cashflowChangedMethod',step4&&methodMode?required(activeCashflow,'STEP3の候補から異なる2方式を選択します。'):absent('税率比較では1方式を固定します。'));
     put('cashflowDistribution cashflowSalesLag cashflowPurchaseLag',step4&&!methodMode?required(activeCashflow,'税率比較の取引月・回収支払前提です。'):absent('方式比較は取引条件共通で入出金差0円です。'));

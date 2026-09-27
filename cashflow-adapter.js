@@ -207,7 +207,7 @@
 
   function create({ctx,calc,comparison,methodKey,taxEntryRows,csvMonthlyGroups,
     distribution = 'uniform',sourcePeriodStart = '',sourcePeriodEnd = '',sourcePeriodConfirmed = false,
-    csvMonthlyDateUnknownCount = 0} = {}){
+    csvMonthlyDateUnknownCount = 0,transactionBasis = null} = {}){
     const reasons = [];
     const assumptions = [];
     const periodStart = ctx?.start || calc?.ctx?.start || '';
@@ -244,8 +244,8 @@
     const annualPurchaseDelta = roundedYen(rawPurchaseDelta);
     if(annualSalesDelta === null || annualPurchaseDelta === null)
       reasons.push('STEP3の両案の税込売上・仕入額を確認できません。');
-    const distributionNotes = [];
-    const bySide = {sales:'uniform',purchases:'uniform'};
+    const distributionNotes = transactionBasis ? [...transactionBasis.distribution.notes] : [];
+    const bySide = transactionBasis ? {...transactionBasis.distribution.bySide} : {sales:'uniform',purchases:'uniform'};
     const signedZeroNetSales = annualSalesDelta === 0 && calc?.ctx?.foodSalesPriceBasis !== 'grossFixed'
       && (taxEntryRows?.sales || []).some(row => String(row.code) === '11'
         && String(row.rate) === '8' && Number(String(row.foodAmount || '').replace(/,/g,'')) > 0);
@@ -272,15 +272,15 @@
       }
       return uniformDistribution(total,months,periodStart,periodEnd);
     };
-    const salesDeltas = allocate('sales',annualSalesDelta);
-    const purchaseDeltas = allocate('purchases',annualPurchaseDelta);
+    const salesDeltas = transactionBasis ? transactionBasis.salesDeltas : allocate('sales',annualSalesDelta);
+    const purchaseDeltas = transactionBasis ? transactionBasis.purchaseDeltas : allocate('purchases',annualPurchaseDelta);
     const used = bySide.sales === bySide.purchases ? bySide.sales : 'mixed';
     if(!salesDeltas || !purchaseDeltas){
       reasons.push(months.some(month => eligibleMonthDays(month,periodStart,periodEnd) > 0)
         ? 'STEP3の取引差額を月別に配分できません。CSV月別内訳と配分前提を確認してください。'
         : '食品1％の対象期間と対象期が重ならず、STEP3の取引差額を配分できません。');
     }
-    if(used === 'uniform') distributionNotes.push('対象期の取引差額を食品1％対象期間と重なる各月の日数で均等配分した概算です。');
+    if(used === 'uniform' && !transactionBasis) distributionNotes.push('対象期の取引差額を食品1％対象期間と重なる各月の日数で均等配分した概算です。');
     return {
       ready:reasons.length === 0,
       periodStart:periodStart.slice(0,7), periodEnd:periodEnd.slice(0,7), methodKey,

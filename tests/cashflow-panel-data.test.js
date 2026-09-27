@@ -119,6 +119,18 @@ test('異なる既知中間納付がある部分試算は入力待ちで描画�
   assert.doesNotMatch(panel.status.reason,/内部整合エラー/);
 });
 
+test('部分試算の重複理由は表示時だけ一度にまとめ、句読点を重ねない',()=>{
+  const interim={status:'scheduled',base:[{month:'2027-02',amount:3000}],changed:[{month:'2027-02',amount:5000}]};
+  const actual=engine.calculate({periodStart:'2027-01',periodEnd:'2027-01',
+    salesDeltas:[],purchaseDeltas:[],annualTax:{base:10000,changed:9000},interim});
+  actual.reasons=['未反映です。','未反映です。'];
+  const panel=buildPanelData({engine:actual,mode:'methodImpact',interim,
+    adapter:{annualTax:{base:10000,changed:9000}}});
+  assert.equal(panel.status.integrity,'unavailable');
+  assert.equal((panel.status.reason.match(/未反映です/g)||[]).length,1);
+  assert.doesNotMatch(panel.status.reason,/。[,、／]|、、/);
+});
+
 test('現行税率側の税額や月ずれが不明なら日常増減0円で補完しない',()=>{
   const input=sample();
   delete input.baselineFlows;

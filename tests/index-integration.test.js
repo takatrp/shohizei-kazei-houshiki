@@ -1643,7 +1643,7 @@ test('[r28印刷02] 帳票も還付・未算定・適用対象外・未確認を
   const print = h.element('comparisonPrintContent').innerHTML;
   const rows = [...print.matchAll(/<tr\b[^>]*class="method-row(?:\s[^"]*)?"[^>]*>([\s\S]*?)<\/tr>/g)].map(match => match[1]);
   assert.match(rows[0], /還付見込/);
-  assert.match(rows[0], /-12,345円|−12,345円|△ 12,345円/);
+  assert.match(rows[0], /▲12,345円/);
   assert.match(rows[1], /未算定/);
   assert.doesNotMatch(rows[1], />0円</);
   assert.match(rows[2], /適用対象外/);

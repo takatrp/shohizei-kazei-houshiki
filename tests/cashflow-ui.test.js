@@ -16,7 +16,7 @@ function functionSource(name){
 function screenFunctions(){
   const context = vm.createContext({yen:value => `${value}円`,escapeHtml:value => String(value)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'),sanitizeCsvCell:tax.sanitizeCsvCell,
-    cashActualMode:()=> 'reference'});
+    cashActualMode:()=> 'reference',APP_META:{name:'課税方式・資金繰り検討ツール'}});
   vm.runInContext(['parseCashflowInterim','cashflowDistributionLabel','cashflowChartHtml','cashflowTableHtml','cashBaseLabel','cashflowExportText','cashflowCsvText']
     .map(functionSource).join('\n'),context);
   return context;

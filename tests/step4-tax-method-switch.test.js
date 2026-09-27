@@ -138,7 +138,7 @@ test('SW13/15 画面・帳票は選択方式を示し、狭幅はボタン折返
   assert.match(view.styles,/overflow-x:auto|overflow:auto/);
   assert.match(source('cashflowExportText'),/食品1％による資金繰りへの影響（\$\{methodLabel\}）/);
   assert.match(source('cashflowCsvText'),/食品1％による資金繰りへの影響（\$\{methodLabel\}）/);
-  assert.match(source('renderCashflow'),/cashflowPrintReport'\)\.innerHTML = `<h1>食品1％による資金繰りへの影響（\$\{escapeHtml\(methodLabel\)\}）/);
+  assert.match(source('renderCashflow'),/cashflowPrintReport'\)\.innerHTML = `<h1>\$\{escapeHtml\(APP_META\.name\)\}<\/h1><p>食品1％による資金繰りへの影響（\$\{escapeHtml\(methodLabel\)\}）/);
 });
 
 test('SW14 選択方式を保存し、STEP3比較対象から外れた保存値は再選択',()=>{

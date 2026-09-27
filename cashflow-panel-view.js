@@ -189,7 +189,7 @@
       const unusedB=bRow.events.filter(event=>event.amount>0).map((event,position)=>({event,position}));
       for(const event of aRow.events.filter(item=>item.amount>0)){
         const match=unusedB.findIndex(item=>item.event.kind===event.kind && item.event.amount===event.amount);
-        if(match>=0 && aRow.cumulative===bRow.cumulative){
+        if(match>=0 && event.kind==='interim' && aRow.cumulative===bRow.cumulative){
           common.push(event);unusedB.splice(match,1);
         }
       }
@@ -205,17 +205,25 @@
           out.push(`<text class="cf-event-label" x="${placed.x}" y="${placed.y}">${escape(label)}</text>`);
         }
       }
-      for(const key of ['A','B']){
-        const commonCounts=new Map();
-        for(const event of common) commonCounts.set(`${event.kind}|${event.amount}`,(commonCounts.get(`${event.kind}|${event.amount}`)||0)+1);
-        const rows=data.cases[key].rows;
-        const row=rows[slice.start+local],x=(local+.5)*slice.CW,y=ax.y(row.cumulative);
-        for(const event of row.events.filter(item=>item.amount>0)){
+      const remaining = Object.fromEntries(['A','B'].map(key => {
+        const counts = new Map();
+        for(const event of common) counts.set(`${event.kind}|${event.amount}`,(counts.get(`${event.kind}|${event.amount}`)||0)+1);
+        return [key,data.cases[key].rows[index].events.filter(event => event.amount>0).filter(event => {
           const token=`${event.kind}|${event.amount}`;
-          if(commonCounts.get(token)>0){commonCounts.set(token,commonCounts.get(token)-1);continue;}
+          if(!counts.get(token)) return true;
+          counts.set(token,counts.get(token)-1);
+          return false;
+        })];
+      }));
+      const nearSeparateMarkers=remaining.A.length>0 && remaining.B.length>0
+        && Math.abs(ax.y(aRow.cumulative)-ax.y(bRow.cumulative))<=10;
+      for(const key of ['A','B']){
+        const rows=data.cases[key].rows;
+        const row=rows[slice.start+local],x=(local+.5)*slice.CW+(nearSeparateMarkers?(key==='A'?-5:5):0),y=ax.y(row.cumulative);
+        for(const event of remaining[key]){
           const up=event.kind==='refund';
           const points=up?`${x},${y-7} ${x-6},${y+5} ${x+6},${y+5}`:`${x},${y+7} ${x-6},${y-5} ${x+6},${y-5}`;
-          out.push(`<polygon class="cf-marker cf-marker-${key}" points="${points}" fill="${COLORS[key]}" aria-hidden="true"/>`);
+          out.push(`<polygon class="cf-marker cf-marker-${key}" points="${points}" fill="${COLORS[key]}" aria-label="${key} ${event.kind==='interim'?'中間納付':event.kind==='final'?'確定納付':'還付'} ${fmtPositive(event.amount)}千円"/>`);
           occupied.push({left:x-6,right:x+6,top:y-7,bottom:y+7});
           if(labelAllowed[key]){
             const kind=event.kind==='interim'?'中間':event.kind==='final'?'確定':'還付';
@@ -278,6 +286,8 @@
     const hits=Array.from({length:slice.count},(_,local)=>`<rect class="cf-hit" data-month-index="${slice.start+local}" x="${local*slice.CW}" y="0" width="${slice.CW}" height="${ax.height}"/>`).join('');
     return `<div class="cf-chart-row">${yaxis}<svg class="cf-plot" width="${slice.plotWidth}" height="${ax.height}" viewBox="0 0 ${slice.plotWidth} ${ax.height}" role="img" aria-label="${escape(summary(data,model))}">${tickLines}${paths}${note}${markers}${guides}${hits}</svg></div>`;
   }
+  // Legacy/internal-only renderers below support saved experimental CSV cash
+  // views and regression tests. The current STEP4 UI uses chartHtml/tableHtml.
   function actualAxis(data,options){
     const common=new Map(data.actualCash.months.map(item=>[item.month,item.base]));
     const values=[0,...data.months.map(month=>common.get(month)||0)];
@@ -455,21 +465,24 @@
     const layout=grid(data,model,options),ax=staircase?axis(data,options):data.baseSource?sharedAxis(data):data.actualCash?actualAxis(data,options):axis(data,options);
     const remainingNotices=data.baseSource?model.notices.filter(note=>note!==data.baseSource.note):model.notices;
     const noticeHtml=remainingNotices.length?`<div class="cf-notices">${remainingNotices.map(note=>`<p>${escape(note)}</p>`).join('')}</div>`:'';
+    // Non-staircase branches are legacy/internal-only; not the current STEP4 UI.
     const segments=layout.slices.map((slice,index)=>`<div class="cf-inner cf-segment" style="--cf-lw:${slice.LW}px;--cf-cw:${slice.CW}px;width:${slice.width}px">${layout.printSplit?`<h5 class="cf-segment-label">${index===0?'前半':'後半'} ${escape(monthLabel(data.months[slice.start]))}〜${escape(monthLabel(data.months[slice.end-1]))}</h5>`:''}${staircase?chartHtml(data,model,slice,ax,options):data.baseSource?sharedChartHtml(data,slice,ax):data.actualCash?actualChartHtml(data,model,slice,ax):chartHtml(data,model,slice,ax,options)}${staircase?tableHtml(data,model,slice):data.baseSource?sharedTableHtml(data,model,slice):data.actualCash?actualTableHtml(data,model,slice):tableHtml(data,model,slice)}</div>`).join('');
-    const sourceDisclosure=data.baseSource?`<p class="cf-source">資金増減の基準：${escape(data.baseSource.label)}${typeof data.baseSource.note==='string'&&data.baseSource.note.trim()?` — ${escape(data.baseSource.note)}`:''}${Object.values(data.baseSource.commonDelta||{}).some(Boolean)?'（食品1％取引差を共通ベースに含む）':''}</p>`:'';
+    const sourceNote=typeof data.baseSource?.note==='string' ? data.baseSource.note.trim().replace(/^表示用参考額（従来方式）[:：]\s*/,'') : '';
+    const sourceDisclosure=data.baseSource?`<p class="cf-source">資金増減の基準：${escape(data.baseSource.label)}${sourceNote?` — ${escape(sourceNote)}`:''}${Object.values(data.baseSource.commonDelta||{}).some(Boolean)?'（食品1％取引差を共通ベースに含む）':''}</p>`:'';
     const baseLegend=staircase?'<span><i class="cf-legend-between" aria-hidden="true"></i>A/B差の塗り</span>'
       :data.baseSource?'<span><i class="cf-legend-base" aria-hidden="true"></i>棒：共通ベース（緑：増加／赤：減少）</span><span>青・橙の点と線：A/B当月資金増減</span>'
       :data.actualCash?'<span><i class="cf-legend-between" aria-hidden="true"></i>棒：過去の消費税除外後の共通ベース</span>'
       :'<span><i class="cf-legend-between" aria-hidden="true"></i>A/B差の塗り</span>';
-    return `<section class="cf-panel${options.print?' cf-print-view':''}${staircase?' cf-staircase-view':data.baseSource?' cf-shared-view':data.actualCash?' cf-actual-view':''}" aria-label="資金繰りの月別比較"><div class="cf-legend"><span><i class="cf-swatch cf-swatch-A" aria-hidden="true"></i>${escape(data.cases.A.label||'A案')}</span><span><i class="cf-swatch cf-swatch-B" aria-hidden="true"></i>${escape(data.cases.B.label||'B案')}</span><span><i class="cf-legend-pay" aria-hidden="true">▼</i>納付</span><span><i class="cf-legend-refund" aria-hidden="true">▲</i>還付</span>${baseLegend}<span class="cf-unit">単位：${escape(data.unitLabel||'千円')}</span></div>${sourceDisclosure}${noticeHtml}<div class="cf-scroll">${segments}</div>${data.actualCash&&!data.baseSource&&!staircase?`<details class="cf-auxiliary"><summary>A/B月末累積差を見る</summary>${layout.slices.map(slice=>chartHtml(data,model,slice,axis(data,options),options)).join('')}</details>`:''}</section>`;
+    return `<section class="cf-panel${options.print?' cf-print-view':''}${staircase?' cf-staircase-view':data.baseSource?' cf-shared-view':data.actualCash?' cf-actual-view':''}" aria-label="資金繰りの月別比較"><div class="cf-legend"><span><i class="cf-swatch cf-swatch-A" aria-hidden="true"></i>${escape(data.cases.A.label||'A案')}</span><span><i class="cf-swatch cf-swatch-B" aria-hidden="true"></i>${escape(data.cases.B.label||'B案')}</span><span><i class="cf-legend-pay" aria-hidden="true"></i>納付</span><span><i class="cf-legend-refund" aria-hidden="true"></i>還付</span>${baseLegend}<span class="cf-unit">単位：${escape(data.unitLabel||'千円')}</span></div>${sourceDisclosure}${noticeHtml}<div class="cf-scroll">${segments}</div>${data.actualCash&&!data.baseSource&&!staircase?`<details class="cf-auxiliary"><summary>A/B月末累積差を見る</summary>${layout.slices.map(slice=>chartHtml(data,model,slice,axis(data,options),options)).join('')}</details>`:''}</section>`;
   }
 
   const styles=`
 .cf-panel{min-width:0;color:#183b4a;font-size:12px}.cf-panel *{box-sizing:border-box}.cf-legend{display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap;margin:5px 0 8px;font-size:12px}.cf-legend span{white-space:nowrap}.cf-swatch{display:inline-block;width:22px;height:0;vertical-align:middle;margin-right:5px;border-top:2px solid}.cf-swatch-A{border-color:#2a78d6}.cf-swatch-B{border-color:#eb6834;border-top-style:dashed}.cf-unit{margin-left:auto;color:#526775}.cf-notices{padding:6px 9px;margin-bottom:8px;border:1px solid #e3c88f;border-radius:5px;background:#fff8e9;color:#704c18}.cf-notices p{margin:2px 0}.cf-panel-error{padding:8px;border:1px solid #a32d2d;color:#a32d2d;background:#fff4f4}.cf-panel-error p{margin:0}.cf-scroll{max-width:100%;overflow-x:auto;overflow-y:hidden}.cf-segment{max-width:none}.cf-chart-row{display:flex;align-items:start}.cf-yaxis{flex:none;position:sticky;left:0;z-index:3;background:#fff;overflow:visible}.cf-yaxis text{font:11px sans-serif;fill:#465b68}.cf-plot{flex:none;overflow:visible;font:10px sans-serif}.cf-zero-line{stroke:#c3c2b7;stroke-width:1}.cf-tick-line{stroke:#dce3e8;stroke-width:.5}.cf-between{fill:#888780;fill-opacity:.2;stroke:none}.cf-line-A{fill:none;stroke:#2a78d6;stroke-width:2}.cf-line-B{fill:none;stroke:#eb6834;stroke-width:2;stroke-dasharray:6 4}.cf-max-line{stroke:#526775;stroke-width:1;stroke-dasharray:3 3}.cf-max-label{font-weight:bold;fill:#a32d2d}.cf-event-label{font-weight:bold}.cf-label-back{fill:#fff;fill-opacity:.8}.cf-hit{fill:transparent;pointer-events:all}.cf-guide{display:none;pointer-events:none}.cf-guide line{stroke:#5892bb;stroke-width:1}.cf-guide circle{fill:#fff;stroke:#326b9e;stroke-width:2}.cf-guide.cf-active{display:block}.cf-table-wrap{width:max-content;max-width:none}.cf-table{table-layout:fixed;border-collapse:collapse;margin:0;font-size:11px;line-height:1.25}.cf-table th,.cf-table td{padding:4px;text-align:right;border:1px solid #d9e2e7;white-space:nowrap;overflow:hidden}.cf-table thead th{background:#e9f2f5;font-weight:700}.cf-table .cf-row-label{position:sticky;left:0;z-index:2;background:#fff;text-align:left;white-space:normal;overflow-wrap:anywhere}.cf-table thead .cf-row-label{z-index:4;background:#e9f2f5}.cf-table .cf-case-heading .cf-row-label{font-weight:700;border-left:3px solid}.cf-table .cf-case-A .cf-row-label{border-left-color:#2a78d6}.cf-table .cf-case-B .cf-row-label{border-left-color:#eb6834}.cf-table .cf-case-heading td,.cf-table .cf-case-heading .cf-row-label{background:#f0f5f7}.cf-table .cf-new-year{border-left:2px solid #899ba7}.cf-table small{display:block;font-size:9px;font-weight:400}.cf-table .cf-payment{background:#fcebeb;color:#a32d2d}.cf-table .cf-refund{background:#eaf3de;color:#3b6d11}.cf-table .cf-negative{color:#a32d2d}.cf-table .cf-max-month{color:#a32d2d;font-weight:700}.cf-table .cf-diff-start>*{border-top:2px solid #8a9ea9}.cf-table .cf-diff-negative.cf-level-1{background:rgba(163,45,45,.12)}.cf-table .cf-diff-negative.cf-level-2{background:rgba(163,45,45,.22)}.cf-table .cf-diff-negative.cf-level-3{background:rgba(163,45,45,.34)}.cf-table .cf-diff-positive.cf-level-1{background:rgba(42,120,214,.12)}.cf-table .cf-diff-positive.cf-level-2{background:rgba(42,120,214,.22)}.cf-table .cf-diff-positive.cf-level-3{background:rgba(42,120,214,.34)}.cf-table [data-month-index].cf-active{box-shadow:inset 0 0 0 999px rgba(78,153,220,.10)}.cf-sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.cf-segment-label{margin:8px 0 3px;font-size:11px}
-.cf-event-label{fill:#233a46}.cf-legend-pay,.cf-legend-refund{display:inline-block;margin-right:4px;color:#526775;font-style:normal}.cf-legend-between{display:inline-block;width:16px;height:9px;margin-right:5px;background:rgba(136,135,128,.25);vertical-align:middle}
+.cf-event-label{fill:#233a46}.cf-legend-pay,.cf-legend-refund{display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;margin-right:5px;vertical-align:middle}.cf-legend-pay{border-top:9px solid #526775}.cf-legend-refund{border-bottom:9px solid #526775}.cf-legend-between{display:inline-block;width:16px;height:9px;margin-right:5px;background:rgba(136,135,128,.25);vertical-align:middle}
+/* Legacy/internal-only styles for the old actual/CSV bar renderers; current STEP4 uses the staircase chart. */
 .cf-actual-bar{fill:#879ba5;opacity:.75}.cf-actual-negative{fill:#b29390}.cf-actual-lane{stroke:#e1e8ec;stroke-width:1}.cf-actual-event-A{fill:#2a78d6}.cf-actual-event-B{fill:#eb6834}.cf-actual-event-common{fill:#526775}.cf-actual-table .cf-common-row th,.cf-actual-table .cf-common-row td{background:#f0f5f7}.cf-actual-table .cf-actual-total th{font-weight:700}.cf-auxiliary{margin-top:8px}.cf-auxiliary summary{cursor:pointer;color:#315f76}.cf-panel-unavailable{padding:8px;border:1px solid #d7b56b;border-radius:5px;background:#fff8e9}
 .cf-source{margin:4px 0 8px;padding:5px 8px;border-left:3px solid #607e89;background:#f1f6f8;color:#314a57;line-height:1.45;overflow-wrap:anywhere}.cf-legend-base{display:inline-block;width:12px;height:12px;margin-right:5px;background:#4b9a65;vertical-align:middle}.cf-shared-bar{fill:#4b9a65;opacity:.55}.cf-shared-negative{fill:#c86158}.cf-shared-line{fill:none;stroke-width:2.3}.cf-shared-line-A{stroke:#2a78d6}.cf-shared-line-B{stroke:#eb6834;stroke-dasharray:5 3}.cf-shared-point{stroke-width:1.5;fill:#fff}.cf-shared-point-A{stroke:#2a78d6}.cf-shared-point-B{stroke:#eb6834}.cf-shared-event-A{fill:#2a78d6}.cf-shared-event-B{fill:#eb6834}.cf-shared-event-common{fill:#526775}.cf-shared-event-label{font:600 9px sans-serif;fill:#233a46}.cf-shared-table .cf-common-row th,.cf-shared-table .cf-common-row td{background:#eaf3ec}.cf-shared-table .cf-shared-total th{font-weight:800}
-@media print{.cf-panel,.cf-panel *{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cf-scroll{overflow:visible!important}.cf-segment{break-inside:avoid;page-break-inside:avoid;max-width:280mm!important}.cf-segment+.cf-segment{margin-top:12px}.cf-yaxis{position:static!important}.cf-table .cf-row-label{position:static!important}.cf-guide{display:none!important}.cf-plot{font-size:9px}.cf-table{font-size:10px}.cf-table th,.cf-table td{padding:2px}.cf-table small{font-size:9px}.cf-panel .cf-unit{margin-left:0}}
+@media print{.cf-panel,.cf-panel *{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cf-scroll{overflow:visible!important}.cf-segment{break-inside:auto;page-break-inside:auto;max-width:280mm!important}.cf-chart-row{break-inside:avoid;page-break-inside:avoid}.cf-segment+.cf-segment{margin-top:12px}.cf-yaxis{position:static!important}.cf-table .cf-row-label{position:static!important}.cf-guide{display:none!important}.cf-plot{font-size:9px}.cf-table{font-size:10px}.cf-table th,.cf-table td{padding:2px}.cf-table small{font-size:9px}.cf-panel .cf-unit{margin-left:0}}
 `;
 
   function ensureStyles(doc){

@@ -36,6 +36,8 @@ const server = http.createServer((request,response) => {
     }));
     assert.equal(new Set(header.map(rect => rect.top)).size,1,'desktop header actions must share one row');
     await page.locator('#sampleInputMenu summary').click();
+    assert.equal(await page.locator('[data-sample-input="manufacturer"]').textContent(),'食品販売型（食品加工業など）');
+    assert.equal(await page.locator('[data-sample-input="restaurant"]').textContent(),'食品仕入型（飲食店など）');
     page.once('dialog',dialog => dialog.dismiss());
     await page.locator('[data-sample-input="manufacturer"]').click();
     assert.equal(await page.evaluate(() => $('periodStart').value),'2026-01-01','cancel must keep current input');
@@ -44,18 +46,31 @@ const server = http.createServer((request,response) => {
       if(!(await page.locator('#sampleInputMenu').evaluate(menu => menu.open))) await page.locator('#sampleInputMenu summary').click();
       await page.locator(`[data-sample-input="${kind}"]`).click();
       const state = await page.evaluate(() => {
-        const row = buildCurrentRateComparison(latestCalculation.calc).rows.find(item => item.key === 'regular');
-        return {row,foodSales:taxEntryRows.sales.reduce((sum,item)=>sum+Number(item.foodAmount || 0),0),
+        const comparison=buildCurrentRateComparison(latestCalculation.calc);
+        const row = comparison.rows.find(item => item.key === 'regular');
+        const simplified=comparison.rows.find(item => item.key === 'simplified');
+        return {row,simplified,baseSales:Number($('baseTaxableSales').value),compareSimplified:$('compareSimplified').checked,
+          foodSales:taxEntryRows.sales.reduce((sum,item)=>sum+Number(item.foodAmount || 0),0),
           foodPurchases:taxEntryRows.purchases.reduce((sum,item)=>sum+Number(item.foodAmount || 0),0),
           importedCsvOrigin,entryMode,notice:$('sampleInputNotice').textContent,
           confirmed:[$('proposalFoodClassificationState').value,$('proposalPurchaseClassificationState').value]};
       });
       assert.equal(state.entryMode,'rows');assert.equal(state.importedCsvOrigin,null);
+      assert.equal(state.baseSales,kind==='manufacturer'?40000000:30000000);
+      assert.ok(state.baseSales<50000000);
+      assert.equal(state.compareSimplified,true);
+      assert.ok(state.simplified,'簡易課税を比較結果へ表示する');
+      assert.ok(Number.isFinite(state.simplified.proposalAmount),'簡易課税の食品1％試算額が算定される');
       assert.ok(state.foodSales > 0 && state.foodPurchases > 0);
       assert.equal(Math.sign(state.row.proposalAmount-state.row.currentAmount),expectedSign);
       assert.deepEqual(state.confirmed,['confirmed','confirmed']);
       assert.match(state.notice,/架空/);
-      evidence.samples.push({kind,foodSales:state.foodSales,foodPurchases:state.foodPurchases,
+      await page.evaluate(() => {workflowStep = 4;update();});
+      const simplifiedResult = page.locator('#methodCards tr.method-row').filter({has:page.getByRole('rowheader',{name:'簡易課税'})});
+      assert.equal(await simplifiedResult.count(),1,'STEP3の方式別比較に簡易課税を表示する');
+      assert.match(await simplifiedResult.locator('[data-column="proposal"]').textContent(),/\d[\d,]*円/,'STEP3の簡易課税に試算額を表示する');
+      evidence.samples.push({kind,baseSales:state.baseSales,simplified:state.simplified.proposalAmount,
+        foodSales:state.foodSales,foodPurchases:state.foodPurchases,
         current:state.row.currentAmount,proposal:state.row.proposalAmount,
         difference:state.row.proposalAmount-state.row.currentAmount});
       await page.screenshot({path:path.join(output,`sample-${kind}.png`),fullPage:false});
@@ -74,6 +89,13 @@ const server = http.createServer((request,response) => {
     assert.equal(new Set(mobile.map(rect => rect.top)).size,1,'mobile header actions must share one row');
     assert.ok(mobile.every(rect => rect.right <= 390));
     evidence.mobileHeader = mobile;
+    await page.locator('#sampleInputMenu summary').click();
+    evidence.mobileSampleMenu = await page.locator('.sample-input-options').evaluate(menu => {
+      const rect=menu.getBoundingClientRect();
+      return {left:rect.left,right:rect.right,documentWidth:document.documentElement.scrollWidth};
+    });
+    assert.ok(evidence.mobileSampleMenu.left>=0 && evidence.mobileSampleMenu.right<=390);
+    assert.equal(evidence.mobileSampleMenu.documentWidth,390);
     await page.screenshot({path:path.join(output,'sample-header-390.png')});
     assert.deepEqual(evidence.errors,[]);
     console.log(JSON.stringify(evidence,null,2));

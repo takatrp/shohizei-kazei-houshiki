@@ -11,7 +11,7 @@
   gtag('js', new Date());
   gtag('config', 'G-TJ8VVCWREX');
 </script>
-  <title>消費税課税方式検討ツール（所内での一次試算用）</title>
+  <title>課税方式・資金繰り検討ツール（所内での一次試算用）</title>
   <meta name="description" content="本則課税、簡易課税、2割特例、3割特例を比較する、所内での一次試算専用ツール。">
 <link rel="icon" type="image/png" href="forstaff.png">
 <link rel="shortcut icon" type="image/png" href="forstaff.png">
@@ -457,10 +457,11 @@
     body[data-print-target="cashflow"] .wrap > :not(#cashflowPrintReport){display:none!important}
     body[data-print-target="cashflow"] #cashflowPrintReport{display:block!important;position:static;visibility:visible;margin:0;padding:0;font-size:9pt}
     body[data-print-target="cashflow"] #cashflowPrintReport{page:cashflowPage}
-    body[data-print-target="cashflow"] #cashflowPrintReport .cashflow-print-visual{break-before:page;break-inside:avoid}
+    body[data-print-target="cashflow"] #cashflowPrintReport .cashflow-print-visual{break-inside:auto}
+    body[data-print-target="cashflow"] #cashflowPrintReport .cashflow-print-assumptions{break-inside:auto}
     body[data-print-target="cashflow"] #cashflowPrintReport h2{margin:7px 0 4px}
     body[data-print-target="cashflow"] #cashflowPrintReport p{margin:4px 0}
-    body[data-print-target="cashflow"] .cashflow-summary{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:5px 0}
+    body[data-print-target="cashflow"] .cashflow-summary{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:5px 0}
     body[data-print-target="cashflow"] .cashflow-summary > div{padding:5px}
     body[data-print-target="cashflow"] .cashflow-summary strong{font-size:11pt;margin-top:2px}
     body[data-print-target="cashflow"] .cashflow-print-assumptions ul{columns:2;column-gap:6mm;padding-left:4mm;font-size:8.5pt;line-height:1.2}
@@ -483,10 +484,10 @@
   <header class="masthead">
     <div class="brand">
       <a href="https://takatrp.github.io/tool-portal/" target="_blank" rel="noopener" aria-label="松本会計ツールポータル">
-        <img src="forstaff.png" alt="消費税課税方式検討ツール アイコン">
+        <img src="forstaff.png" alt="課税方式・資金繰り検討ツール アイコン">
       </a>
       <div class="brand-title">
-        <h1>消費税課税方式検討ツール（所内での一次試算用）</h1>
+        <h1>課税方式・資金繰り検討ツール（所内での一次試算用）</h1>
         <p class="subhead"><span class="audience-label">所内の担当者向け一次試算</span>本則課税・簡易課税・2割特例・3割特例を概算比較します。担当者が資料を確認して一次検討し、判断に迷う点を整理して相談するための参考値です。申告判断や確定提案を代替するものではありません。</p>
       </div>
     </div>
@@ -498,7 +499,7 @@
   </header>
 
   <section class="panel workflow-intro no-print" id="workflowIntro">
-    <div class="workflow-intro-heading"><h2>課税方式を比較します</h2><details class="sample-input-menu" id="sampleInputMenu"><summary class="btn secondary" role="button">サンプル入力</summary><div class="sample-input-options"><button type="button" class="btn secondary" data-sample-input="manufacturer">飲食料品製造業</button><button type="button" class="btn secondary" data-sample-input="restaurant">飲食業</button></div></details></div>
+    <div class="workflow-intro-heading"><h2>課税方式を比較します</h2><details class="sample-input-menu" id="sampleInputMenu"><summary class="btn secondary" role="button">サンプル入力</summary><div class="sample-input-options"><button type="button" class="btn secondary" data-sample-input="manufacturer">食品販売型（食品加工業など）</button><button type="button" class="btn secondary" data-sample-input="restaurant">食品仕入型（飲食店など）</button></div></details></div>
     <p class="mini is-hidden" id="sampleInputNotice" role="status"></p>
     <div class="segmented is-hidden" aria-hidden="true">
       <input type="radio" name="workflowPurpose" id="purposeRegular" value="regular" checked><label for="purposeRegular">通常の課税方式を比較する</label>
@@ -1943,7 +1944,7 @@ function formatAmountLive(input){
 
 function yen(value){
   const rounded = Math.round(value || 0);
-  const sign = rounded < 0 ? '△ ' : '';
+  const sign = rounded < 0 ? '▲' : '';
   return sign + Math.abs(rounded).toLocaleString('ja-JP') + '円';
 }
 
@@ -5256,7 +5257,7 @@ function renderComparisonPrint(calc, comparison, headerHtml, rowsHtml){
   else if(calc.salesEntryRequired) warnings.push('課税売上が未入力のため未算定です。');
   else if(calc.comparisonProvisional) warnings.push('未確認・仮定・CSV由来を含む入力済み金額に基づく参考比較です。');
   $('comparisonPrintContent').innerHTML = `
-    <h1>消費税・方式別比較</h1>
+    <h1>${escapeHtml(APP_META.name)}・方式別比較</h1>
     <div class="comparison-print-meta"><strong>${escapeHtml(calc.ctx.taxScenarioLabel)}</strong><span>${escapeHtml(APP_META.version)} / ${escapeHtml(APP_META.updatedAt)}</span></div>
     <div class="comparison-print-warning">${warnings.map(escapeHtml).join('<br>')}</div>
     <table class="comparison-print-table" aria-label="印刷用方式別比較"><thead>${headerHtml}</thead><tbody>${rowsHtml}</tbody></table>
@@ -6341,7 +6342,7 @@ function cashflowChartHtml(rows, partial, maxMonth){
     ${settlementShade}
     <line x1="45" x2="790" y1="${zero}" y2="${zero}" stroke="#7893a2" stroke-width="1.5"/>
     <text x="5" y="${zero-4}" font-size="12">0円</text>
-    ${bottom < 0 ? `<text x="5" y="${y(bottom)+4}" font-size="12">△${Math.round(-bottom/10000).toLocaleString('ja-JP')}万円</text>` : ''}
+    ${bottom < 0 ? `<text x="5" y="${y(bottom)+4}" font-size="12">▲${Math.round(-bottom/10000).toLocaleString('ja-JP')}万円</text>` : ''}
     ${top > 0 ? `<text x="5" y="${y(top)+4}" font-size="12">${Math.round(top/10000).toLocaleString('ja-JP')}万円</text>` : ''}
     <polyline fill="none" stroke="#196c8b" stroke-width="3" points="${points}"/>
     ${rows.map((row,index) => `<circle cx="${x(index)}" cy="${y(row.cumulative)}" r="${row.month === maxMonth ? 5 : 3}" fill="${row.cumulative < 0 ? '#b45309' : '#196c8b'}"><title>${escapeHtml(row.month)} ${escapeHtml(yen(row.cumulative))}${row.month === maxMonth ? '・最大減少月' : ''}</title></circle>`).join('')}
@@ -6568,7 +6569,7 @@ function buildStep4Panel(engine, adapter, calc, comparison, mode, labels, interi
   }
 }
 function cashflowPanelPrintHtml(panelData){
-  return panelData ? `<p>資金増減の基準：${escapeHtml(cashBaseLabel())}</p>${ShohizeiCashflowPanelView.renderCashflowPanelHtml(panelData,{print:true,width:1000})}` : '';
+  return panelData ? ShohizeiCashflowPanelView.renderCashflowPanelHtml(panelData,{print:true,width:1000}) : '';
 }
 function cashBaseLabel(){return {reference:'表示用参考額（従来方式）',manual:'手入力した月別金額',csv:'CSV現預金実績（試験機能）'}[cashActualMode()];}
 function methodPlanDisplay(plan){
@@ -6687,7 +6688,8 @@ function renderMethodCashflow(calc, comparison){
   $('cashflowDetails').innerHTML = `${autoInterim ? `<h4>前期実績方式の中間納付</h4>${cashflowAutoHtml(autoInterim)}` : ''}<h4>前提・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
   latestCashflow = {mode:'methodImpact',adapter,engine:complete ? engine : null,panelData,methodLabel:`${adapter.plans.base.label} → ${adapter.plans.changed.label}`,
     notes:[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))],autoInterim,partial:!complete};
-  $('cashflowPrintReport').innerHTML = `<h1>課税方式別の資金推移</h1><p>対象期 ${escapeHtml(calc.ctx.start || '')}〜${escapeHtml(calc.ctx.end || '')}／${escapeHtml(calc.ctx.taxScenario === 'foodProposal' ? '食品1％政策試算' : '現行制度')}</p>${$('cashflowResult').innerHTML}<section class="cashflow-print-assumptions"><h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}</section>${panelData ? `<section class="cashflow-print-visual"><h2>月別資金推移と内訳</h2>${cashflowPanelPrintHtml(panelData)}</section>` : ''}`;
+  const printNotes=[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))];
+  $('cashflowPrintReport').innerHTML = `<h1>${escapeHtml(APP_META.name)}</h1><p>課税方式別の資金推移／対象期 ${escapeHtml(calc.ctx.start || '')}〜${escapeHtml(calc.ctx.end || '')}／${escapeHtml(adapter.plans.base.label)}・${escapeHtml(adapter.plans.changed.label)}／${escapeHtml(calc.ctx.taxScenario === 'foodProposal' ? '食品1％政策試算' : '現行制度')}</p>${taxRows}${panelData ? `<section class="cashflow-print-visual"><h2>月別資金推移と内訳</h2>${cashflowPanelPrintHtml(panelData)}</section>` : ''}<section class="cashflow-print-tax"><h2>年税額・納付・還付の比較</h2>${methodComparisonTable || `<p>未算定：${escapeHtml(status + ' ' + reason)}</p>`}</section><section class="cashflow-print-assumptions"><h2>前提・未確認事項</h2><ul>${printNotes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul></section>${autoInterim ? `<section class="cashflow-print-interim"><h2>中間納付の詳細</h2>${cashflowAutoHtml(autoInterim)}</section>` : ''}`;
 }
 function cashflowTransactionKey(calc, comparison, sourcePeriodConfirmed){
   return JSON.stringify({start:calc.ctx.start,end:calc.ctx.end,scenario:calc.ctx.taxScenario,
@@ -6737,7 +6739,7 @@ function renderCashflow(calc, comparison){
   $('cashflowDetails').closest('details').classList.toggle('is-hidden', currentMode);
   if(currentMode){
     $('cashflowInherited').textContent = '';
-    $('cashflowPrintReport').innerHTML = '<h1>資金繰りへの影響：未算定</h1><p>STEP1で食品1％試算を選択してください。現行制度の税額結果には影響しません。</p>';
+    $('cashflowPrintReport').innerHTML = `<h1>${escapeHtml(APP_META.name)}</h1><p>資金繰りへの影響：未算定。STEP1で食品1％試算を選択してください。現行制度の税額結果には影響しません。</p>`;
     latestCashflow = null;
     return;
   }
@@ -6811,7 +6813,7 @@ function renderCashflow(calc, comparison){
     $('cashflowResult').innerHTML = `<div class="notice warn">${escapeHtml(methodLabel)}の8％／1％資金差額は未算定です。${escapeHtml([...adapter.reasons,...adapter.annualTax.reasons].join(' / ') || 'STEP3で方式と入力を確認してください。')} <button type="button" class="btn secondary no-print" data-cashflow-step3>STEP3の税額比較へ戻る</button></div>`;
     $('cashflowChart').innerHTML = '<p class="mini">対象となる入力を確認すると表示します。</p>';
     $('cashflowMonthlyTable').innerHTML = '';
-    $('cashflowPrintReport').innerHTML = `<h1>食品1％による資金繰りへの影響（${escapeHtml(methodLabel)}）</h1><div class="notice warn">資金差額は未算定です。${escapeHtml([...adapter.reasons,...adapter.annualTax.reasons].join(' / ') || '方式と入力を確認してください。')}</div>${autoInterim ? `<h2>中間納付の自動設定</h2>${cashflowAutoHtml(autoInterim)}` : ''}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
+    $('cashflowPrintReport').innerHTML = `<h1>${escapeHtml(APP_META.name)}</h1><p>食品1％による資金繰りへの影響（${escapeHtml(methodLabel)}）</p><div class="notice warn">資金差額は未算定です。${escapeHtml([...adapter.reasons,...adapter.annualTax.reasons].join(' / ') || '方式と入力を確認してください。')}</div><h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}${autoInterim ? `<h2>中間納付の自動設定</h2>${cashflowAutoHtml(autoInterim)}` : ''}`;
     latestCashflow = {adapter,engine:null,methodLabel,notes:uniqueNotes,autoInterim};
     return;
   }
@@ -6829,7 +6831,7 @@ function renderCashflow(calc, comparison){
     $('cashflowChart').innerHTML = '';
     $('cashflowMonthlyTable').innerHTML = '';
     latestCashflow = {adapter,engine:null,methodLabel,notes:[...uniqueNotes,error.message],autoInterim};
-    $('cashflowPrintReport').innerHTML = `<h1>食品1％試算：資金繰りへの影響</h1><div class="notice warn">中間納付の入力を確認してください：${escapeHtml(error.message)}</div>${autoInterim ? `<h2>中間納付の自動設定</h2>${cashflowAutoHtml(autoInterim)}` : ''}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
+    $('cashflowPrintReport').innerHTML = `<h1>${escapeHtml(APP_META.name)}</h1><p>食品1％試算：資金繰りへの影響</p><div class="notice warn">中間納付の入力を確認してください：${escapeHtml(error.message)}</div><h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}${autoInterim ? `<h2>中間納付の自動設定</h2>${cashflowAutoHtml(autoInterim)}` : ''}`;
     return;
   }
   try{
@@ -6867,12 +6869,12 @@ function renderCashflow(calc, comparison){
         Object.values(row.baseTax).some(Boolean) || Object.values(row.changedTax).some(Boolean)).map(row => `<tr><td>${escapeHtml(row.month)}</td><td>${yen(row.baseTax.interim)}</td><td>${yen(row.changedTax.interim)}</td><td>${yen(row.baseTax.settlement)}</td><td>${yen(row.changedTax.settlement)}</td><td>${yen(row.baseTax.refund)}</td><td>${yen(row.changedTax.refund)}</td></tr>`).join('')}</tbody></table></div>`;
     $('cashflowDetails').innerHTML = foodBasis + taxBasis + (autoInterim ? `<h4>中間納付の自動設定</h4>${cashflowAutoHtml(autoInterim)}` : '') + `<h4>配分・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...engine.reasons])].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
     latestCashflow = {adapter,engine,panelData,methodLabel,notes:[...uniqueNotes,...engine.reasons],state,partial,autoInterim};
-    $('cashflowPrintReport').innerHTML = `<h1>食品1％による資金繰りへの影響（${escapeHtml(methodLabel)}）</h1><p>改正案・法案成立前の政策試算／${escapeHtml(calc.ctx.start)}〜${escapeHtml(calc.ctx.end)}／${escapeHtml(cashflowDistributionLabel(adapter.distribution))}</p><p>STEP3年税額：A 現行8％ ${yen(adapter.annualTax.base)}／B 食品1％ ${yen(adapter.annualTax.changed)}。日常取引による8％→1％の資金影響は課税方式によらず共通です。</p>${planHeading}${state}${cards}<section class="cashflow-print-assumptions"><h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}</section><section class="cashflow-print-visual"><h2>月別資金推移と内訳（${escapeHtml(methodLabel)}）</h2>${cashflowPanelPrintHtml(panelData)}</section>`;
+    $('cashflowPrintReport').innerHTML = `<h1>${escapeHtml(APP_META.name)}</h1><p>食品1％による資金繰りへの影響（${escapeHtml(methodLabel)}）／対象期 ${escapeHtml(calc.ctx.start)}〜${escapeHtml(calc.ctx.end)}／改正案・法案成立前の政策試算</p>${cards}<section class="cashflow-print-visual"><h2>月別資金推移と内訳（${escapeHtml(methodLabel)}）</h2>${cashflowPanelPrintHtml(panelData)}</section><section class="cashflow-print-tax"><h2>年税額・納付・還付の比較</h2><p>STEP3年税額：A 現行8％ ${yen(adapter.annualTax.base)}／B 食品1％ ${yen(adapter.annualTax.changed)}。</p>${taxBasis}</section><section class="cashflow-print-assumptions"><h2>前提・未確認事項</h2>${planHeading}${state}${foodBasis}<h4>配分・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...engine.reasons])].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul></section>${autoInterim ? `<section class="cashflow-print-interim"><h2>中間納付の詳細</h2>${cashflowAutoHtml(autoInterim)}</section>` : ''}`;
   }catch(error){
     $('cashflowResult').innerHTML = `<div class="notice warn">資金繰りの予定条件を確認してください：${escapeHtml(error.message)}</div>`;
     $('cashflowChart').innerHTML = '';
     $('cashflowMonthlyTable').innerHTML = '';
-    $('cashflowPrintReport').innerHTML = `<h1>食品1％試算：資金繰りへの影響</h1><div class="notice warn">資金繰りの予定条件を確認してください：${escapeHtml(error.message)}</div>${autoInterim ? `<h2>中間納付の自動設定</h2>${cashflowAutoHtml(autoInterim)}` : ''}<h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}`;
+    $('cashflowPrintReport').innerHTML = `<h1>${escapeHtml(APP_META.name)}</h1><p>食品1％試算：資金繰りへの影響</p><div class="notice warn">資金繰りの予定条件を確認してください：${escapeHtml(error.message)}</div><h2>前提・未確認事項</h2>${$('cashflowDetails').innerHTML}${autoInterim ? `<h2>中間納付の自動設定</h2>${cashflowAutoHtml(autoInterim)}` : ''}`;
     latestCashflow = {adapter,engine:null,methodLabel,notes:[...uniqueNotes,error.message],autoInterim};
   }
 }
@@ -6893,7 +6895,7 @@ function cashflowExportText(snapshot){
     return '資金繰りへの影響：未算定。入力が更新されました。再計算後にコピーしてください。';
   if(snapshot?.mode === 'methodImpact'){
     const {adapter,engine,notes,autoInterim} = snapshot;
-    const lines = ['課税方式別の資金推移',`対象期：${adapter.source.taxPeriod.start}〜${adapter.source.taxPeriod.end}`,`資金増減の基準：${cashBaseLabel()}`,
+    const lines = [APP_META.name,'課税方式別の資金推移',`対象期：${adapter.source.taxPeriod.start}〜${adapter.source.taxPeriod.end}`,`資金増減の基準：${cashBaseLabel()}`,
       `税率前提：${adapter.scenario === 'foodProposal' ? '食品1％政策試算' : '現行制度'}`,
       `基準案A：${adapter.plans.base.label}／税額 ${methodPlanDisplay(adapter.plans.base)}／${methodPlanStatusLabel(adapter.plans.base)}`,
       `変更案B：${adapter.plans.changed.label}／税額 ${methodPlanDisplay(adapter.plans.changed)}／${methodPlanStatusLabel(adapter.plans.changed)}`,
@@ -6914,7 +6916,7 @@ function cashflowExportText(snapshot){
   }
   if(!snapshot) return '資金繰りへの影響：未算定。食品1％試算と入力を確認してください。';
   const {adapter,engine,methodLabel,notes} = snapshot;
-  const lines = [`食品1％による資金繰りへの影響（${methodLabel}）／改正案・法案成立前`,
+  const lines = [APP_META.name,`食品1％による資金繰りへの影響（${methodLabel}）／改正案・法案成立前`,
     `対象期：${adapter.periodStart}〜${adapter.periodEnd}`,`表示方式：${methodLabel}`,`資金増減の基準：${cashBaseLabel()}`,
     'A＝現行税率（食品8％）、B＝食品1％。日常取引の8％→1％差は課税方式によらず共通。',
     `月別配分：${cashflowDistributionLabel(adapter.distribution)}`,
@@ -6976,7 +6978,7 @@ function cashflowCsvText(snapshot){
     return '項目,値\r\n資金繰り,未算定\r\n理由,入力が更新されました。再計算後に出力してください。';
   if(snapshot?.mode === 'methodImpact'){
     const {adapter,engine,notes,autoInterim} = snapshot;
-    const rows = [['項目','値'],['比較種類','課税方式別の資金推移'],['対象期',`${adapter.source.taxPeriod.start}〜${adapter.source.taxPeriod.end}`],['資金増減の基準',cashBaseLabel()],
+    const rows = [['項目','値'],['ツール名',APP_META.name],['比較種類','課税方式別の資金推移'],['対象期',`${adapter.source.taxPeriod.start}〜${adapter.source.taxPeriod.end}`],['資金増減の基準',cashBaseLabel()],
       ['税率前提',adapter.scenario === 'foodProposal' ? '食品1％政策試算' : '現行制度'],
       ['基準案A',adapter.plans.base.label],['基準案A税額',adapter.plans.base.eligibility === ELIGIBILITY.INELIGIBLE ? '適用対象外' : adapter.plans.base.amount ?? '未算定'],['基準案A状態',methodPlanStatusLabel(adapter.plans.base)],
       ['変更案B',adapter.plans.changed.label],['変更案B税額',adapter.plans.changed.eligibility === ELIGIBILITY.INELIGIBLE ? '適用対象外' : adapter.plans.changed.amount ?? '未算定'],['変更案B状態',methodPlanStatusLabel(adapter.plans.changed)],
@@ -7000,7 +7002,7 @@ function cashflowCsvText(snapshot){
   }
   if(!snapshot) return '項目,値\r\n資金繰り,未算定';
   const {adapter,engine,methodLabel,notes} = snapshot;
-  const rows = [['項目','値'],['タイトル',`食品1％による資金繰りへの影響（${methodLabel}）`],['試算の位置付け','改正案・法案成立前の資金繰り概算'],['対象期',`${adapter.periodStart}〜${adapter.periodEnd}`],
+  const rows = [['項目','値'],['ツール名',APP_META.name],['タイトル',`食品1％による資金繰りへの影響（${methodLabel}）`],['試算の位置付け','改正案・法案成立前の資金繰り概算'],['対象期',`${adapter.periodStart}〜${adapter.periodEnd}`],
     ['表示方式',methodLabel],['資金増減の基準',cashBaseLabel()],['配分',cashflowDistributionLabel(adapter.distribution)],
     ['日常取引の前提','8％→1％の資金影響は課税方式によらず共通'],
     ['基準案税額',adapter.annualTax.base ?? '未算定'],['変更案税額',adapter.annualTax.changed ?? '未算定']];
@@ -7267,8 +7269,8 @@ function resetAll(){
 // Synthetic examples use the same row adapter and calculation path as manual input.
 function loadSampleInput(kind){
   const samples = {
-    manufacturer:{label:'飲食料品製造業',businessType:'type3',sales:[['8','108000000','108000000'],['10','12000000','']],purchases:[['8','27000000','27000000'],['10','25000000','']]},
-    restaurant:{label:'飲食業',businessType:'type4',sales:[['10','88000000',''],['8','5400000','5400000']],purchases:[['8','54000000','54000000'],['10','16000000','']]}
+    manufacturer:{label:'食品販売型（食品加工業など）',baseSales:'40000000',businessType:'type3',sales:[['8','108000000','108000000'],['10','12000000','']],purchases:[['8','27000000','27000000'],['10','25000000','']]},
+    restaurant:{label:'食品仕入型（飲食店など）',baseSales:'30000000',businessType:'type4',sales:[['10','88000000',''],['8','5400000','5400000']],purchases:[['8','54000000','54000000'],['10','16000000','']]}
   };
   const sample = samples[kind];
   if(!sample || !window.confirm(`現在の入力・CSV取込結果・保存状態を消して、架空の「${sample.label}」サンプルに置き換えますか？`)) return false;
@@ -7280,8 +7282,9 @@ function loadSampleInput(kind){
   $('taxScenarioFood1').checked = true;
   $('taxScenarioCurrent').checked = false;
   $('compareRegular').checked = true;
+  $('compareSimplified').checked = true;
   $('currentReturnMethod').value = 'regular';
-  $('baseTaxableSales').value = '60000000';
+  $('baseTaxableSales').value = sample.baseSales;
   $('exemptPurchaseState').value = 'no';
   taxEntryRows = {
     sales:[...sample.sales.map(([rate,amount,foodAmount]) => ({...newTaxEntry('sales'),code:'1',businessType:sample.businessType,rate,amount,foodAmount})),

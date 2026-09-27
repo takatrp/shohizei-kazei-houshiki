@@ -232,6 +232,38 @@ test('A/B共通の同月同額中間納付は共通マーカー1個で示し、�
   assert.equal((html.match(/cf-payment">700/g)||[]).length,2);
 });
 
+test('同月同額の確定納付・還付は両案のマーカーを分け、同月の表金額も保持',()=>{
+  for(const kind of ['final','refund']){
+    const data=withoutEvents(sample());
+    for(const key of ['A','B'])for(const row of data.cases[key].rows)row.flow=0;
+    for(const key of ['A','B'])data.cases[key].rows[3].events=[{kind,amount:700000}];
+    const html=view.renderCashflowPanelHtml(refresh(data),{width:900});
+    const a=html.match(/class="cf-marker cf-marker-A" points="([\d.]+),/);
+    const b=html.match(/class="cf-marker cf-marker-B" points="([\d.]+),/);
+    assert.ok(a&&b,`${kind} のA/Bが両方表示される`);
+    assert.equal(Number(b[1])-Number(a[1]),10,`${kind} の同座標は左右に5pxずつ分ける`);
+    assert.doesNotMatch(html,/cf-marker-common/);
+    assert.match(html,new RegExp(`aria-label="A ${kind==='final'?'確定納付':'還付'} 700千円"`));
+    assert.match(html,new RegExp(`aria-label="B ${kind==='final'?'確定納付':'還付'} 700千円"`));
+    assert.equal((html.match(/cf-payment">700|cf-refund">700/g)||[]).length,2);
+  }
+});
+
+test('同月で金額が近い別額の確定も識別し、離れたマーカーは元の月中心に置く',()=>{
+  for(const changed of [690000,100000]){
+    const data=withoutEvents(sample());
+    for(const key of ['A','B'])for(const row of data.cases[key].rows)row.flow=0;
+    data.cases.A.rows[3].events=[{kind:'final',amount:700000}];
+    data.cases.B.rows[3].events=[{kind:'final',amount:changed}];
+    const html=view.renderCashflowPanelHtml(refresh(data),{width:900});
+    const cw=Number(html.match(/--cf-cw:(\d+)px/)[1]);
+    const a=Number(html.match(/class="cf-marker cf-marker-A" points="([\d.]+),/)[1]);
+    const b=Number(html.match(/class="cf-marker cf-marker-B" points="([\d.]+),/)[1]);
+    if(changed===690000) assert.equal(b-a,10);
+    else assert.equal(a,b,(3.5)*cw);
+  }
+});
+
 test('方式比較の0円日常行を隠し、スマホ左見出しと凡例・印刷文字サイズを改善',()=>{
   const data=withoutEvents(sample());data.status.mode='methodImpact';
   const html=view.renderCashflowPanelHtml(data,{width:375});

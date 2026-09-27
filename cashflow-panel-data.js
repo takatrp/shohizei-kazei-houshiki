@@ -310,7 +310,11 @@
       if(input.manualFromAuto === true) notices.push('中間納付予定は手修正後の値です。');
       if(engineMismatch) notices.unshift(`内部整合エラー：${engineMismatch}の既存STEP4累積値が月次差額の累計と一致しません。`);
       else if(mismatch && engine.status === 'complete') notices.unshift(`内部整合エラー：${mismatch}のA/B差額が既存STEP4の累積資金差額と一致しません。`);
-      else if(mismatch) notices.unshift(`未算定：${reasons.join('／') || '税金の未確認条件があるため'}、税金込みのA/B資金推移を確定できません。`);
+      else if(mismatch){
+        const reasonText=[...new Set(reasons.map(reason=>String(reason).trim().replace(/[。．、，\s]+$/u,'')))]
+          .filter(Boolean).join('／') || '税金の未確認条件があるため';
+        notices.unshift(`未算定：${reasonText}。税金込みのA/B資金推移を確定できません。`);
+      }
       const integrity = engineMismatch || mismatch && engine.status === 'complete' ? 'mismatch'
         : mismatch ? 'unavailable' : 'ok';
       const status = {renderable:!mismatch && !engineMismatch,integrity,mode,

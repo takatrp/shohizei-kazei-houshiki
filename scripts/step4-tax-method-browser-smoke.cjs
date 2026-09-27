@@ -136,6 +136,8 @@ async function printPdf(page, name) {
     await seed(page);
     let regular, simplified;
     await check('SW01-02 一般・簡易だけを表示し、一般の年税額はSTEP3一致', async () => {
+      assert.match(await page.title(),/^課税方式・資金繰り検討ツール/);
+      assert.match(await page.locator('h1').first().textContent(),/課税方式・資金繰り検討ツール/);
       regular = await snapshot(page);
       assert.deepEqual(regular.buttons.map(button => button.method), ['regular','simplified']);
       assert.deepEqual(regular.panelButtons.map(button => button.method), ['regular','simplified']);
@@ -233,6 +235,7 @@ async function printPdf(page, name) {
       await page.evaluate(() => { $('compareSimplified').checked = true; update(); });
       const state = await selectMethod(page, 'simplified');
       for (const text of [state.summary,state.title,state.copy,state.csv,state.print]) assert.match(text, /簡易課税/);
+      for (const text of [state.copy,state.csv,state.print]) assert.match(text, /課税方式・資金繰り検討ツール/);
       assert.doesNotMatch(state.copy, /表示する課税方式：一般課税/);
       assert.doesNotMatch(state.csv, /表示する課税方式,一般課税/);
       const downloadPromise = page.waitForEvent('download');
@@ -297,6 +300,87 @@ async function printPdf(page, name) {
       await page.screenshot({path:path.join(output, 'step4-tax-method-390-header.png')});
       await page.locator('#cashflowPanel').screenshot({path:path.join(output, 'step4-tax-method-390.png')});
       await page.setViewportSize({width:1440,height:1000});
+      return state;
+    });
+    await check('FINAL15 旧保存形式の表示方式未指定を実再読込で復元', async () => {
+      await page.evaluate(() => {
+        $('saveToDevice').checked = true; saveState();
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        delete saved.step4DisplayTaxMethod;
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(saved));
+      });
+      await page.reload({waitUntil:'domcontentloaded'});
+      const restored=await snapshot(page);
+      assertReconciles(restored);
+      assert.equal(restored.selected,'regular');
+      return {selected:restored.selected,months:restored.months.length};
+    });
+    await check('FINAL01-04 同月確定・還付の実ブラウザ描画で両案マーカーを識別', async () => {
+      const found=await page.evaluate(() => {
+        const months=['2028-01','2028-02','2028-03'];
+        const host=document.createElement('div');host.id='finalMarkerEvidence';host.style.width='900px';
+        document.body.append(host);
+        const result=[];
+        for(const kind of ['final','refund']){
+          const row=(month,index)=>({month,flow:0,events:index===1?[{kind,amount:700000}]:[],
+            monthTotal:index===1?(kind==='refund'?700000:-700000):0,
+            cumulative:index>=1?(kind==='refund'?700000:-700000):0});
+          const rows=months.map(row);
+          const data={months,unitLabel:'千円',displayStyle:'staircase',
+            cases:{A:{label:'A',rows},B:{label:'B',rows:structuredClone(rows)}},
+            expectedDiff:months.map(month=>({month,monthTotal:0,cumulative:0})),
+            status:{mode:'rateImpact',interim:'none',finalMonthEntered:true,refundMonthEntered:true,notes:[]}};
+          const panel=document.createElement('section');panel.dataset.kind=kind;host.append(panel);
+          panel.innerHTML=ShohizeiCashflowPanelView.renderCashflowPanelHtml(data,{width:900});
+          const a=panel.querySelector('.cf-marker-A'),b=panel.querySelector('.cf-marker-B');
+          result.push({kind,a:a?.getAttribute('points'),b:b?.getAttribute('points'),
+            aLabel:a?.getAttribute('aria-label'),bLabel:b?.getAttribute('aria-label'),
+            tableAmounts:panel.querySelectorAll(kind==='final'?'.cf-payment':'.cf-refund').length});
+        }
+        return result;
+      });
+      for(const item of found){
+        assert.ok(item.a&&item.b,`${item.kind} A/B markers`);
+        assert.equal(Number(item.b.split(',')[0])-Number(item.a.split(',')[0]),10);
+        assert.match(item.aLabel,/^A /);assert.match(item.bLabel,/^B /);
+        assert.equal(item.tableAmounts,2);
+      }
+      await page.locator('#finalMarkerEvidence').screenshot({path:path.join(output,'final-same-month-markers.png')});
+      return found;
+    });
+    await check('FINAL 中間納付11回と部分試算のブラウザ表示', async () => {
+      const state=await page.evaluate(() => {
+        const months=Array.from({length:12},(_,index)=>`2028-${String(index+1).padStart(2,'0')}`);
+        let cumulative=0;
+        const rows=months.map((month,index)=>{
+          const events=index<11?[{kind:'interim',amount:1000}]:[];
+          cumulative-=events.length?1000:0;
+          return {month,flow:0,events,monthTotal:events.length?-1000:0,cumulative};
+        });
+        const data={months,unitLabel:'千円',displayStyle:'staircase',
+          cases:{A:{label:'A',rows},B:{label:'B',rows:structuredClone(rows)}},
+          expectedDiff:months.map(month=>({month,monthTotal:0,cumulative:0})),
+          status:{mode:'rateImpact',interim:'auto',finalMonthEntered:true,refundMonthEntered:true,notes:[]}};
+        const host=document.createElement('div');host.id='finalElevenEvidence';host.style.width='1000px';document.body.append(host);
+        host.innerHTML=ShohizeiCashflowPanelView.renderCashflowPanelHtml(data,{width:1000});
+        const interim={status:'scheduled',base:[{month:'2027-02',amount:3000}],changed:[{month:'2027-02',amount:5000}]};
+        const engine=ShohizeiCashflow.calculate({periodStart:'2027-01',periodEnd:'2027-01',salesDeltas:[],purchaseDeltas:[],
+          annualTax:{base:10000,changed:9000},interim});
+        const panel=ShohizeiCashflowPanelData.buildPanelData({engine,interim,mode:'methodImpact',
+          adapter:{annualTax:{base:10000,changed:9000}}});
+        const waiting=document.createElement('div');waiting.id='finalPartialEvidence';document.body.append(waiting);
+        waiting.innerHTML=ShohizeiCashflowPanelView.renderCashflowPanelHtml(panel);
+        return {common:host.querySelectorAll('.cf-marker-common').length,
+          payments:host.querySelectorAll('.cf-payment').length,
+          partial:panel.status.integrity,reason:waiting.textContent};
+      });
+      assert.equal(state.common,11);
+      assert.equal(state.payments,22);
+      assert.equal(state.partial,'unavailable');
+      assert.match(state.reason,/未算定.*納付予定月が未設定/);
+      assert.doesNotMatch(state.reason,/内部整合エラー/);
+      await page.locator('#finalElevenEvidence').screenshot({path:path.join(output,'final-11-interims.png')});
+      await page.locator('#finalPartialEvidence').screenshot({path:path.join(output,'final-partial.png')});
       return state;
     });
     assert.deepEqual(evidence.pageErrors, []);

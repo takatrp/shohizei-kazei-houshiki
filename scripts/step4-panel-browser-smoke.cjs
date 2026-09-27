@@ -116,16 +116,17 @@ async function seed(page,scenario='foodProposal'){
     await check('CSV月別円額と印刷用パネル',async()=>{
       evidence.export=await page.evaluate(()=>({csv:cashflowCsvText(latestCashflow),print:$('cashflowPrintReport').textContent,
         panelData:latestCashflow.panelData}));
-      assert.match(evidence.export.csv,/年月,A日常の増減,A中間納付/);
-      assert.match(evidence.export.csv,/差額累積/);
+      assert.match(evidence.export.csv,/年月,共通ベース,A中間,A確定,A還付,A当月資金増減/);
+      assert.match(evidence.export.csv,/B-A累積/);
       assert.match(evidence.export.print,/月別資金推移と内訳/);
       const monthRow=evidence.export.csv.split(/\r?\n/).find(line=>line.startsWith(evidence.export.panelData.months[0]+','));
       const columns=monthRow?.split(',')||[];
-      assert.equal(columns.length,15,monthRow);
-      assert.equal(Number(columns[1]),evidence.export.panelData.cases.A.rows[0].flow);
-      assert.equal(Number(columns[7]),evidence.export.panelData.cases.B.rows[0].flow);
-      assert.equal(Number(columns[14]),evidence.export.panelData.expectedDiff[0].cumulative);
-      assert.equal(await page.locator('#cashflowPrintReport .cf-segment').count(),2);
+      assert.equal(columns.length,12,monthRow);
+      assert.equal(Number(columns[1]),evidence.export.panelData.baseSource.months[0].base);
+      assert.equal(Number(columns[5]),evidence.export.panelData.cases.A.rows[0].monthTotal);
+      assert.equal(Number(columns[9]),evidence.export.panelData.cases.B.rows[0].monthTotal);
+      assert.equal(Number(columns[11]),evidence.export.panelData.expectedDiff[0].cumulative);
+      assert.equal(await page.locator('#cashflowPrintReport .cf-segment').count(),1);
       await page.emulateMedia({media:'print'});
       await page.pdf({path:path.join(output,'step4-rate-print.pdf'),format:'A4',printBackground:true});
       await page.emulateMedia({media:'screen'});

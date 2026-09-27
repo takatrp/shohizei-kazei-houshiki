@@ -68,7 +68,7 @@ test('画面接続の初期予定月は区分・期末に追従し、手入力�
 });
 
 test('方式別コピー・CSVは同じ税額と月別イベント、対象外は数値化しない',()=>{
-  const context=vm.createContext({ELIGIBILITY,yen:value=>`${value.toLocaleString('ja-JP')}円`,sanitizeCsvCell,
+  const context=vm.createContext({ELIGIBILITY,APP_META:{name:'課税方式・資金繰り検討ツール'},yen:value=>`${value.toLocaleString('ja-JP')}円`,sanitizeCsvCell,
     cashflowAutoExportRows:()=>[],cashActualMode:()=> 'reference'});
   vm.runInContext(`${source('methodPlanDisplay')}\n${source('methodPlanStatusLabel')}\n${source('cashBaseLabel')}\n${source('cashflowExportText')}\n${source('cashflowCsvText')}`,context);
   const plan=(label,amount)=>({label,amount,amountStatus:'calculated',eligibility:ELIGIBILITY.ELIGIBLE});
@@ -111,7 +111,7 @@ test('方式別の画面・印刷はSTEP3の同じ税額を受け取り、案別
     settlementMonths:{base:{paymentMonth:'2029-02'},changed:{paymentMonth:'2029-03'}},rows:[{
     month:'2029-03',baseTax:{interim:0,settlement:0,refund:0},changedTax:{interim:0,settlement:70000,refund:0},net:-70000,cumulative:30000}]};
   let received, panelReceived;
-  const context=vm.createContext({$,ELIGIBILITY,METHOD_LABELS:{regular:'一般課税',simplified:'簡易課税'},
+  const context=vm.createContext({$,ELIGIBILITY,APP_META:{name:'課税方式・資金繰り検討ツール'},METHOD_LABELS:{regular:'一般課税',simplified:'簡易課税'},
     selectedValue:()=> 'individual',
     selectedComparisonMethods:()=>['regular','simplified'],cashflowMethodPairTouched:false,
     ShohizeiMethodCashflowAdapter:{create:()=>adapter},ShohizeiCashflow:{calculate:input=>{received=input;return engine;}},

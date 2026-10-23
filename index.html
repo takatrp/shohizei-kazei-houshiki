@@ -559,6 +559,7 @@
         <p class="mini">税額計算用のCSV補正・除外とは別に、元CSVの現金・預金仕訳を集計します。科目候補は自動確定しません。</p>
         <div id="cashActualAccounts"></div>
         <label class="cashflow-confirm"><input id="cashAccountConfirmed" type="checkbox"> 上記の資金科目を確認済み</label>
+        <p class="mini is-hidden" id="cashActualSharedSourceNote">この元資料期間・全月網羅の確認は、CSV月別配分でも共用します。</p>
         <div class="cashflow-fields"><div class="field"><label for="cashActualSourceStart">元CSV資料期間 開始日</label><input id="cashActualSourceStart" type="date"></div><div class="field"><label for="cashActualSourceEnd">元CSV資料期間 終了日</label><input id="cashActualSourceEnd" type="date"></div></div>
         <label class="cashflow-confirm"><input id="cashActualPeriodConfirmed" type="checkbox"> 元資料の正式な期間を確認済み</label>
         <label class="cashflow-confirm"><input id="cashActualCoverageConfirmed" type="checkbox"> 元資料が期間中の全月を網羅していることを確認済み</label>
@@ -580,12 +581,16 @@
         <div class="field"><label for="cashflowPurchaseLag">仕入の支払ずれ</label><select id="cashflowPurchaseLag"><option value="0">当月</option><option value="1">翌月</option><option value="2">翌々月</option></select></div>
       </div>
       <div id="cashflowCsvFields" class="is-hidden">
+        <p class="mini is-hidden" id="cashflowSharedSourceSummary" role="status"></p>
+        <div id="cashflowCsvSourceInputs">
         <p class="mini">元CSVの正式な対象期間と全月網羅を、元帳等で確認した場合だけ構成比を使います。最初・最後の仕訳日だけでは判定しません。</p>
         <div class="cashflow-fields">
           <div class="field"><label for="cashflowSourceStart">元資料期間 開始日</label><input id="cashflowSourceStart" type="date"></div>
           <div class="field"><label for="cashflowSourceEnd">元資料期間 終了日</label><input id="cashflowSourceEnd" type="date"></div>
         </div>
-        <label class="cashflow-confirm"><input id="cashflowSourceConfirmed" type="checkbox"> 元資料が上記の期間を全月網羅していることを確認済み</label>
+        <label class="cashflow-confirm"><input id="cashflowSourceConfirmed" type="checkbox"> 元資料の正式な期間と、その期間の全月網羅を確認済み</label>
+        </div>
+        <div class="notice warn is-hidden" id="cashflowSharedSourceConflict" role="status"></div>
       </div>
       <div class="cashflow-fields" style="margin-top:10px" id="cashflowCommonTimingFields">
         <div class="field"><label for="cashflowInterimStatus">中間納付の確認</label><select id="cashflowInterimStatus"><option value="unknown">未確認（税額部分は未反映）</option><option value="none">中間納付なしを確認</option><option value="auto">自動設定（前期実績方式）</option><option value="scheduled">中間納付予定を手入力</option></select></div>
@@ -620,6 +625,7 @@
           <div class="field"><label for="cashflowPriorNationalTax">前期確定消費税額（国税分・中間納付控除前）</label><input id="cashflowPriorNationalTax" type="text" inputmode="numeric" class="money js-amount" placeholder="円"></div>
           <div class="field"><label for="cashflowPriorStart">前課税期間 開始日</label><input id="cashflowPriorStart" type="date"></div>
           <div class="field"><label for="cashflowPriorEnd">前課税期間 終了日</label><input id="cashflowPriorEnd" type="date"></div>
+          <div class="mini" id="cashflowSharedPriorNotice" style="grid-column:1/-1" role="status"></div>
         </div>
         <label class="cashflow-confirm" id="cashflowAutoSeparateField"><input id="cashflowAutoSeparate" type="checkbox"> 両案の前期額を別々に仮定する（高度設定）</label>
         <div class="notice warn is-hidden" id="cashflowAutoSeparateMigration" role="status">旧保存データでは「両案の前期額を別々に仮定する」のチェック状態を判別できません。前期額を確認し、<button type="button" class="btn secondary" id="cashflowConfirmSharedPrior">両案共通と確認</button> または <button type="button" class="btn secondary" id="cashflowConfirmSeparatePrior">別々と確認</button> を選んでください。確認までは自動中間納付を未算定とします。</div>
@@ -1023,8 +1029,9 @@
                 <div class="grid two" style="margin-top:8px">
                   <div class="field"><label for="priorTaxMethod">前期に実際に適用した方式</label><select id="priorTaxMethod"><option value="unknown">未確認</option><option value="regular">一般課税など</option><option value="special2">2割特例</option><option value="special3">3割特例</option></select></div>
                   <div class="field"><label for="electionFilingStatus">今回の簡易課税選択届出</label><select id="electionFilingStatus"><option value="unknown">未確認</option><option value="existingValid">既存の有効届出を確認済み</option><option value="filed">新規届出を提出済み</option><option value="planned">新規届出を提出予定</option><option value="notFiled">未提出・提出予定なし</option></select></div>
-                  <div class="field"><label for="priorPeriodStart">前期の開始日（特例後の判定用）</label><input id="priorPeriodStart" type="date"></div>
-                  <div class="field"><label for="priorPeriodEnd">前期の終了日（特例後の判定用）</label><input id="priorPeriodEnd" type="date"></div>
+                  <div class="field"><label for="priorPeriodStart">前期の開始日（実績・共通）</label><input id="priorPeriodStart" type="date"></div>
+                  <div class="field"><label for="priorPeriodEnd">前期の終了日（実績・共通）</label><input id="priorPeriodEnd" type="date"></div>
+                  <div class="mini" id="electionSharedPriorNotice" style="grid-column:1/-1" role="status"></div>
                   <div class="field"><label for="electionFilingDate">提出日・予定日（分かる場合）</label><input id="electionFilingDate" type="date"></div>
                   <div class="field"><label for="electionAsOfDate">提出計画の判定基準日</label><input id="electionAsOfDate" type="date"></div>
                   <div class="field"><label for="consumptionTaxExtension">法人の消費税申告期限延長</label><select id="consumptionTaxExtension"><option value="unknown">未確認</option><option value="none">延長なしを確認済み</option><option value="confirmed">1か月延長を確認済み</option></select></div>
@@ -1422,6 +1429,7 @@
 <script src="cashflow-adapter.js"></script>
 <script src="method-cashflow-adapter.js"></script>
 <script src="cashflow-defaults.js"></script>
+<script src="shared-case-facts.js"></script>
 <script src="input-requirements.js"></script>
 <script src="input-diagnostics.js"></script>
 <script src="cashflow-event-chart.js"></script>
@@ -1550,6 +1558,9 @@ let cashflowMonthSources = {};
 let cashflowMethodPairTouched = false;
 let activeCashflowMode = 'rateImpact';
 let cashflowModeStates = {rateImpact:null,methodImpact:null};
+let sharedCaseFacts = {version:1,priorActual:null,priorMethodPeriod:{start:'',end:''},csvSource:null};
+let importedCsvOriginalSourceId = '';
+let cashActualOriginalSourceId = '';
 let step4DisplayTaxMethod = '';
 let step4TransactionBasis = null;
 const CASHFLOW_INPUT_DEFAULTS = Object.freeze({
@@ -1574,6 +1585,7 @@ const WORKFLOW_STEPS = Object.freeze([
   {id:5,label:'4. 資金繰りへの影響'}
 ]);
 function resetCashflowInputs(){
+  if(typeof resetSharedCaseFacts === 'function') resetSharedCaseFacts();
   Object.entries(CASHFLOW_INPUT_DEFAULTS).forEach(([id,value]) => {
     if(typeof value === 'boolean') $(id).checked = value;
     else $(id).value = value;
@@ -1630,16 +1642,18 @@ function renderStep4MethodPicker(calc, comparison, chosen, methodKey){
 function captureCashflowModeState(){
   const values = {};
   for(const id of Object.keys(CASHFLOW_INPUT_DEFAULTS)){
+    if(ShohizeiSharedCaseFacts.isCommonModeInput(id)) continue;
     const el = $(id);
     values[id] = typeof CASHFLOW_INPUT_DEFAULTS[id] === 'boolean' ? el.checked === true : el.value;
   }
   return {values,monthSources:JSON.parse(JSON.stringify(cashflowMonthSources)),
     manualFromAuto:cashflowManualFromAuto === true,autoSeparateUnconfirmed:cashflowAutoSeparateUnconfirmed === true,
-    methodPairTouched:cashflowMethodPairTouched === true,confirmedScope:cashflowConfirmedScope};
+    methodPairTouched:cashflowMethodPairTouched === true};
 }
 function applyCashflowModeState(state){
   const source = state?.values || CASHFLOW_INPUT_DEFAULTS;
   for(const [id,initial] of Object.entries(CASHFLOW_INPUT_DEFAULTS)){
+    if(ShohizeiSharedCaseFacts.isCommonModeInput(id)) continue;
     const value = source[id] === undefined ? initial : source[id];
     if(typeof initial === 'boolean') $(id).checked = value === true;
     else $(id).value = typeof value === 'string' ? value : String(initial);
@@ -1649,7 +1663,6 @@ function applyCashflowModeState(state){
   cashflowManualFromAuto = state?.manualFromAuto === true;
   cashflowAutoSeparateUnconfirmed = state?.autoSeparateUnconfirmed === true;
   cashflowMethodPairTouched = state?.methodPairTouched === true;
-  cashflowConfirmedScope = typeof state?.confirmedScope === 'string' ? state.confirmedScope : '';
 }
 function activateCashflowMode(next){
   const mode = next === 'methodImpact' ? 'methodImpact' : 'rateImpact';
@@ -1733,7 +1746,9 @@ function cashflowImportScopeKey(sourceText, analysis){
 }
 function currentCashflowConfirmationScope(){
   if(!importedCsvCashflowScopeKey || !$('cashflowSourceStart').value || !$('cashflowSourceEnd').value) return '';
-  return JSON.stringify([importedCsvCashflowScopeKey,$('cashflowSourceStart').value,$('cashflowSourceEnd').value]);
+  const sourceId = typeof importedCsvOriginalSourceId === 'string' && importedCsvOriginalSourceId
+    ? importedCsvOriginalSourceId : importedCsvCashflowScopeKey;
+  return JSON.stringify([sourceId,$('cashflowSourceStart').value,$('cashflowSourceEnd').value]);
 }
 function clearCashflowSourceConfirmation(clearPeriod = false){
   $('cashflowSourceConfirmed').checked = false;
@@ -1742,6 +1757,178 @@ function clearCashflowSourceConfirmation(clearPeriod = false){
     $('cashflowSourceStart').value = '';
     $('cashflowSourceEnd').value = '';
   }
+}
+function resetSharedCaseFacts(){
+  sharedCaseFacts = {version:1,priorActual:ShohizeiSharedCaseFacts.migratePriorActual({}),priorMethodPeriod:{start:'',end:''},
+    csvSource:ShohizeiSharedCaseFacts.mergeCsvSourceFacts([])};
+  importedCsvOriginalSourceId = '';
+  cashActualOriginalSourceId = '';
+}
+function originalCsvSourceFromScope(scope){
+  // This legacy format stored an explicit source-text digest before the aggregate
+  // digest. It does not identify the independently hashed cash-journal snapshot.
+  return String(scope || '').match(/^(\d+:[a-f0-9]{16}):\d+:[a-f0-9]{16}$/)?.[1] || '';
+}
+function syncSharedPriorActualInputs(){
+  const value = sharedCaseFacts.priorActual?.status === 'resolved' ? sharedCaseFacts.priorActual.value : null;
+  if(value?.period.start && value?.period.end){
+    const previous = sharedCaseFacts.priorMethodPeriod;
+    if(previous?.start && previous?.end && (previous.start !== value.period.start || previous.end !== value.period.end))
+      $('priorTaxMethod').value = 'unknown';
+    sharedCaseFacts.priorMethodPeriod = {...value.period};
+  }
+  for(const id of ['priorPeriodStart','cashflowPriorStart']) $(id).value = value?.period.start || '';
+  for(const id of ['priorPeriodEnd','cashflowPriorEnd']) $(id).value = value?.period.end || '';
+  $('cashflowPriorNationalTax').value = value?.nationalTax || '';
+}
+function editSharedPriorMethod(){
+  // A new explicit method selection can be made before the first complete pair.
+  // Ordinary partial date edits do not erase the prior method's original scope.
+  sharedCaseFacts.priorMethodPeriod = {start:$('priorPeriodStart').value,end:$('priorPeriodEnd').value};
+}
+function editSharedPriorActual(id){
+  const election = id === 'priorPeriodStart' || id === 'priorPeriodEnd';
+  const source = election ? 'priorPeriod' : 'cashflowPrior';
+  const period = {start:$(source+'Start').value,end:$(source+'End').value};
+  const prior = sharedCaseFacts.priorActual?.status === 'resolved' ? sharedCaseFacts.priorActual.value : null;
+  const changedPeriod = prior?.period.start && prior?.period.end
+    && (prior.period.start !== period.start || prior.period.end !== period.end);
+  // An amount for a different actual period must not silently become the new
+  // period's confirmed return. Keep old migration candidates, but require the
+  // amount to be entered for the edited period before using the interim basis.
+  const nationalTax = changedPeriod ? '' : $('cashflowPriorNationalTax').value;
+  sharedCaseFacts.priorActual = ShohizeiSharedCaseFacts.withPriorActual(sharedCaseFacts.priorActual,{period,nationalTax});
+  syncSharedPriorActualInputs();
+}
+function chooseSharedPriorActual(id){
+  sharedCaseFacts.priorActual = ShohizeiSharedCaseFacts.selectPriorCandidate(sharedCaseFacts.priorActual,id);
+  syncSharedPriorActualInputs();
+}
+function sharedCsvSourceLinked(){
+  return Boolean(importedCsvOriginalSourceId && importedCsvOriginalSourceId === cashActualOriginalSourceId);
+}
+function syncSharedCsvSourceInputs(){
+  const value = sharedCaseFacts.csvSource?.status === 'resolved' ? sharedCaseFacts.csvSource.value : null;
+  const sameSource = value && value.sourceId === importedCsvOriginalSourceId;
+  const sourcePeriod = sameSource ? value.period : {start:'',end:''};
+  $('cashflowSourceStart').value = sourcePeriod.start;
+  $('cashflowSourceEnd').value = sourcePeriod.end;
+  $('cashflowSourceConfirmed').checked = Boolean(sameSource && value.periodConfirmed && value.fullMonthCoverageConfirmed);
+  cashflowConfirmedScope = $('cashflowSourceConfirmed').checked ? currentCashflowConfirmationScope() : '';
+  if(!cashflowConfirmedScope) $('cashflowSourceConfirmed').checked = false;
+  if(sharedCsvSourceLinked()){
+    $('cashActualSourceStart').value = sourcePeriod.start;
+    $('cashActualSourceEnd').value = sourcePeriod.end;
+    $('cashActualPeriodConfirmed').checked = Boolean(sameSource && value.periodConfirmed);
+    $('cashActualCoverageConfirmed').checked = Boolean(sameSource && value.fullMonthCoverageConfirmed);
+  }
+}
+function editSharedCsvSource(id){
+  const actual = id.startsWith('cashActual');
+  if(actual && !sharedCsvSourceLinked()) return;
+  const source = actual ? 'cashActualSource' : 'cashflowSource';
+  const period = {start:$(source+'Start').value,end:$(source+'End').value};
+  const dateChanged = id.endsWith('Start') || id.endsWith('End');
+  const periodConfirmed = !dateChanged && (actual ? $('cashActualPeriodConfirmed').checked : $('cashflowSourceConfirmed').checked);
+  const fullMonthCoverageConfirmed = !dateChanged && (actual ? $('cashActualCoverageConfirmed').checked : $('cashflowSourceConfirmed').checked);
+  sharedCaseFacts.csvSource = ShohizeiSharedCaseFacts.withCsvSource(sharedCaseFacts.csvSource,
+    {sourceId:importedCsvOriginalSourceId,period,periodConfirmed,fullMonthCoverageConfirmed,
+      origin:actual ? 'cashActual' : 'distribution',aggregateId:importedCsvCashflowScopeKey});
+  syncSharedCsvSourceInputs();
+}
+function chooseSharedCsvSource(id){
+  const selected = ShohizeiSharedCaseFacts.selectCsvSourceCandidate(sharedCaseFacts.csvSource,id);
+  sharedCaseFacts.csvSource = selected.value.sourceId === importedCsvOriginalSourceId ? selected
+    : ShohizeiSharedCaseFacts.withCsvSource(selected,{...selected.value,sourceId:importedCsvOriginalSourceId,
+      periodConfirmed:false,fullMonthCoverageConfirmed:false,origin:'manual'});
+  syncSharedCsvSourceInputs();
+}
+function acceptSharedCsvImport(sourceText, previousActualFileKey){
+  const nextId = cashflowScopeDigest(sourceText);
+  const sameSource = importedCsvOriginalSourceId === nextId;
+  const sameActualSource = cashActualOriginalSourceId === nextId;
+  const prior = sharedCaseFacts.csvSource;
+  const records = sameSource && prior?.status === 'conflict'
+    ? prior.candidates.filter(candidate => candidate.sourceId === nextId).map(candidate => ({...candidate,origin:candidate.origins.join(' / ')}))
+    : sameSource && prior?.status === 'resolved' ? [{...prior.value,origin:'shared',aggregateId:importedCsvCashflowScopeKey}]
+    : [{sourceId:nextId,period:{start:$('cashflowSourceStart').value,end:$('cashflowSourceEnd').value},
+        periodConfirmed:$('cashflowSourceConfirmed').checked,fullMonthCoverageConfirmed:$('cashflowSourceConfirmed').checked,
+        origin:'distribution',aggregateId:importedCsvCashflowScopeKey}];
+  importedCsvOriginalSourceId = nextId;
+  cashActualOriginalSourceId = cashActualAnalysis ? nextId : '';
+  if(cashActualAnalysis){
+    const kept = sameActualSource || previousActualFileKey === cashActualAnalysis.fileKey;
+    records.push({sourceId:nextId,period:{start:$('cashActualSourceStart').value,end:$('cashActualSourceEnd').value},
+      periodConfirmed:kept && $('cashActualPeriodConfirmed').checked,
+      fullMonthCoverageConfirmed:kept && $('cashActualCoverageConfirmed').checked,origin:'cashActual'});
+  }
+  sharedCaseFacts.csvSource = ShohizeiSharedCaseFacts.mergeCsvSourceFacts(records);
+  syncSharedCsvSourceInputs();
+}
+function restoreSharedCaseFacts(data){
+  sharedCaseFacts = {version:1,priorActual:ShohizeiSharedCaseFacts.migratePriorActual(data),
+    priorMethodPeriod:{start:String(data.sharedCaseFacts?.priorMethodPeriod?.start ?? data.priorPeriodStart ?? ''),
+      end:String(data.sharedCaseFacts?.priorMethodPeriod?.end ?? data.priorPeriodEnd ?? '')},csvSource:null};
+  importedCsvOriginalSourceId = typeof data.importedCsvOriginalSourceId === 'string' ? data.importedCsvOriginalSourceId
+    : originalCsvSourceFromScope(data.importedCsvCashflowScopeKey);
+  cashActualOriginalSourceId = typeof data.cashActualOriginalSourceId === 'string' ? data.cashActualOriginalSourceId : '';
+  if(data.sharedCaseFacts?.csvSource?.version === 1){
+    sharedCaseFacts.csvSource = ShohizeiSharedCaseFacts.restoreCsvSourceFacts(data.sharedCaseFacts.csvSource);
+  }else{
+    const records = [];
+    const add = (values,scope,origin) => {
+      if(!values) return;
+      const period = {start:String(values.cashflowSourceStart || ''),end:String(values.cashflowSourceEnd || '')};
+      let signedScope = null;
+      try{ signedScope = JSON.parse(scope || 'null'); }catch(error){ /* Unknown legacy scope remains unconfirmed. */ }
+      const signedSource = Array.isArray(signedScope) ? originalCsvSourceFromScope(signedScope[0]) : '';
+      const exact = Array.isArray(signedScope) && signedScope[0] === data.importedCsvCashflowScopeKey
+        && signedScope[1] === period.start && signedScope[2] === period.end;
+      records.push({sourceId:signedSource || importedCsvOriginalSourceId,period,
+        periodConfirmed:exact && values.cashflowSourceConfirmed === true,
+        fullMonthCoverageConfirmed:exact && values.cashflowSourceConfirmed === true,origin,aggregateId:signedScope?.[0] || ''});
+    };
+    add(data,data.cashflowConfirmedScope,'distribution');
+    for(const mode of ['rateImpact','methodImpact']) add(data.cashflowModeStates?.[mode]?.values,data.cashflowModeStates?.[mode]?.confirmedScope,mode);
+    sharedCaseFacts.csvSource = ShohizeiSharedCaseFacts.mergeCsvSourceFacts(records);
+  }
+  for(const mode of ['rateImpact','methodImpact']){
+    if(cashflowModeStates[mode]){
+      cashflowModeStates[mode] = {...cashflowModeStates[mode],values:ShohizeiSharedCaseFacts.stripSharedModeValues(cashflowModeStates[mode].values)};
+      delete cashflowModeStates[mode].confirmedScope;
+    }
+  }
+  syncSharedPriorActualInputs();
+  syncSharedCsvSourceInputs();
+}
+function sharedPriorCandidateLabel(candidate){
+  const originLabels = {election:'届出判定',topLevel:'前期実績',rateImpact:'税率比較の保存',methodImpact:'方式比較の保存',manual:'入力値'};
+  const amount = candidate.nationalTax === '' ? '国税額未入力' : `国税 ${candidate.nationalTax} 円`;
+  return `${candidate.period.start || '開始日未入力'}〜${candidate.period.end || '終了日未入力'}／${amount}（${candidate.origins.map(origin => originLabels[origin] || origin).join('・')}）`;
+}
+function renderSharedCaseFacts(){
+  const prior = sharedCaseFacts.priorActual;
+  const priorHtml = prior?.status === 'conflict'
+    ? `保存された前期実績が一致しません。使用する実績を選ぶか、期間・税額欄を修正してください。前期実績を使う判定は選択後に再計算します。<div class="button-row">${prior.candidates.map(candidate => `<button type="button" class="btn secondary" data-shared-prior-choice="${escapeHtml(candidate.id)}">${escapeHtml(sharedPriorCandidateLabel(candidate))}を使う</button>`).join('')}</div>`
+    : '前期の実績期間はSTEP1とSTEP4で共用します。期間を変えた場合は、その期の国税額を入力してください。STEP3から計算する代理値は転記しません。';
+  for(const id of ['electionSharedPriorNotice','cashflowSharedPriorNotice']){
+    $(id).innerHTML = priorHtml;
+    $(id).classList.toggle('notice',prior?.status === 'conflict');
+    $(id).classList.toggle('warn',prior?.status === 'conflict');
+  }
+  const linked = sharedCsvSourceLinked();
+  const useActualFields = linked && cashActualMode() === 'csv';
+  $('cashActualSharedSourceNote').classList.toggle('is-hidden',!linked);
+  $('cashflowCsvSourceInputs').classList.toggle('is-hidden',useActualFields);
+  $('cashflowSharedSourceSummary').classList.toggle('is-hidden',!useActualFields);
+  $('cashflowSharedSourceSummary').textContent = `元資料期間：${$('cashflowSourceStart').value || '未入力'}〜${$('cashflowSourceEnd').value || '未入力'}。上のCSV現預金実績で入力した期間・全月網羅の確認を共用します。`;
+  const csv = sharedCaseFacts.csvSource;
+  $('cashflowSharedSourceConflict').classList.toggle('is-hidden',csv?.status !== 'conflict');
+  $('cashflowSharedSourceConflict').innerHTML = csv?.status === 'conflict'
+    ? `元資料の保存期間が一致しません。使用する期間を選ぶか、期間欄を修正してください。<div class="button-row">${csv.candidates.map(candidate => `<button type="button" class="btn secondary" data-shared-csv-choice="${escapeHtml(candidate.id)}">${escapeHtml(candidate.period.start || '開始日未入力')}〜${escapeHtml(candidate.period.end || '終了日未入力')}${candidate.sourceId === importedCsvOriginalSourceId ? 'を使う' : 'を入力する（確認は引き継ぎません）'}</button>`).join('')}</div>` : '';
+  // Only the relevant CSV controls appear. No confirmation is demanded for the
+  // default day-based comparison or the STEP3 proxy calculation.
+  if(useActualFields && csv?.status === 'conflict') $('cashflowCsvFields').classList.remove('is-hidden');
 }
 function adjacentWorkflowStep(id, direction){
   const index = WORKFLOW_STEPS.findIndex(step => step.id === id);
@@ -1765,18 +1952,11 @@ function costWorkflowActive(){
 function foodConfirmationEvidence(side){
   if(typeof entryMode !== 'undefined' && entryMode === 'rows'){
     const rowSide = side === 'sale' ? 'sales' : 'purchases';
-    const eligibleCodes = side === 'sale' ? new Set(['1','11']) : new Set(['5','6','7','52','62','72']);
-    const rows = taxEntryRows[rowSide].filter(row => eligibleCodes.has(String(row.code).trim()) && String(row.rate).trim() === '8');
-    const states = rows.map(row => ({
-      code:row.code,rate:row.rate,amount:parseAmountInput(String(row.amount ?? ''),{allowNegative:true}),
-      target:parseAmountInput(String(row.foodAmount ?? ''),{allowNegative:true})
-    }));
-    const entries = (importedActualOnePercent?.entries || []).filter(entry => side === 'sale' ? entry.kind === 'sale' : entry.kind !== 'sale');
-    const valid = states.every(({amount,target}) => amount.valid && target.valid
-      && (!target.entered || amount.entered && Math.abs(target.value) <= Math.abs(amount.value)));
+    const evidence = ShohizeiTaxEntryRows.foodTargetEvidence(taxEntryRows[rowSide],rowSide,
+      {actualOnePercentEntries:importedActualOnePercent?.entries || []});
     return {
-      available:valid && (states.some(({target}) => target.entered) || entries.length > 0),
-      signature:JSON.stringify([states,entries,$('periodStart').value,$('periodEnd').value,
+      available:evidence.available,
+      signature:JSON.stringify([evidence.states,evidence.actualEntries,$('periodStart').value,$('periodEnd').value,
         selectedValue('amountMode','included'),taxScenarioKey(),$('foodForecastMethod').value,
         $(side === 'sale' ? 'foodSalesPriceBasis' : 'foodPurchasePriceBasis').value])
     };
@@ -3159,9 +3339,13 @@ function applyJournalImport(){
     if(!window.confirm(confirmation)) return;
   }
   const previousExemptCount = importedExemptTransactionCount;
+  const previousActualFileKey = typeof cashActualAnalysis !== 'undefined'
+    ? cashActualAnalysis?.fileKey || cashActualSavedSnapshot?.fileKey || '' : '';
   if(typeof ShohizeiCashJournal !== 'undefined' && $('cashAccountConfirmed')) try{
     const fresh=ShohizeiCashJournal.analyzeCashJournalText(pendingJournalImport.sourceText);
-    if(cashActualAnalysis?.fileKey !== fresh.fileKey){
+    const sameActualOriginal = typeof cashActualOriginalSourceId === 'string' && cashActualOriginalSourceId
+      && cashActualOriginalSourceId === cashflowScopeDigest(pendingJournalImport.sourceText);
+    if(previousActualFileKey !== fresh.fileKey && !sameActualOriginal){
       cashActualSelectedAccounts=[...fresh.suggestedAccounts];
       cashActualOpeningDecisions={};cashActualTaxDecisions={};cashActualSavedSnapshot=null;
       $('cashAccountConfirmed').checked=false;
@@ -3175,8 +3359,11 @@ function applyJournalImport(){
     $('cashActualStatus').textContent=`資金仕訳は読み取れません：${error.message}`;
   }
   const nextCashflowScopeKey = cashflowImportScopeKey(pendingJournalImport.sourceText, analysis);
-  if(nextCashflowScopeKey !== importedCsvCashflowScopeKey) clearCashflowSourceConfirmation(true);
+  const sameOriginalSource = typeof importedCsvOriginalSourceId === 'string' && importedCsvOriginalSourceId
+    && importedCsvOriginalSourceId === cashflowScopeDigest(pendingJournalImport.sourceText);
+  if(nextCashflowScopeKey !== importedCsvCashflowScopeKey && !sameOriginalSource) clearCashflowSourceConfirmation(true);
   importedCsvCashflowScopeKey = nextCashflowScopeKey;
+  if(typeof acceptSharedCsvImport === 'function') acceptSharedCsvImport(pendingJournalImport.sourceText,previousActualFileKey);
   importedCsvRecovery = normalizeCsvRecovery(summary);
   importedCsvOrigin = {
     dateRange:{ ...values.dateRange },
@@ -4170,10 +4357,11 @@ function assessHighAssetForMethod(ctx, methodKey){
 function validateProposalClassification(ctx){
   const errors = [];
   if(ctx.taxScenario === 'foodProposal'){
-    const sale8Entered = BUSINESS_TYPES.some(type => amountState(type.key + 'Sale8').value > 0);
-    const saleTargetEntered = BUSINESS_TYPES.some(type => amountState(type.key + 'SaleFood1').value > 0);
-    const purchase8Entered = amountState('purchase8').value > 0 || EXEMPT_PURCHASE_BUCKETS.some(bucket => amountState(exemptPurchaseInputId(bucket.key, '8')).value > 0);
-    const purchaseTargetEntered = amountState('purchaseFood1').value > 0 || EXEMPT_PURCHASE_BUCKETS.some(bucket => amountState(exemptPurchaseInputId(bucket.key, '1')).value > 0);
+    const rowMode = typeof entryMode !== 'undefined' && entryMode === 'rows';
+    const saleTargetEntered = rowMode ? ShohizeiTaxEntryRows.foodTargetEvidence(taxEntryRows.sales,'sales').targetPresent
+      : BUSINESS_TYPES.some(type => amountState(type.key + 'SaleFood1').value > 0);
+    const purchaseTargetEntered = rowMode ? ShohizeiTaxEntryRows.foodTargetEvidence(taxEntryRows.purchases,'purchases').targetPresent
+      : amountState('purchaseFood1').value > 0 || EXEMPT_PURCHASE_BUCKETS.some(bucket => amountState(exemptPurchaseInputId(bucket.key, '1')).value > 0);
     if(ctx.proposalFoodClassificationState === 'confirmed' && !foodConfirmationEvidence('sale').available) errors.push('食品売上額を照合済みにするには有効な対象額を入力してください。');
     if(ctx.proposalPurchaseClassificationState === 'confirmed' && !foodConfirmationEvidence('purchase').available) errors.push('食品仕入額を照合済みにするには有効な対象額を入力してください。');
     if(ctx.proposalFoodClassificationState === 'none' && saleTargetEntered) errors.push('食品売上を「対象なし」とした入力と1％対象額が矛盾します。');
@@ -6014,7 +6202,10 @@ function saveState(){
     'cashflowAutoBasis','cashflowPeriodShortening','cashflowPriorNationalTax','cashflowPriorStart','cashflowPriorEnd',
     'cashflowPriorChangedNationalTax','cashflowCorporateExtension','cashflowSpecialCircumstances'
   ];
-  const data = { saveEnabled:true, schemaVersion:20, regularConditionsVersion:1, switchDecisionOpen, workflowStep,
+  const data = { saveEnabled:true, schemaVersion:21, regularConditionsVersion:1, switchDecisionOpen, workflowStep,
+    sharedCaseFacts:typeof sharedCaseFacts === 'object' ? sharedCaseFacts : null,
+    importedCsvOriginalSourceId:typeof importedCsvOriginalSourceId === 'string' ? importedCsvOriginalSourceId : '',
+    cashActualOriginalSourceId:typeof cashActualOriginalSourceId === 'string' ? cashActualOriginalSourceId : '',
     step4DisplayTaxMethod:typeof step4DisplayTaxMethod !== 'undefined' ? step4DisplayTaxMethod : '',
     cashflowComparisonType:typeof cashflowComparisonType === 'function' ? cashflowComparisonType() : 'rateImpact',
     cashflowModeStates:typeof cashflowModeStates === 'object' ? cashflowModeStates : {},
@@ -6129,7 +6320,7 @@ function restoreState(){
       renderTaxEntryRows('purchases');
     }
     Object.entries(data).forEach(([id, value]) => {
-      if(id==='cashManualInvalidated') return;
+      if(['cashManualInvalidated','sharedCaseFacts','importedCsvOriginalSourceId','cashActualOriginalSourceId'].includes(id)) return;
       if(['saveEnabled','schemaVersion','switchDecisionOpen','workflowStep','migrationNotice','entryMode','taxEntryRows','rowCsvKnownZeros','importedExemptTransactionCount','importedActualOnePercent','importedUnsupportedEntries','importedCsvMonthlyGroups','importedCsvMonthlyDateUnknownCount','importedCsvCashflowScopeKey','cashflowConfirmedScope','cashflowSameInterim','cashflowSameSettlement','cashflowBaseNoInterim','cashflowChangedNoInterim','cashflowAutoSeparate','cashflowAutoSeparateUnconfirmed','cashflowManualFromAuto','cashflowComparisonType','cashflowModeStates','cashflowMonthSources','cashflowMethodPairTouched','step4DisplayTaxMethod','comparisonMethods','advancedMode','declarationRounding','highAssetSelfConstructed','switchCreditIncludedInBTax','switchOtherCostsNone','switchTimeEvaluation','workflowPurpose','entityType','amountMode','taxScenario','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState','cashActualMode','cashManualRows','cashManualPreviousRows','cashActualSelectedAccounts','cashActualOpeningDecisions','cashActualTaxDecisions','cashActualSavedSnapshot','cashAccountConfirmed','cashActualSourceStart','cashActualSourceEnd','cashActualPeriodConfirmed','cashActualCoverageConfirmed','cashTaxCoverageConfirmed','cashActualFoodEightConfirmed'].includes(id)) return;
       const el = $(id);
       if(!el) return;
@@ -6245,6 +6436,7 @@ function restoreState(){
       rateImpact:data.cashflowModeStates?.rateImpact?.values ? data.cashflowModeStates.rateImpact : null,
       methodImpact:data.cashflowModeStates?.methodImpact?.values ? data.cashflowModeStates.methodImpact : null
     };
+    if(typeof restoreSharedCaseFacts === 'function') restoreSharedCaseFacts(data);
     if(cashflowModeStates[activeCashflowMode]) applyCashflowModeState(cashflowModeStates[activeCashflowMode]);
     else cashflowModeStates[activeCashflowMode] = captureCashflowModeState();
     if(activeCashflowMode === 'methodImpact') activateCashflowMode('rateImpact');
@@ -7283,6 +7475,7 @@ function update(){
   renderPrintAssumptions(calc);
   renderSwitchDecision(calc, decision);
   renderCashflow(calc,currentRateComparison);
+  if(typeof renderSharedCaseFacts === 'function') renderSharedCaseFacts();
   renderWorkflow(calc, decision);
   if(typeof renderInputRequirementBadges === 'function') renderInputRequirementBadges(calc);
   const inputFingerprint = cashflowInputFingerprint();
@@ -7433,6 +7626,16 @@ function loadSampleInput(kind){
 }
 
 function bindEvents(){
+  document.addEventListener('click', event => {
+    const priorChoice = event.target.closest?.('[data-shared-prior-choice]');
+    const csvChoice = event.target.closest?.('[data-shared-csv-choice]');
+    if(priorChoice){ chooseSharedPriorActual(priorChoice.dataset.sharedPriorChoice); update(); }
+    else if(csvChoice){ chooseSharedCsvSource(csvChoice.dataset.sharedCsvChoice); update(); }
+  });
+  for(const id of ['priorPeriodStart','priorPeriodEnd']){
+    $(id).addEventListener('change', () => { editSharedPriorActual(id); });
+  }
+  $('priorTaxMethod').addEventListener('change',() => { editSharedPriorMethod(); });
   $('importBulkApply').addEventListener('click',()=>{
     const component=$('importBulkComponent').value;
     if(!Object.hasOwn(ShohizeiImportPurchases.COMPONENTS,component)){$('importBulkStatus').textContent='行区分を選択してください。';return;}
@@ -7659,6 +7862,8 @@ function bindEvents(){
         cashflowManualFromAuto = false;
       }
       if(['cashflowPriorNationalTax','cashflowPriorChangedNationalTax'].includes(id)) formatAmountLive($(id));
+      if(['cashflowPriorStart','cashflowPriorEnd','cashflowPriorNationalTax'].includes(id)) editSharedPriorActual(id);
+      if(['cashflowSourceStart','cashflowSourceEnd','cashflowSourceConfirmed'].includes(id)) editSharedCsvSource(id);
       update();
     });
   }
@@ -7689,7 +7894,9 @@ function bindEvents(){
   for(const id of ['cashAccountConfirmed','cashActualSourceStart','cashActualSourceEnd','cashActualPeriodConfirmed','cashActualCoverageConfirmed','cashTaxCoverageConfirmed','cashActualFoodEightConfirmed'])
     $(id).addEventListener('change',()=>{if(id==='cashActualSourceStart'||id==='cashActualSourceEnd'){
       $('cashActualPeriodConfirmed').checked=false;$('cashActualCoverageConfirmed').checked=false;
-    }update();});
+    }
+    if(['cashActualSourceStart','cashActualSourceEnd','cashActualPeriodConfirmed','cashActualCoverageConfirmed'].includes(id)) editSharedCsvSource(id);
+    update();});
   $('cashActualAccounts').addEventListener('change',event=>{
     const index=Number(event.target?.dataset?.cashAccount);
     if(!Number.isInteger(index)||!cashActualAnalysis?.accounts[index])return;

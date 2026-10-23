@@ -44,6 +44,15 @@
     ])
   ]);
 
+  // FX4's journal export has one tax classification and one gross amount per
+  // transaction. Do not copy its classification to both accounting sides.
+  const FX4_HEADERS = Object.freeze([
+    '月日','税','業','借方CD','借方科目名','貸方CD','貸方科目名',
+    '取引金額','税率','内、消費税等','税抜き金額','取引年月日','控'
+  ]);
+  const FX4_CREDIT_CODES = new Set(['1','2','3','4','25','51','53','61','63','71','73','58','68','78']);
+  const FX4_DEBIT_CODES = new Set(['11','12','21','26','31','5','6','7','52','62','72','55','65','75','57','67','77']);
+
   function parseCsv(text){
     const source = String(text ?? '').replace(/^\uFEFF/, '');
     const rows = [];
@@ -204,10 +213,47 @@
     }));
   }
 
-  function rowsToObjects(rows){
+  function normalizeFx4Entry(source, rowNumber){
+    const code = normalizeCode(source['税']);
+    // An unknown shared code gives no reliable accounting side. Require source
+    // confirmation instead of guessing a side or treating it as out of scope.
+    const side = FX4_CREDIT_CODES.has(code) ? '貸方' : FX4_DEBIT_CODES.has(code) ? '借方' : '';
+    if(!side && !['0','8'].includes(code)){
+      throw new Error(`FX4 CSV ${rowNumber}行目: 課税区分「${code || '空欄'}」の借方・貸方を判定できません。元明細を確認してください。`);
+    }
+    const compactDate = String(source['取引年月日'] ?? '').trim();
+    const date = /^\d{8}$/.test(compactDate)
+      ? normalizeDate(`${compactDate.slice(0,4)}/${compactDate.slice(4,6)}/${compactDate.slice(6,8)}`) : '';
+    if(!date || /合計|小計|累計|日計|月計|総計/.test(String(source['月日'] ?? ''))){
+      throw new Error(`FX4 CSV ${rowNumber}行目: 取引年月日を判定できません。合計行を含まない仕訳明細CSVか確認してください。`);
+    }
+    const entry = {...source, '月日':date, '摘要':source['元帳摘要（仕入れ資産等の総称）'] || ''};
+    for(const target of ['借方','貸方']){
+      // 取引金額 is already tax-inclusive; neither tax nor net is added to it.
+      entry[`${target}取引金額`] = source['取引金額'];
+      entry[`${target}課税区分`] = target === side ? code : '0';
+    }
+    if(side){
+      const displayedRate = String(source['税率'] ?? '').normalize('NFKC').replace(/\s/g,'');
+      const match = displayedRate.match(/^(軽)?(10|8|1)(?:\.0+)?%A?$/);
+      const validRate = match && (match[2] === '8' ? Boolean(match[1]) : !match[1]);
+      entry[`${side}税率`] = validRate ? match[2] : source['税率'];
+      entry[`${side}軽減税率か否か`] = validRate ? (match[2] === '10' ? '0' : '1') : '';
+      entry[`${side}消費税等`] = source['内、消費税等'];
+      entry[`${side}事業区分`] = source['業'];
+      entry[`${side}控除割合`] = String(source['控'] ?? '').normalize('NFKC').trim().replace(/%$/, '');
+    }
+    return entry;
+  }
+
+  function rowsToObjects(rows, requiredHeaders = REQUIRED_HEADERS){
     if(rows.length < 2) throw new Error('CSVに見出し行と仕訳データが必要です。');
     const headers = rows[0].map(normalizeHeader);
-    const missing = REQUIRED_HEADERS.filter(header => !headers.includes(header));
+    const fx4 = !requiredHeaders.every(header => headers.includes(header)) && headers.includes('税') && headers.includes('取引金額');
+    if(fx4 && ['借方','貸方'].some(side => headers.includes(`${side}課税区分`) || headers.includes(`${side}取引金額`))){
+      throw new Error('CSVにFX4共通列と借方・貸方別の列が混在しています。元の出力形式を確認してください。');
+    }
+    const missing = (fx4 ? FX4_HEADERS : requiredHeaders).filter(header => !headers.includes(header));
     if(missing.length) throw new Error(`TKC仕訳帳CSVの必須列が不足しています: ${missing.join('、')}`);
     const duplicateHeaders = headers.filter((header, index) => header && headers.indexOf(header) !== index);
     if(duplicateHeaders.length) throw new Error(`CSVに重複した見出しがあります: ${[...new Set(duplicateHeaders)].join('、')}`);
@@ -215,7 +261,8 @@
       .filter(row => row.some(value => String(value ?? '').trim() !== ''))
       .map(row => {
         if(row.length !== headers.length) throw new Error('CSVレコードの列数が見出しと一致しません。明細の境界を確認してください。');
-        const entry = Object.fromEntries(headers.map((header, index) => [header, row[index] ?? '']));
+        const source = Object.fromEntries(headers.map((header, index) => [header, row[index] ?? '']));
+        const entry = fx4 ? normalizeFx4Entry(source, row.recordNumber) : source;
         Object.defineProperty(entry, '__recordNumber', {value:row.recordNumber});
         return entry;
       });
@@ -788,6 +835,7 @@
     EXEMPT_RATIOS,
     REQUIRED_HEADERS,
     parseCsv,
+    rowsToObjects,
     decodeCsvBytes,
     analyzeTkcJournalText,
     resolveImportValues,

@@ -38,19 +38,9 @@
   }
 
   function normalizeSourceRows(text){
-    const source = journal.parseCsv(text);
-    if(source.length < 2) throw new Error('CSVに見出し行と仕訳データが必要です。');
-    const headers = source[0].map(value => String(value ?? '').replace(/^\uFEFF/,'').trim());
-    const missing = REQUIRED.filter(header => !headers.includes(header));
-    if(missing.length) throw new Error(`資金集計に必要なCSV列が不足しています: ${missing.join('、')}`);
-    const duplicates = headers.filter((header,index) => header && headers.indexOf(header) !== index);
-    if(duplicates.length) throw new Error(`CSVに重複した見出しがあります: ${[...new Set(duplicates)].join('、')}`);
-    return source.slice(1).filter(row => row.some(cell => String(cell ?? '').trim())).map((row,index) => {
-      if(row.length !== headers.length) throw new Error('CSVレコードの列数が見出しと一致しません。');
-      const entry = Object.fromEntries(headers.map((header,column) => [header,row[column] ?? '']));
-      entry.recordNumber = row.recordNumber || index + 2;
-      return entry;
-    });
+    return journal.rowsToObjects(journal.parseCsv(text), REQUIRED).map((entry,index) => ({
+      ...entry, recordNumber:entry.__recordNumber || index + 2
+    }));
   }
 
   function analyzeCashJournalText(text){

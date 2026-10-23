@@ -665,6 +665,32 @@ test('比較方式を一般課税だけにすると簡易・特例の確認を�
   assert.equal((h.element('methodCards').innerHTML.match(/class="method-row/g) || []).length,1);
 });
 
+test('一般単独・既存簡易届出なし又は未確認では、保持した基準期間額と費用欄開閉で税額・適用可否を変えない',()=>{
+  const h=currentRateComparisonHarness();
+  h.context.calculateEligibility=engine.calculateEligibility;
+  vm.runInContext(functionSource('getEligibility'),h.context);
+  h.context.selectedComparisonMethods=()=>['regular'];h.element('currentReturnMethod').value='regular';
+  let expected;
+  for(const position of ['none','unknown']) for(const base of ['','60000000','不明']) for(const open of [false,true]){
+    h.element('simpleElectionStatus').value=position;h.element('baseTaxableSales').value=base;h.context.switchDecisionOpen=open;
+    const calc=h.context.calculate(),row=h.context.buildCurrentRateComparison(calc).rows[0];
+    const regular=calc.methods[0];
+    const result={amount:regular.amount,eligibility:regular.eligibility,include:regular.include,
+      ready:calc.comparisonReady,current:row.currentAmount,proposal:row.proposalAmount,difference:row.difference};
+    expected??=result;assert.deepEqual(result,expected,`${position}/${base}/${open}`);
+    assert.equal(h.element('baseTaxableSales').value,base);
+  }
+  assert.equal(expected.eligibility,'eligible');assert.equal(expected.current,40000);
+  assert.ok(Math.abs(expected.proposal-5000)<1e-8);assert.equal(expected.difference,-35000);
+  for(const state of ['unknown','confirmed']){
+    h.element('proposalFoodClassificationState').value=state;h.element('proposalPurchaseClassificationState').value=state;
+    h.context.switchDecisionOpen=false;
+    const calc=h.context.calculate(),row=h.context.buildCurrentRateComparison(calc).rows[0];
+    assert.equal(calc.methods[0].amount,expected.amount);assert.equal(calc.methods[0].eligibility,'eligible');
+    assert.equal(row.reference,state==='unknown','入力欄を移しても未確認の参考表示を維持する');
+  }
+});
+
 test('一般課税だけの行入力は事業区分が空欄でも売上税額を使い、簡易の確認待ちにしない', () => {
   const h = currentRateComparisonHarness();
   h.context.selectedComparisonMethods = () => ['regular'];

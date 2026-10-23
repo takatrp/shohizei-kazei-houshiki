@@ -471,7 +471,8 @@ test('[TKC行表示] 不要セルは入力不能かつ通常欄と別表示、�
   assert.match(functionSource('refreshTaxRowControls'),/business\.disabled = !showBusinessTypeColumn\(\) \|\| !\['1','11'\]\.includes\(row\.code\)/);
   assert.match(functionSource('refreshTaxRowControls'),/rate\.disabled = row\.code === '3'/);
   assert.match(functionSource('refreshTaxRowControls'),/food\.disabled = !showFoodAmountColumn\(\) \|\| row\.code === '3' \|\| row\.rate !== '8'/);
-  assert.match(functionSource('initWorkflow'),/\$\('addTaxSalesRow'\)\.closest\('\.tkc-row-actions'\)\.after\(foodSaleConfirmation\)/);
+  assert.match(functionSource('initWorkflow'),/foodConfirmations\.append\(foodSaleConfirmation, foodPurchaseConfirmation\)/);
+  assert.match(functionSource('initWorkflow'),/\$\('switchDecisionFields'\)\.prepend\(foodConfirmations\)/);
   for(const text of ['1　第1種 卸売業','2　第2種 小売業','3　第3種 建設業','4　第4種 飲食店業','5　第5種 サービス業','6　第6種 不動産業']) assert.ok(html.includes(text),text);
   assert.doesNotMatch(html,/<datalist id="tax(?:SalesCode|PurchaseCode|BusinessType)List">[^<]*<option[^>]*label=/);
   assert.match(functionSource('renderTaxEntryRows'),/bucket\.key\}%｜\$\{escapeHtml\(bucket\.range\)\}/);

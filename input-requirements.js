@@ -66,7 +66,10 @@
     put('importFoodPercent',food?optional('軽減8％輸入の食品対象割合。概算で100％を初期値とし、必要なら補正します。'):absent('現行税率では食品1％割合を使いません。'));
     put('regularDetailMethod',regular?required([TARGETS.regularTax],'本則の控除方法を指定します。'):absent('本則課税を比較しない場合は対象外です。'));
     put('nonTaxableSales taxableOnlyPurchaseTax commonPurchaseTax',regular?optional('既存の用途別集計が必要な場合に照合します。空欄を自動0円と扱いません。',{emptyMeaning:'用途別金額は未確認'}):absent('本則課税を比較しない場合は対象外です。'));
-    put('highAssetState highAssetAmount highAssetType highAssetSelfConstructed baseTaxableSales specificTaxableSales specificPayrollAmount invoiceRegisteredState invoiceTransitionState noSpecialExclusionState simpleNoticeReadyState',optional('適用判定用の事実は未確認を維持します。',{allowUnknown:true,emptyMeaning:'適用判定は未確認'}));
+    put('highAssetState highAssetAmount highAssetType highAssetSelfConstructed specificTaxableSales specificPayrollAmount invoiceRegisteredState invoiceTransitionState noSpecialExclusionState simpleNoticeReadyState',optional('適用判定用の事実は未確認を維持します。',{allowUnknown:true,emptyMeaning:'適用判定は未確認'}));
+    const baseSalesRelevant = simplified || methods.includes('special2') || methods.includes('special3')
+      || (regular && ['first','second','free'].includes(value('simpleElectionStatus')));
+    put('baseTaxableSales',baseSalesRelevant?optional('簡易・特例の適用又は既存の簡易届出から一般への変更判定に使います。',{allowUnknown:true,emptyMeaning:'適用判定は未確認'}):absent('今回選択した方式と届出状態では基準期間売上高を使いません。'));
     put('creditMode',regular?optional('本則の控除率を資料で確認するまで未確認を選べます。',{allowUnknown:true}):absent('本則課税を比較しない場合は対象外です。'));
     put('creditPercent',regular&&value('creditMode')==='estimate'?required([TARGETS.regularTax],'概算率入力を選んだときに指定します。'):absent('控除率の概算入力を選んだ場合だけ入力します。'));
     put('regularAdjustment',regular?optional('個別調整がある場合だけ入力します。',{emptyMeaning:'調整を指定していない'}):absent('本則課税を比較しない場合は対象外です。'));

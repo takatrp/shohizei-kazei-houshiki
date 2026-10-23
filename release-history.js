@@ -7,6 +7,18 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r35.7',date:'2026-10-24',
+      title:'終了日確認のタイミングとSTEP2の入力負担を改善',
+      category:'usability',recalcRecommended:true,
+      changes:Object.freeze([
+        '中間納付の確認は比較対象課税期間の終了日からフォーカスが外れた時だけ表示し、日付の入力途中では表示しない',
+        '食品1％対象の一括転記ボタンを廃止し、軽減8％の税込金額を初期値として自動設定。STEP2で前提を表示し、手修正した額・0円・空欄は保持',
+        'CSVの未分類売上も科目をまたいで課税区分・税率別に集約。事業区分・控除割合・輸入の行区分など計算上必要な違いは維持',
+        '計算に使用しない担当者コメント・内部メモを削除。税額・適用判定・資金繰りに必要な確認項目は維持',
+        '上部の4ステップを右向きの矢印でつなぎ、入力から結果へ進む順序を明示'
+      ])
+    }),
+    Object.freeze({
       version:'r35.6',date:'2026-10-23',
       title:'輸入55・65・75の概算対応と法人1％試算の期間確認',
       category:'calculation',recalcRecommended:true,
@@ -490,3 +502,4 @@
 
   return Object.freeze({ RELEASE_HISTORY, DEFERRED_LIMITATIONS, APP_META });
 });
+

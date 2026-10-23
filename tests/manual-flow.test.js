@@ -48,6 +48,7 @@ function flowHarness(names){
     parseAmountInput:engine.parseAmountInput,
     TAX_SCENARIOS:{current:{},foodProposal:{}},
     validateFoodProposalPeriod:engine.validateFoodProposalPeriod,
+    validateTaxPeriod:engine.validateTaxPeriod,
     normalizeExemptPurchaseRatio:engine.normalizeExemptPurchaseRatio,
     summarizeActualOnePercentEntries:taxRows.summarizeActualOnePercentEntries,
     engineTaxFromAmount:engine.taxFromAmount,
@@ -81,7 +82,7 @@ function flowHarness(names){
     analyzeTkcJournalText(){ return { errors:[], actualOnePercentEntries:[] }; },
     aggregateReturnInputs(){ return null; }
   });
-  vm.runInContext([...new Set(['selectedValue','taxScenarioKey','currentProposalPeriodCheck','normalizeCsvRecovery', 'csvRecoverySummaryText',
+  vm.runInContext([...new Set(['selectedValue','taxScenarioKey','currentProposalPeriodCheck','resetProposalPeriodConfirmation','normalizeCsvRecovery', 'csvRecoverySummaryText',
     'cashflowScopeDigest','cashflowImportScopeKey','currentCashflowConfirmationScope','clearCashflowSourceConfirmation',...names])].map(functionSource).join('\n'), context);
   return { context, element, updates:() => updates };
 }
@@ -375,22 +376,26 @@ test('[TKC行保存] 行の順序・出所・0円と空欄・控除割合を保�
   before.element('saveToDevice').checked = true;
   before.context.taxEntryRows = {
     sales:[
-      {id:'1',code:'1',businessType:'type2',rate:'8',amount:'1,080,000',foodAmount:'',source:'manual'},
+      {id:'1',code:'1',businessType:'type2',rate:'8',amount:'1,080,000',foodAmount:'',foodAmountSource:'manual',source:'manual'},
       {id:'2',code:'3',rate:'',amount:'0',foodAmount:'',source:'csv'},
+      {id:'auto',code:'1',businessType:'type2',rate:'8',amount:'108,000',foodAmount:'108,000',foodAmountSource:'auto',source:'csv'},
       {id:'blank',code:'',rate:'',amount:'',foodAmount:'',source:'manual'}
     ],
-    purchases:[{id:'3',code:'52',rate:'8',amount:'100,000',foodAmount:'0',creditRatio:'80',creditRatioSource:'manual',source:'csv-edited',
+    purchases:[{id:'3',code:'52',rate:'8',amount:'100,000',foodAmount:'0',foodAmountSource:'manual',creditRatio:'80',creditRatioSource:'manual',source:'csv-edited',
       sourceDateStart:'2026-09-30',sourceDateEnd:'2026-09-30',sourceAdjustmentCount:1,sourceDateUnknownCount:0}]
   };
   before.context.saveState();
   const saved = JSON.parse(storage.get('tkc-row-save-test'));
-  assert.equal(saved.taxEntryRows.sales.length, 2);
+  assert.equal(saved.taxEntryRows.sales.length, 3);
   assert.equal(saved.taxEntryRows.sales[1].amount, '0');
   assert.equal(saved.taxEntryRows.sales[0].foodAmount, '');
   const after = make();
   after.context.restoreState();
   assert.equal(after.context.entryMode, 'rows');
-  assert.deepEqual(Array.from(after.context.taxEntryRows.sales, row => row.code), ['1','3']);
+  assert.deepEqual(Array.from(after.context.taxEntryRows.sales, row => row.code), ['1','3','1']);
+  assert.equal(after.context.taxEntryRows.sales[0].foodAmountSource,'manual');
+  assert.equal(after.context.taxEntryRows.sales[2].foodAmountSource,'auto');
+  assert.equal(after.context.taxEntryRows.sales[2].foodAmount,'108,000');
   assert.equal(after.context.taxEntryRows.sales[1].source, 'csv');
   assert.equal(after.context.taxEntryRows.purchases[0].source, 'csv-edited');
   assert.equal(after.context.taxEntryRows.purchases[0].creditRatio, '80');
@@ -398,12 +403,14 @@ test('[TKC行保存] 行の順序・出所・0円と空欄・控除割合を保�
   assert.equal(after.context.taxEntryRows.purchases[0].sourceDateEnd, '2026-09-30');
   assert.equal(after.context.taxEntryRows.purchases[0].sourceAdjustmentCount, 1);
   assert.equal(after.context.taxEntryRows.purchases[0].foodAmount, '0');
+  assert.equal(after.context.taxEntryRows.purchases[0].foodAmountSource,'manual');
   assert.equal(after.context.rowCsvKnownZeros.nonTaxableSales, true);
   assert.equal(after.element('modeTaxExcluded').disabled, true);
   const aggregate = taxRows.aggregateTaxRows(after.context.taxEntryRows);
   assert.equal(aggregate.fields.nonTaxableSales.entered, true);
   assert.equal(aggregate.fields.nonTaxableSales.value, 0);
-  assert.equal(aggregate.fields.type2SaleFood1.entered, false);
+  assert.equal(aggregate.fields.type2SaleFood1.entered, true);
+  assert.equal(aggregate.fields.type2SaleFood1.value, 108000);
   storage.set('tkc-row-save-test',JSON.stringify({...saved,taxEntryRows:undefined,rowCsvKnownZeros:undefined,type2Sale10:'1,100,000'}));
   const old = make();
   old.element('storageNotice').style = {};
@@ -736,3 +743,4 @@ test('[W04] 所内の相談指導文は顧客用コピー・CSV・印刷に転�
   }
   assert.match(functionSource('calculateSwitchDecision'), /customerConfirmations/);
 });
+

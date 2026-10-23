@@ -673,20 +673,24 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r35.6');
+  assert.equal(release.APP_META.version, 'r35.7');
   assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
-  assert.match(release.RELEASE_HISTORY[0].title,/輸入55.*65.*75.*法人1％.*期間/);
-  assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/1年以外/);
-  assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/両端の1日/);
-  assert.equal(release.RELEASE_HISTORY[1].version,'r35.5');
-  assert.match(release.RELEASE_HISTORY[1].title,/変更案B.*日常の増減.*納付.*還付/);
-  assert.equal(release.RELEASE_HISTORY[2].version,'r35.4');
-  assert.match(release.RELEASE_HISTORY[2].title,/FX4クラウド.*CSV/);
-  assert.equal(release.RELEASE_HISTORY[3].version,'r35.3');
-  assert.match(release.RELEASE_HISTORY[3].title,/8％対1％比較.*課税方式/);
-  assert.equal(release.RELEASE_HISTORY[4].version,'r35.2');
-  assert.match(release.RELEASE_HISTORY[4].title,/資金増減基準/);
-  const previous = release.RELEASE_HISTORY.slice(5);
+  assert.match(release.RELEASE_HISTORY[0].title,/終了日確認.*STEP2.*入力負担/);
+  assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/フォーカスが外れた時だけ/);
+  assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/初期値として自動設定/);
+  assert.equal(release.RELEASE_HISTORY[1].version,'r35.6');
+  assert.match(release.RELEASE_HISTORY[1].title,/輸入55.*65.*75.*法人1％.*期間/);
+  assert.match(release.RELEASE_HISTORY[1].changes.join(' '),/1年以外/);
+  assert.match(release.RELEASE_HISTORY[1].changes.join(' '),/両端の1日/);
+  assert.equal(release.RELEASE_HISTORY[2].version,'r35.5');
+  assert.match(release.RELEASE_HISTORY[2].title,/変更案B.*日常の増減.*納付.*還付/);
+  assert.equal(release.RELEASE_HISTORY[3].version,'r35.4');
+  assert.match(release.RELEASE_HISTORY[3].title,/FX4クラウド.*CSV/);
+  assert.equal(release.RELEASE_HISTORY[4].version,'r35.3');
+  assert.match(release.RELEASE_HISTORY[4].title,/8％対1％比較.*課税方式/);
+  assert.equal(release.RELEASE_HISTORY[5].version,'r35.2');
+  assert.match(release.RELEASE_HISTORY[5].title,/資金増減基準/);
+  const previous = release.RELEASE_HISTORY.slice(6);
   assert.equal(previous[0].version,'r35.1');
   assert.equal(previous[0].recalcRecommended,false);
   assert.equal(previous[1].version,'r35');
@@ -716,3 +720,4 @@ test('4期表示に最有利見込みを使わず、出力関数に版数と未�
   assert.match(html, /APP_META\.version/);
   assert.match(html, /未確認事項/);
 });
+

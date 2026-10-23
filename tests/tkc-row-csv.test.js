@@ -6,8 +6,9 @@ const journal = require('../journal-csv.js');
 const {rowsFromJournalAnalysis} = require('../tax-entry-csv.js');
 const {aggregateTaxRows} = require('../tax-entry-rows.js');
 
-function csv(entries){
-  return [journal.REQUIRED_HEADERS, ...entries.map(entry => journal.REQUIRED_HEADERS.map(header => entry[header] ?? ''))]
+function csv(entries, extraHeaders = []){
+  const headers = [...journal.REQUIRED_HEADERS, ...extraHeaders];
+  return [headers, ...entries.map(entry => headers.map(header => entry[header] ?? ''))]
     .map(cells => cells.map(value => {
       const text = String(value);
       return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -159,3 +160,112 @@ test('概算補正・除外後の免税仕入日付情報だけを行へ引き�
   ['52','0','2026-09-30','2026-09-30',0]);
   assert.equal(estimate.recoverySummary.temporaryExcludedCount,1);
 });
+
+test('未分類売上は科目を横断して同じ課税区分・税率を合算し、事業区分を推測しない', () => {
+  const analysis = journal.analyzeTkcJournalText(csv([
+    entry('貸方',{code:'1',rate:'8',amount:1080,account:'売上科目A'}),
+    entry('貸方',{code:'1',rate:'8',amount:2160,account:'売上科目B'}),
+    entry('貸方',{code:'1',rate:'10',amount:1100,account:'売上科目A'}),
+    entry('貸方',{code:'1',rate:'10',amount:2200,account:'売上科目B'})
+  ]));
+  const resolved = journal.resolveImportValues(analysis, {}, {allowUnclassifiedSales:true});
+  assert.equal(resolved.ready, true, resolved.errors.join(' / '));
+  assert.equal(resolved.unclassifiedSales.length, 2, '元の科目別マッピング候補は保持する');
+  const rows = rowsFromJournalAnalysis(analysis, resolved);
+  assert.deepEqual(rows.sales.map(({code,rate,amount,businessType,source}) =>
+    ({code,rate,amount,businessType,source})), [
+    {code:'1',rate:'10',amount:'3300',businessType:'',source:'csv'},
+    {code:'1',rate:'8',amount:'3240',businessType:'',source:'csv'}
+  ]);
+  assert.equal(new Set(rows.sales.map(row => row.id)).size, rows.sales.length);
+  assert.ok(!JSON.stringify(rows).includes('売上科目'));
+  const aggregate = aggregateTaxRows(rows);
+  assert.deepEqual(aggregate.unclassifiedSalesTotals, {'10':3300,'8':3240});
+  assert.equal(aggregate.ready, false, '合算しても未確認の事業区分を確認済みにしない');
+});
+
+test('科目横断の合算後も売上1と返還11を分け、差引0円の実額を保持する', () => {
+  const analysis = journal.analyzeTkcJournalText(csv([
+    entry('貸方',{code:'1',rate:'8',amount:1080,account:'売上科目A'}),
+    entry('借方',{code:'11',rate:'8',amount:1080,account:'売上科目A'}),
+    entry('貸方',{code:'1',rate:'8',amount:2160,account:'売上科目B'}),
+    entry('借方',{code:'11',rate:'8',amount:2160,account:'売上科目B'})
+  ]));
+  const resolved = journal.resolveImportValues(analysis, {}, {allowUnclassifiedSales:true});
+  assert.equal(resolved.ready, true, resolved.errors.join(' / '));
+  const rows = rowsFromJournalAnalysis(analysis, resolved);
+  assert.deepEqual(rows.sales.map(({code,rate,amount}) => [code,rate,amount]),
+    [['1','8','3240'],['11','8','3240']]);
+  assert.equal(aggregateTaxRows(rows).unclassifiedSalesTotals['8'], 0);
+  assert.equal(aggregateTaxRows(rows).errors.length, 0);
+});
+
+test('同じ課税区分・税率でも異なる事業区分と免税仕入控除割合は別行にする', () => {
+  const rows = converted([
+    entry('貸方',{code:'1',business:'1',rate:'8',amount:1080,account:'卸売A'}),
+    entry('貸方',{code:'1',business:'1',rate:'8',amount:2160,account:'卸売B'}),
+    entry('貸方',{code:'1',business:'2',rate:'8',amount:4320,account:'小売'}),
+    entry('借方',{code:'52',rate:'8',amount:1080,credit:'80',date:'2026/09/30'}),
+    entry('借方',{code:'52',rate:'8',amount:2160,credit:'70',date:'2026/10/01'})
+  ]);
+  assert.deepEqual(rows.sales.map(({code,rate,businessType,amount}) => [code,rate,businessType,amount]),
+    [['1','8','type1','3240'],['1','8','type2','4320']]);
+  assert.deepEqual(rows.purchases.map(({code,rate,creditRatio,amount,sourceDateStart}) =>
+    [code,rate,creditRatio,amount,sourceDateStart]),
+    [['52','8','80','1080','2026-09-30'],['52','8','70','2160','2026-10-01']]);
+  const aggregate = aggregateTaxRows(rows);
+  assert.equal(aggregate.fields.type1Sale8.value, 3240);
+  assert.equal(aggregate.fields.type2Sale8.value, 4320);
+  assert.equal(aggregate.fields.taxableOnlyPurchaseTax.value, 176,
+    '80円×80％＋160円×70％の控除額を維持する');
+});
+
+test('輸入は同じ区分・税率でも本体・国税・地方税を分離し、同じ構成要素だけを合算する', () => {
+  const imported = (code, component, amount, account) => ({
+    ...entry('借方',{code,amount,account}), 借方輸入区分:component
+  });
+  const analysis = journal.analyzeTkcJournalText(csv([
+    imported('55','goods',100000,'輸入本体A'),
+    imported('55','goods',200000,'輸入本体B'),
+    imported('55','national',7800,'輸入国税A'),
+    imported('55','national',15600,'輸入国税B'),
+    imported('55','local',6600,'輸入地方税'),
+    imported('65','national',7800,'非課税対応の国税'),
+    imported('65','local',2200,'非課税対応の地方税')
+  ], ['借方輸入区分']));
+  const resolved = journal.resolveImportValues(analysis);
+  assert.equal(resolved.ready, true, resolved.errors.join(' / '));
+  const rows = rowsFromJournalAnalysis(analysis, resolved);
+  assert.deepEqual(rows.purchases.map(({code,rate,importComponent,amount,sourceCount}) =>
+    [code,rate,importComponent,amount,sourceCount]), [
+    ['55','10','goods','300000',2],
+    ['55','10','national','23400',2],
+    ['55','10','local','6600',1],
+    ['65','10','national','7800',1],
+    ['65','10','local','2200',1]
+  ]);
+});
+
+test('STEP2の科目横断集約はCSVの月別配分・返品月・科目別確認情報を変更しない', () => {
+  const analysis = journal.analyzeTkcJournalText(csv([
+    entry('貸方',{code:'1',rate:'8',amount:1080,account:'売上科目A',date:'2028/01/15'}),
+    entry('貸方',{code:'1',rate:'8',amount:2160,account:'売上科目B',date:'2028/02/15'}),
+    entry('借方',{code:'11',rate:'8',amount:1080,account:'売上科目A',date:'2028/03/15'})
+  ]));
+  const resolved = journal.resolveImportValues(analysis, {}, {allowUnclassifiedSales:true});
+  assert.equal(resolved.ready, true, resolved.errors.join(' / '));
+  const originalAnalysis = structuredClone(analysis);
+  const originalResolved = structuredClone(resolved);
+  const rows = rowsFromJournalAnalysis(analysis, resolved);
+  assert.deepEqual(rows.sales.map(({code,amount}) => [code,amount]), [['1','3240'],['11','1080']]);
+  assert.deepEqual(analysis.monthlyGroups.map(({month,code,amount,transactionKind}) =>
+    [month,code,amount,transactionKind]), [
+    ['2028-01','1',1080,'ordinary'],
+    ['2028-02','1',2160,'ordinary'],
+    ['2028-03','11',-1080,'adjustment']
+  ]);
+  assert.deepEqual(analysis, originalAnalysis);
+  assert.deepEqual(resolved, originalResolved);
+  assert.deepEqual(rowsFromJournalAnalysis(analysis, resolved), rows);
+});
+

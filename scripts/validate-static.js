@@ -24,7 +24,7 @@ for(const match of html.matchAll(/<script(?:[^>]*)>([\s\S]*?)<\/script>/g)){
   if(match[1].trim()) new Function(match[1]);
 }
 
-for(const marker of ['release-history.js', 'tax-engine.js', 'tax-return-engine.js', 'switch-decision.js', 'journal-csv.js', 'tax-entry-rows.js', 'tax-entry-csv.js', 'cashflow-engine.js', 'cashflow-adapter.js', 'method-cashflow-adapter.js', 'cashflow-defaults.js', 'input-requirements.js', 'tax-calendar.js', 'election-deadline.js', 'interim-tax-engine.js', 'journalCsvFile', 'foodProposalFields', 'switchDecisionPanel', 'latestRelease', 'methodCards', 'projectionRows', 'workflowScreen5', 'cashflowMonthlyTable', 'bulkFoodSales', 'bulkFoodPurchases', 'cashflowAutoSummary']){
+for(const marker of ['release-history.js', 'tax-engine.js', 'tax-return-engine.js', 'switch-decision.js', 'journal-csv.js', 'tax-entry-rows.js', 'tax-entry-csv.js', 'cashflow-engine.js', 'cashflow-adapter.js', 'method-cashflow-adapter.js', 'cashflow-defaults.js', 'input-requirements.js', 'tax-calendar.js', 'election-deadline.js', 'interim-tax-engine.js', 'journalCsvFile', 'foodProposalFields', 'switchDecisionPanel', 'latestRelease', 'methodCards', 'projectionRows', 'workflowScreen5', 'cashflowMonthlyTable', 'foodDefaultAssumptionNotice', 'cashflowAutoSummary']){
   if(!html.includes(marker)) throw new Error(`Missing HTML marker: ${marker}`);
 }
 
@@ -38,3 +38,4 @@ const missingIds = [...new Set(staticIdReferences.filter(id => !ids.includes(id)
 if(missingIds.length) throw new Error(`Missing referenced HTML ids: ${missingIds.join(', ')}`);
 
 console.log('Static validation passed.');
+

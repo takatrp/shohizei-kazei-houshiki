@@ -146,35 +146,129 @@ test('非1年の1％中間納付は承認・短縮設定にかかわらず未算
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 function source(name){const start=html.indexOf('function '+name+'(');const end=html.indexOf('\nfunction ',start+1);return html.slice(start,end<0?undefined:end);}
 function periodHarness(){
-  const fields={periodStart:{value:'2028-01-01'},periodEnd:{value:'2028-12-31'},taxScenarioFood1:{checked:true},taxScenarioCurrent:{checked:false},cashflowInterimStatus:{value:'auto'},proposalPeriodConfirmationNotice:{classList:{toggle(){}}}};
-  const context=vm.createContext({$:id=>fields[id],ShohizeiTaxCalendar:calendar,validateTaxPeriod:require('../tax-engine.js').validateTaxPeriod,
+  const fields={},listeners={};
+  const element=id=>{
+    if(!fields[id]){
+      const classes=new Set();
+      fields[id]={id,value:'',checked:false,dataset:{},listeners:{},
+        classList:{add:name=>classes.add(name),remove:name=>classes.delete(name),contains:name=>classes.has(name),
+          toggle(name,hidden){if(hidden)classes.add(name);else classes.delete(name);}},
+        matches:selector=>selector==='input,select',closest:()=>null,
+        addEventListener(type,callback){this.listeners[type]=callback;}};
+    }
+    return fields[id];
+  };
+  element('periodStart').value='2028-01-01';element('periodEnd').value='2028-12-31';
+  element('taxScenarioFood1').checked=true;element('taxScenarioCurrent').checked=false;
+  element('taxScenarioFood1').name='taxScenario';element('taxScenarioCurrent').name='taxScenario';
+  element('cashflowInterimStatus').value='auto';
+  const state=()=>({start:element('periodStart').value,end:element('periodEnd').value,scenario:element('taxScenarioFood1').checked?'foodProposal':'current'});
+  const context=vm.createContext({$:element,ShohizeiTaxCalendar:calendar,validateTaxPeriod:require('../tax-engine.js').validateTaxPeriod,
     validateFoodProposalPeriod:require('../tax-engine.js').validateFoodProposalPeriod,selectedValue:()=> 'corporation',workflowStep:1,
-    taxScenarioKey:()=>fields.taxScenarioFood1.checked?'foodProposal':'current',window:{confirm:()=>true},proposalPeriodLastAccepted:null,proposalPeriodConfirmedScope:'',latestCalculation:{calc:{sentinel:true}}});
-  vm.runInContext(source('currentProposalPeriodCheck')+'\n'+source('confirmProposalPeriod')+'\n'+source('update'),context);
-  context.confirmProposalPeriod();return {fields,context};
+    taxScenarioKey:()=>state().scenario,window:{confirm:()=>true,addEventListener(){}},
+    document:{querySelectorAll:()=>[],addEventListener(type,callback){(listeners[type]||=[]).push(callback);}},
+    proposalPeriodLastAccepted:null,proposalPeriodConfirmedScope:'',latestCalculation:null,latestCashflow:null,
+    entryMode:'legacy',importedCsvOrigin:null,calculate:()=>({ctx:state(),sales:{rows:[]}}),
+    calculateSwitchDecision:()=>({}),buildCurrentRateComparison:()=>({}),cashflowInputFingerprint:()=>'',
+    saveState(){context.savedState=JSON.stringify(state());},
+    printMethodComparison(){},prepareComparisonPrint(){},handleJournalCsvFile(){},applyJournalImport(){},clearJournalImport(){},resetAll(){}});
+  for(const name of ['updateAutomaticFoodAmounts','normalizeFoodConfirmations','renderImportTools','renderSalesTax','renderPeriodInlineNotice','renderElectionDeadlineNotice',
+    'renderTaxScenarioNotice','renderAdvancedMode','renderRegularCreditNotice','renderHighAssetNotice','renderViewMode','renderSummary',
+    'renderHero','renderCurrentRateComparison','renderProjection','renderEligibilityNotice','renderPrintAssumptions','renderSwitchDecision','renderCashflow','renderWorkflow'])context[name]=()=>{};
+  vm.runInContext(['currentProposalPeriodCheck','resetProposalPeriodConfirmation','confirmProposalPeriod','update','bindEvents'].map(source).join('\n'),context);
+  context.resetProposalPeriodConfirmation();context.bindEvents();context.update();
+  return {fields,context,dispatch(type,id){const event={target:element(id)};for(const callback of listeners[type]||[])callback(event);element(id).listeners[type]?.(event);}};
 }
-test('期間確認キャンセルで計算・保存せず、直前の期間とモードへ戻す',()=>{
-  const {fields,context}=periodHarness();let calls=0,question='';context.calculate=()=>{calls++;};context.window.confirm=text=>{question=text;return false;};
-  fields.periodEnd.value='2028-06-30';
-  assert.equal(context.update().sentinel,true);assert.equal(calls,0);assert.equal(fields.periodEnd.value,'2028-12-31');
-  assert.equal(question,'中間納付が自動計算されませんがよろしいですか？');
+test('終了日の年入力中とchangeでは確認せず、終了日blurで初めて判定する',()=>{
+  const {fields,context,dispatch}=periodHarness();let calls=0;context.window.confirm=()=>{calls++;return true;};
+  for(const value of ['','0002-06-30','0020-06-30','0202-06-30','2028-06-30']){
+    fields.periodEnd.value=value;dispatch('input','periodEnd');dispatch('change','periodEnd');
+    assert.equal(calls,0);assert.equal(fields.cashflowInterimStatus.value,'auto');
+    assert.equal(fields.proposalPeriodConfirmationNotice.classList.contains('is-hidden'),true);
+  }
+  dispatch('blur','periodStart');assert.equal(calls,0);
+  assert.equal(context.proposalPeriodLastAccepted.end,'2028-12-31');
+  dispatch('blur','periodEnd');assert.equal(calls,1);assert.equal(fields.cashflowInterimStatus.value,'unknown');
+  assert.equal(fields.proposalPeriodConfirmationNotice.classList.contains('is-hidden'),false);
+});
+test('終了日blurの確認キャンセルで直前の期間・モード・計算・保存へ戻す',()=>{
+  const {fields,context,dispatch}=periodHarness();const before=context.savedState;let question='';context.window.confirm=text=>{question=text;return false;};
+  fields.periodEnd.value='';dispatch('input','periodEnd');
+  fields.periodEnd.value='2028-06-30';dispatch('input','periodEnd');dispatch('change','periodEnd');
+  assert.equal(question,'');dispatch('blur','periodEnd');
+  assert.equal(question,'中間納付額が自動計算されませんが、よろしいですか？');
+  assert.equal(fields.periodEnd.value,'2028-12-31');assert.equal(fields.taxScenarioFood1.checked,true);
+  assert.equal(context.latestCalculation.calc.ctx.end,'2028-12-31');assert.equal(context.savedState,before);
+  assert.equal(fields.cashflowInterimStatus.value,'auto');
+});
+test('現行から食品1％へ切り替えた後の取消はモードを維持し、未承認の日付を採用しない',()=>{
+  for(const editBeforeScenarioChange of [false,true]){
+    const {fields,context,dispatch}=periodHarness();let calls=0;context.window.confirm=()=>{calls++;return false;};
+    fields.taxScenarioCurrent.checked=true;fields.taxScenarioFood1.checked=false;
+    context.resetProposalPeriodConfirmation();context.update();
+    if(editBeforeScenarioChange){
+      fields.periodEnd.value='2028-06-30';dispatch('input','periodEnd');dispatch('change','periodEnd');
+    }
+    fields.taxScenarioFood1.checked=true;fields.taxScenarioCurrent.checked=false;
+    dispatch('change','taxScenarioFood1');
+    assert.equal(calls,0,'scenario change must not open confirmation');
+    assert.equal(context.proposalPeriodLastAccepted.end,'2028-12-31');
+    assert.equal(context.proposalPeriodConfirmedScope,'');
+    for(const end of ['','0002-06-30','0020-06-30','0202-06-30','2028-06-30']){
+      fields.periodEnd.value=end;dispatch('input','periodEnd');dispatch('change','periodEnd');
+      assert.equal(calls,0,'typing the year must not open confirmation');
+    }
+    dispatch('blur','periodEnd');assert.equal(calls,1);
+    assert.equal(fields.periodEnd.value,'2028-12-31');
+    assert.equal(fields.taxScenarioFood1.checked,true);assert.equal(fields.taxScenarioCurrent.checked,false);
+    assert.equal(context.latestCalculation.calc.ctx.scenario,'foodProposal');
+    assert.deepEqual(JSON.parse(context.savedState),{start:'2028-01-01',end:'2028-12-31',scenario:'foodProposal'});
+    assert.equal(fields.cashflowInterimStatus.value,'auto');
+  }
 });
 test('期間確認承認は同じ対象期で一度、変更時は再確認し自動設定済みにしない',()=>{
-  const {fields,context}=periodHarness();let calls=0;context.window.confirm=()=>{calls++;return true;};
-  fields.periodEnd.value='2028-06-30';assert.equal(context.confirmProposalPeriod(),true);assert.equal(fields.cashflowInterimStatus.value,'unknown');
-  context.confirmProposalPeriod();assert.equal(calls,1);fields.periodEnd.value='2028-09-30';context.confirmProposalPeriod();assert.equal(calls,2);
+  const {fields,context,dispatch}=periodHarness();let calls=0;context.window.confirm=()=>{calls++;return true;};
+  fields.periodEnd.value='2028-06-30';dispatch('blur','periodEnd');assert.equal(fields.cashflowInterimStatus.value,'unknown');
+  dispatch('blur','periodEnd');context.update();assert.equal(calls,1);
+  fields.periodEnd.value='2028-09-30';dispatch('input','periodEnd');dispatch('change','periodEnd');assert.equal(calls,1);
+  assert.equal(fields.proposalPeriodConfirmationNotice.classList.contains('is-hidden'),true);
+  dispatch('blur','periodEnd');assert.equal(calls,2);
+});
+test('1年・現行・未完成・不正な期間の終了日blurでは中間納付確認を出さない',()=>{
+  for(const [end,food] of [['2028-12-31',true],['2028-06-30',false],['',true],['2028-02-30',true],['2027-12-31',true]]){
+    const {fields,context,dispatch}=periodHarness();context.window.confirm=()=>{throw new Error('確認対象外');};
+    fields.periodEnd.value=end;fields.taxScenarioFood1.checked=food;fields.taxScenarioCurrent.checked=!food;
+    dispatch('input','periodEnd');dispatch('change','periodEnd');dispatch('blur','periodEnd');
+    assert.equal(fields.cashflowInterimStatus.value,'auto');
+    assert.equal(fields.proposalPeriodConfirmationNotice.classList.contains('is-hidden'),true);
+  }
+});
+test('復元等の基準期間設定は同意を引き継がず、警告を出さずに取消先だけ更新する',()=>{
+  const {fields,context,dispatch}=periodHarness();let calls=0;context.window.confirm=()=>{calls++;return true;};
+  fields.periodEnd.value='2028-06-30';dispatch('blur','periodEnd');assert.equal(calls,1);
+  fields.periodEnd.value='2028-09-30';fields.cashflowInterimStatus.value='auto';context.resetProposalPeriodConfirmation();context.update();
+  assert.equal(calls,1);assert.equal(context.proposalPeriodConfirmedScope,'');
+  assert.equal(context.proposalPeriodLastAccepted.end,'2028-09-30');assert.equal(fields.cashflowInterimStatus.value,'auto');
+  assert.equal(fields.proposalPeriodConfirmationNotice.classList.contains('is-hidden'),true);
+  fields.periodEnd.value='2028-06-30';dispatch('input','periodEnd');context.window.confirm=()=>{calls++;return false;};
+  dispatch('blur','periodEnd');assert.equal(calls,2);assert.equal(fields.periodEnd.value,'2028-09-30');
+});
+test('個人年の自動日付設定で警告を出さず、その年を終了日変更の取消先にする',()=>{
+  const {fields,context,dispatch}=periodHarness();let calls=0;context.window.confirm=()=>{calls++;return false;};
+  fields.individualYear.value='2029';dispatch('change','individualYear');
+  assert.equal(calls,0);assert.equal(fields.periodStart.value,'2029-01-01');assert.equal(fields.periodEnd.value,'2029-12-31');
+  fields.periodEnd.value='2029-06-30';dispatch('input','periodEnd');assert.equal(calls,0);
+  dispatch('blur','periodEnd');assert.equal(calls,1);assert.equal(fields.periodEnd.value,'2029-12-31');
+});
+test('非1年の承認で既存の手入力中間予定は変更しない',()=>{
+  const {fields,context,dispatch}=periodHarness();fields.cashflowInterimStatus.value='scheduled';
+  fields.periodEnd.value='2028-06-30';dispatch('blur','periodEnd');
+  assert.equal(fields.cashflowInterimStatus.value,'scheduled');assert.notEqual(context.proposalPeriodConfirmedScope,'');
 });
 test('輸入の個別金額が安全整数でも合計が範囲外なら未算定',()=>{
   const value=I.aggregate([...components('55',0,0,Number.MAX_SAFE_INTEGER),...components('65',0,0,1)]);
   assert.equal(value.complete,false);assert.match(value.errors.join(' '),/合計.*安全/);
 });
-test('日付入力途中の空欄で直前の有効期間を失わない',()=>{
-  const {fields,context}=periodHarness();
-  fields.periodEnd.value='';context.confirmProposalPeriod();
-  context.window.confirm=()=>false;fields.periodEnd.value='2028-06-30';
-  assert.equal(context.confirmProposalPeriod(),false);assert.equal(fields.periodEnd.value,'2028-12-31');
-});
-
 test('摘要の地方税を国税として二重分類せず、関税は控除対象外、本体は候補にする',()=>{
   for(const [memo,component] of [['輸入消費税','national'],['地方消費税','local'],['輸入関税','duty'],['商品仕入','goods'],['消費税・地方消費税合計','taxTotal']]){
     const value=I.classify({memo});assert.equal(value.component,component);assert.equal(value.assumed,true);
@@ -225,3 +319,4 @@ test('政策の輸入税支払差額を国内取引差額・現金支出へ二�
     assert.match(result.distribution.notes.join(' '),/輸入/);
   }
 });
+

@@ -1910,7 +1910,7 @@ function renderSharedCaseFacts(){
   const prior = sharedCaseFacts.priorActual;
   const priorHtml = prior?.status === 'conflict'
     ? `保存された前期実績が一致しません。使用する実績を選ぶか、期間・税額欄を修正してください。前期実績を使う判定は選択後に再計算します。<div class="button-row">${prior.candidates.map(candidate => `<button type="button" class="btn secondary" data-shared-prior-choice="${escapeHtml(candidate.id)}">${escapeHtml(sharedPriorCandidateLabel(candidate))}を使う</button>`).join('')}</div>`
-    : '前期の実績期間はSTEP1とSTEP4で共用します。期間を変えた場合は、その期の国税額を入力してください。STEP3から計算する代理値は転記しません。';
+    : '前期の実績期間は、届出判定と中間納付で共用します。期間を変えた場合は、その期の国税額を入力してください。STEP3から計算する代理値は転記しません。';
   for(const id of ['electionSharedPriorNotice','cashflowSharedPriorNotice']){
     $(id).innerHTML = priorHtml;
     $(id).classList.toggle('notice',prior?.status === 'conflict');

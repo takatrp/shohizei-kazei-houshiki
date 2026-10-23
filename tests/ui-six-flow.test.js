@@ -302,6 +302,60 @@ test('[U17] 確認リンクは該当画面へ移動して折り畳みを開き�
   assert.equal(h.element('advancedMode').checked,false);
 });
 
+test('食品の未確認リンクは通常比較で求めず、追加費用の検討中だけ表示する',()=>{
+  const h=harness(['conditionInputLinks']);
+  const calc={inputErrors:[],comparisonReady:true,ctx:{comparisonMethods:['regular'],taxScenario:'foodProposal',
+    proposalFoodClassificationState:'unknown',proposalPurchaseClassificationState:'unknown'}};
+  assert.doesNotMatch(h.context.conditionInputLinks(calc),/data-input-target="proposal(?:Food|Purchase)ClassificationState"/);
+  h.context.switchDecisionOpen=true;
+  const links=h.context.conditionInputLinks(calc);
+  assert.match(links,/data-input-target="proposalFoodClassificationState"/);
+  assert.match(links,/data-input-target="proposalPurchaseClassificationState"/);
+  assert.equal(calc.ctx.proposalFoodClassificationState,'unknown');
+  assert.equal(calc.ctx.proposalPurchaseClassificationState,'unknown');
+});
+
+test('旧保存の食品対象なしと正額の矛盾は、追加費用を閉じていても修正欄へ到達できる',()=>{
+  const h=harness([...foodFunctions,'validateProposalClassification','conditionInputLinks','goToInput']);
+  h.element('type2SaleFood1').value='1080000';h.element('purchaseFood1').value='540000';
+  const ctx={comparisonMethods:['regular'],taxScenario:'foodProposal',
+    proposalFoodClassificationState:'none',proposalPurchaseClassificationState:'none'};
+  const errors=h.context.validateProposalClassification(ctx);
+  assert.equal(errors.length,2);
+  const links=h.context.conditionInputLinks({ctx,inputErrors:errors,comparisonReady:false});
+  const details=h.element('additionalCostDisclosure');details.tagName='DETAILS';
+  for(const id of ['proposalFoodClassificationState','proposalPurchaseClassificationState']){
+    assert.ok(links.includes(`data-input-target="${id}"`));
+    const input=h.element(id);input.value='none';input.parentElement=details;
+    details.open=false;h.context.switchDecisionOpen=false;h.context.workflowStep=2;
+    h.context.update=()=>assert.equal(h.context.switchDecisionOpen,true,'再描画前に追加費用を開く状態にする');
+    h.context.goToInput(id);
+    assert.equal(h.context.workflowStep,4);assert.equal(details.open,true);
+    assert.equal(input.focused,true);assert.equal(input.scrolled,true);
+    assert.equal(input.value,'none','確認状態を勝手に変更しない');
+  }
+  assert.equal(h.element('type2SaleFood1').value,'1080000');assert.equal(h.element('purchaseFood1').value,'540000');
+});
+
+test('基準期間欄は使用する方式・既存簡易届出の時だけ表示し、非表示でも既存値を保持する',()=>{
+  const h=navigationHarness(2),hidden=new Map();
+  for(const id of ['baseTaxableSalesField','amountEligibilityFields','specificPeriodField'])
+    h.element(id).classList.toggle=(name,value)=>{if(name==='is-hidden')hidden.set(id,value);};
+  h.element('baseTaxableSales').value='60,000,000';
+  for(const [methods,position,visible] of [
+    [['regular'],'none',false],[['regular'],'unknown',false],
+    [['regular'],'first',true],[['regular'],'second',true],[['regular'],'free',true],
+    [['simplified'],'unknown',true],[['special2'],'none',true],[['special3'],'none',true],
+    [['regular'],'unknown',false]
+  ]){
+    h.calc.ctx.comparisonMethods=methods;h.calc.ctx.simpleElectionStatus=position;h.render();
+    assert.equal(hidden.get('baseTaxableSalesField'),!visible,`${methods}/${position}`);
+    assert.equal(hidden.get('amountEligibilityFields'),!visible,`${methods}/${position}: 空のパネルも隠す`);
+    assert.equal(hidden.get('specificPeriodField'),!methods.some(key=>key==='special2'||key==='special3'));
+    assert.equal(h.element('baseTaxableSales').value,'60,000,000');
+  }
+});
+
 test('[U15-U17] 特定期間は一方が判定済みなら他方の不足リンクを出さない',()=>{
   const h=harness(['conditionInputLinks']);
   const resolved=h.context.conditionInputLinks({inputErrors:[],comparisonReady:true,ctx:{baseSalesEntered:true,specificUnder10m:true,specificInputEntered:true,specificSalesEntered:true,specificTaxableSales:9000000,specificPayrollEntered:false}});
@@ -371,3 +425,4 @@ test('[U13-U26] 通常税額出力は不正な任意費用から独立し、適�
     });
   }
 });
+

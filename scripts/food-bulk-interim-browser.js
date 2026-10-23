@@ -65,8 +65,12 @@ async function run(){
     await page.locator('#addTaxSalesRow').click();
     await page.locator('[data-row-side="sales"][data-row-field="code"]').last().fill('3');
     await page.locator('[data-row-side="sales"][data-row-field="amount"]').last().fill('0');
+    await page.locator('[data-workflow-step="4"]').click();
+    await page.locator('#additionalCostDisclosure > summary').click();
     await page.locator('#proposalFoodClassificationState').selectOption('confirmed');
     await page.locator('#proposalPurchaseClassificationState').selectOption('confirmed');
+    await page.locator('#additionalCostDisclosure > summary').click();
+    await page.locator('[data-workflow-step="2"]').click();
     await page.screenshot({path:path.join(outputDir,'food-default-input-anonymous.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
     const mobileNotice = await page.locator('#foodDefaultAssumptionNotice').boundingBox();
@@ -194,8 +198,12 @@ async function run(){
     await csvPage.locator('#addTaxSalesRow').click();
     await csvPage.locator('[data-row-side="sales"][data-row-field="code"]').last().fill('3');
     await csvPage.locator('[data-row-side="sales"][data-row-field="amount"]').last().fill('0');
+    await csvPage.locator('[data-workflow-step="4"]').click();
+    await csvPage.locator('#additionalCostDisclosure > summary').click();
     await csvPage.locator('#proposalFoodClassificationState').selectOption('confirmed');
     await csvPage.locator('#proposalPurchaseClassificationState').selectOption('confirmed');
+    await csvPage.locator('#additionalCostDisclosure > summary').click();
+    await csvPage.locator('[data-workflow-step="2"]').click();
     await csvPage.locator('#workflowNext').click();
     await csvPage.locator('#workflowNext').click();
     await csvPage.locator('#cashflowDistribution').selectOption('csv');

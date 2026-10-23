@@ -7,6 +7,16 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r35.8',date:'2026-10-24',
+      title:'通常の金額入力から任意の確認欄を整理',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        '食品売上・仕入の資料照合欄をSTEP2から追加費用を含む切替検討へ移動。通常の税額比較では追加の確認操作を不要にする',
+        '基準期間の課税売上高は、比較する方式と既存の簡易課税届出に応じて判定に使う場合だけ表示',
+        '過去に保存した対象なし等の確認状態が金額と矛盾する場合は、必要な確認欄を開く修正導線を維持。未確認を自動で確認済みにはしない'
+      ])
+    }),
+    Object.freeze({
       version:'r35.7',date:'2026-10-24',
       title:'終了日確認のタイミングとSTEP2の入力負担を改善',
       category:'usability',recalcRecommended:true,

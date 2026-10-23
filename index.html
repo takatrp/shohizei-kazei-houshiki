@@ -1863,6 +1863,7 @@ function goToInput(id){
   if(business) visibleBusinessTypes.add(business.key);
   workflowStep = input.closest('#workflowScreen1') ? 1 : input.closest('#workflowScreen2') ? 2 : 4;
   if(input.closest('#advancedFields')) $('advancedMode').checked = true;
+  if(['proposalFoodClassificationState','proposalPurchaseClassificationState'].includes(id)) switchDecisionOpen = true;
   update();
   for(let parent = input.parentElement; parent; parent = parent.parentElement){
     if(parent.tagName === 'DETAILS') parent.open = true;
@@ -1874,7 +1875,9 @@ function conditionInputLinks(calc){
   const links = [];
   const chosen = calc.ctx.comparisonMethods || ['regular','simplified','special2','special3'];
   const wantsSpecial = chosen.includes('special2') || chosen.includes('special3');
-  if((wantsSpecial || chosen.includes('simplified')) && !calc.ctx.baseSalesEntered) links.push(['baseTaxableSales','基準期間の課税売上高を入力・確認']);
+  const baseSalesRelevant = wantsSpecial || chosen.includes('simplified')
+    || (chosen.includes('regular') && ['first','second','free'].includes(calc.ctx.simpleElectionStatus));
+  if(baseSalesRelevant && !calc.ctx.baseSalesEntered) links.push(['baseTaxableSales','基準期間の課税売上高を入力・確認']);
   if(wantsSpecial && !calc.ctx.specificUnder10m){
     if(!calc.ctx.specificSalesEntered) links.push(['specificTaxableSales','特定期間の課税売上高を入力・確認']);
     if(!calc.ctx.specificPayrollEntered) links.push(['specificPayrollAmount','特定期間の給与等支払額を入力・確認']);
@@ -1888,8 +1891,12 @@ function conditionInputLinks(calc){
     if(calc.ctx.regularDetailMethod === 'individual' && !calc.regular?.fullCreditEligible) links.push(['taxableOnlyPurchaseTax','課税売上対応の仕入税額を確認'], ['commonPurchaseTax','共通対応の仕入税額を確認']);
   }
   if(calc.ctx.taxScenario === 'foodProposal'){
-    if(calc.ctx.proposalFoodClassificationState === 'unknown') links.push(['proposalFoodClassificationState','食品売上額を入力・照合']);
-    if(calc.ctx.proposalPurchaseClassificationState === 'unknown') links.push(['proposalPurchaseClassificationState','食品仕入額を入力・照合']);
+    const reviewOpen = typeof switchDecisionOpen !== 'undefined' && switchDecisionOpen;
+    const errors = calc.inputErrors || [];
+    if((reviewOpen && calc.ctx.proposalFoodClassificationState === 'unknown') || errors.some(reason => /^食品売上(?:を「対象なし」|額を照合済み)/.test(reason)))
+      links.push(['proposalFoodClassificationState','食品売上額の確認状況を見直す']);
+    if((reviewOpen && calc.ctx.proposalPurchaseClassificationState === 'unknown') || errors.some(reason => /^食品仕入(?:を「対象なし」|額を照合済み)/.test(reason)))
+      links.push(['proposalPurchaseClassificationState','食品仕入額の確認状況を見直す']);
   }
   if(calc.inputErrors.length){
     document.querySelectorAll('.js-amount').forEach(input => {
@@ -2563,8 +2570,10 @@ function initWorkflow(){
   purchases.querySelector('.grid.two').insertBefore($('purchaseFood1Field'), $('purchase8').closest('.field').nextElementSibling);
   const foodSaleConfirmation = $('proposalFoodClassificationState').closest('.field');
   const foodPurchaseConfirmation = $('proposalPurchaseClassificationState').closest('.field');
-  $('addTaxSalesRow').closest('.tkc-row-actions').after(foodSaleConfirmation);
-  $('purchaseFood1Field').after(foodPurchaseConfirmation);
+  const foodConfirmations = document.createElement('div');
+  foodConfirmations.className = 'grid two';
+  foodConfirmations.append(foodSaleConfirmation, foodPurchaseConfirmation);
+  $('switchDecisionFields').prepend(foodConfirmations);
   [foodSaleConfirmation, foodPurchaseConfirmation].forEach(field => {
     field.classList.add('food-confirmation');
     const note = document.createElement('small');
@@ -2618,6 +2627,10 @@ function renderWorkflow(calc, decision){
   const chosen = calc.ctx.comparisonMethods || ['regular','simplified','special2','special3'];
   const wantsSpecial = chosen.includes('special2') || chosen.includes('special3');
   const wantsSimplified = chosen.includes('simplified');
+  const baseSalesRelevant = wantsSpecial || wantsSimplified
+    || (chosen.includes('regular') && ['first','second','free'].includes(calc.ctx.simpleElectionStatus));
+  $('baseTaxableSalesField').classList.toggle('is-hidden', !baseSalesRelevant);
+  $('amountEligibilityFields').classList.toggle('is-hidden', !baseSalesRelevant && !wantsSpecial);
   $('salesBusinessHint').textContent = wantsSimplified ? '簡易課税の事業区分ごと' : '一般課税・特例では事業区分の入力は任意';
   $('rowEntryGuide').textContent = wantsSimplified
     ? '課税区分 → 事業区分 → 税率 → 税込金額の順に入力します。番号を直接入力できます。'

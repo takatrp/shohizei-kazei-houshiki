@@ -14,6 +14,19 @@ test('BGC01 one comparison method is sufficient; every checkbox is not required'
   assert.equal(validate(snapshot,base,'inputFlow').some(x=>x.key==='comparisonMethods'),false);
 });
 check('BGC02 regular only has no business-type entry',{comparisonMethods:['regular']},'addBusinessType',null);
+test('基準期間の案内は簡易・特例又は既存簡易届出から一般への変更でだけ表示する',()=>{
+  for(const [methods,position,visible] of [
+    [['regular'],'none',false],[['regular'],'unknown',false],
+    [['regular'],'first',true],[['regular'],'second',true],[['regular'],'free',true],
+    [['simplified'],'unknown',true],[['special2'],'none',true],[['special3'],'none',true]
+  ]){
+    const context={...base,comparisonMethods:methods,values:{...base.values,simpleElectionStatus:position,baseTaxableSales:'60000000'}};
+    const field=evaluate(context).fields.baseTaxableSales;
+    assert.equal(field.visible,visible,`${methods}/${position}`);
+    assert.equal(field.badge,visible?'optional':null);
+    assert.equal(context.values.baseTaxableSales,'60000000');
+  }
+});
 test('BGC03 simplified needs business type without blocking regular tax',()=>{
   const context={...base,comparisonMethods:['regular','simplified'],rows:{sales:[{id:'s1',code:'1',rate:'10',amount:'1000'}],purchases:[]}};
   const snapshot=evaluate(context);
@@ -213,3 +226,4 @@ test('CSV現預金実績の確認欄はSTEP4で選択したときだけ必須',(
     values:{...base.values,cashActualMode:'csv'}});
   assert.equal(foodMethod.fields.cashActualFoodEightConfirmed.badge,'required');
 });
+

@@ -2,16 +2,20 @@
   const engine = typeof module === 'object' && module.exports
     ? require('./tax-engine.js')
     : root.ShohizeiTaxEngine;
-  const api = factory(engine);
+  const imports = typeof module === 'object' && module.exports ? require('./import-purchases.js') : root.ShohizeiImportPurchases;
+  const api = factory(engine,imports);
   if(typeof module === 'object' && module.exports) module.exports = api;
   root.ShohizeiTaxEntryRows = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function(engine){
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(engine,imports){
   'use strict';
 
   const BUSINESS_TYPES = Object.freeze(['type1','type2','type3','type4','type5','type6']);
   const RATES = Object.freeze(['10','8']);
   const EXEMPT_RATIOS = Object.freeze(['80','70','50','30','0']);
   const CODE_DETAILS = Object.freeze({
+    '55':Object.freeze({side:'purchases',label:'輸入課税仕入れ（課税売上対応）',usage:'taxableOnly',import:true}),
+    '65':Object.freeze({side:'purchases',label:'輸入課税仕入れ（非課税売上対応）',usage:'nonTaxableOnly',import:true}),
+    '75':Object.freeze({side:'purchases',label:'輸入課税仕入れ（共通対応）',usage:'common',import:true}),
     '1':Object.freeze({ side:'sales', label:'課税売上' }),
     '11':Object.freeze({ side:'sales', label:'売上返還等' }),
     '3':Object.freeze({ side:'sales', label:'非課税売上' }),
@@ -31,7 +35,7 @@
     if(side !== 'sales' && side !== 'purchases') throw new TypeError('side must be sales or purchases');
     return {
       id:'', code:'', businessType:'', rate:'', amount:'', foodAmount:'',
-      creditRatio:'', source:'manual', ...overrides
+      creditRatio:'', importComponent:'', source:'manual', ...overrides
     };
   }
 
@@ -54,7 +58,7 @@
       let reason = '';
       if(!code && !rate && !amountText && !foodText) reason = 'emptyRow';
       else if(!code) reason = 'unconfirmedCode';
-      else if(!detail || detail.side !== side || code === '3') reason = 'nonEligibleCode';
+      else if(!detail || detail.side !== side || code === '3' || detail.import) reason = 'nonEligibleCode';
       else if(!RATES.includes(rate)) reason = 'unconfirmedRate';
       else if(rate !== '8') reason = 'nonReducedRate';
       else {
@@ -132,6 +136,7 @@
           && !String(row.businessType ?? '').trim();
         if(untouched) return; // Empty trailing UI rows are not transactions.
         const detail = CODE_DETAILS[code];
+        if(side === 'purchases' && detail?.import){purchaseEntered=true;return;}
         if(!detail || detail.side !== side){
           addError(side, index, '課税区分を確認してください。');
           return;
@@ -224,6 +229,8 @@
     const invoiceTotalPresence = emptyRatePresence();
     const exemptTotals = Object.fromEntries(EXEMPT_RATIOS.map(ratio => [ratio, emptyRateTotals()]));
     const exemptTotalPresence = Object.fromEntries(EXEMPT_RATIOS.map(ratio => [ratio, emptyRatePresence()]));
+    const imported = imports.aggregate(purchases,{estimateFromBase:options.estimateFromBase});
+    errors.push(...imported.rowErrors,...imported.errors.filter(message=>!imported.rowErrors.some(e=>e.message===message)).map(message=>({side:'purchases',index:-1,message,importOnly:true})));
     const purchaseTaxByUse = {};
     PURCHASE_USAGES.forEach(usage => {
       let rawTax = 0;
@@ -252,7 +259,7 @@
         if(ratio === null) return;
         rawTax += engine.taxFromAmount(gross.value, 1, 'included') * ratio;
       });
-      purchaseTaxByUse[usage] = Math.round(rawTax);
+      purchaseTaxByUse[usage] = Math.round(rawTax + imported.comparisonCreditByUse[usage]);
     });
     RATES.forEach(rate => {
       fields[`purchase${rate}`] = field(invoiceTotals[rate], invoiceTotalPresence[rate]);
@@ -266,11 +273,11 @@
       });
       fields[`exemptPurchase${ratio}_1`] = field(exemptFoodByRatio[ratio], exemptFoodPresence[ratio]);
     });
-    fields.taxableOnlyPurchaseTax = field(purchaseTaxByUse.taxableOnly, purchaseEntered);
-    fields.commonPurchaseTax = field(purchaseTaxByUse.common, purchaseEntered);
+    fields.taxableOnlyPurchaseTax = field(purchaseTaxByUse.taxableOnly, purchaseEntered && imported.complete);
+    fields.commonPurchaseTax = field(purchaseTaxByUse.common, purchaseEntered && imported.complete);
 
     return {
-      fields, salesByType, invoiceByUse, exemptByUse, purchaseTaxByUse,
+      fields, salesByType, invoiceByUse, exemptByUse, purchaseTaxByUse, imported,
       nonTaxableOnlyPurchaseTax:purchaseTaxByUse.nonTaxableOnly,
       unclassifiedSales, unclassifiedSalesTotals, unclassifiedFoodTotal,
       errors, warnings,
@@ -285,11 +292,13 @@
     const purchases = Array.isArray(input.purchases) ? input.purchases : [];
     const actualEntries = Array.isArray(input.actualOnePercentEntries) ? input.actualOnePercentEntries : [];
     const taxScenario = options.taxScenario === 'foodProposal' ? 'foodProposal' : 'current';
+    const imported = imports.aggregate(purchases,{...options,taxScenario});
     const fraction = options.foodForecastMethod === 'uniform' ? Number(options.proposalFraction) : 1;
     const override = options.exemptRatioOverride;
     const useOverride = override !== null && override !== undefined;
-    const errors = aggregateTaxRows({purchases}).errors.map(error => error.message);
+    const errors = aggregateTaxRows({purchases},{estimateFromBase:options.estimateFromBase}).errors.map(error => error.message);
     const calculationErrors = [...errors];
+    errors.push(...imported.errors);calculationErrors.push(...imported.errors);
     const addCalculationError = message => { errors.push(message); calculationErrors.push(message); };
     if(taxScenario === 'foodProposal' && (!Number.isFinite(fraction) || fraction < 0 || fraction > 1)){
       addCalculationError('食品1％対象期間の割合を確認してください。');
@@ -320,6 +329,7 @@
     };
     purchases.forEach(row => {
       const detail = CODE_DETAILS[String(row?.code ?? '').trim()];
+      if(detail?.import) return;
       if(!detail || detail.side !== 'purchases') return;
       const amount = engine.parseAmountInput(row.amount, {allowNegative:true});
       const rate = String(row.rate ?? '').trim();
@@ -391,7 +401,8 @@
       }
       purchaseTaxByUse[entry.usage] += tax * ratio;
     });
-    const totalCreditableTax = invoiceTax + exemptCreditableTax;
+    PURCHASE_USAGES.forEach(usage=>purchaseTaxByUse[usage]+=imported.comparisonCreditByUse[usage]);
+    const totalCreditableTax = invoiceTax + exemptCreditableTax + imported.comparisonCredit;
     const usageTotal = PURCHASE_USAGES.reduce((sum, usage) => sum + purchaseTaxByUse[usage], 0);
     const arithmeticTolerance = 1e-7 + Math.abs(totalCreditableTax) * Number.EPSILON * 16;
     if(!usageUnknown && Math.abs(usageTotal - totalCreditableTax) > arithmeticTolerance){
@@ -399,8 +410,9 @@
     }
     return {
       invoiceTotalAmount, invoiceTax, exemptTotalAmount, exemptTax, exemptCreditableTax,
-      totalAmount:invoiceTotalAmount + exemptTotalAmount,
-      totalTax:invoiceTax + exemptTax,
+      totalAmount:invoiceTotalAmount + exemptTotalAmount + imported.paid,
+      totalTax:invoiceTax + exemptTax + imported.national + imported.local,
+      imported,
       totalCreditableTax, purchaseTaxByUse, usageTotal,
       invoiceByRate, exemptByRate,
       usageUnknown, complete:errors.length === 0, errors, calculationErrors

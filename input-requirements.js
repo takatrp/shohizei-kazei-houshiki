@@ -62,6 +62,8 @@
 
     put('simpleElectionStatus futureElectionPlan currentDiscontinuanceReady',simplified?optional('届出の事実・計画は未確認を保持できます。',{allowUnknown:true}):absent('簡易課税を比較しない場合は対象外です。'));
     put('priorTaxMethod electionFilingStatus priorPeriodStart priorPeriodEnd electionFilingDate electionAsOfDate consumptionTaxExtension confirmedReturnDeadline',simplified?optional('期限判定の補足。空欄なら届出判定は未確認です。',{allowUnknown:true,emptyMeaning:'届出期限判定は未確認'}):absent('簡易課税を比較しない場合は対象外です。'));
+    put('importBulkComponent importEstimateBase',optional('輸入の集計行をまとめて補正する操作と、税額がない場合の概算前提です。'));
+    put('importFoodPercent',food?optional('軽減8％輸入の食品対象割合。概算で100％を初期値とし、必要なら補正します。'):absent('現行税率では食品1％割合を使いません。'));
     put('regularDetailMethod',regular?required([TARGETS.regularTax],'本則の控除方法を指定します。'):absent('本則課税を比較しない場合は対象外です。'));
     put('nonTaxableSales taxableOnlyPurchaseTax commonPurchaseTax',regular?optional('既存の用途別集計が必要な場合に照合します。空欄を自動0円と扱いません。',{emptyMeaning:'用途別金額は未確認'}):absent('本則課税を比較しない場合は対象外です。'));
     put('highAssetState highAssetAmount highAssetType highAssetSelfConstructed baseTaxableSales specificTaxableSales specificPayrollAmount invoiceRegisteredState invoiceTransitionState noSpecialExclusionState simpleNoticeReadyState',optional('適用判定用の事実は未確認を維持します。',{allowUnknown:true,emptyMeaning:'適用判定は未確認'}));

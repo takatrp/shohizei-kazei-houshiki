@@ -229,8 +229,8 @@ test('R02: 区分11の食品内数は分類済み・未分類とも減算し、�
   assert.equal(value(allReturn,'type2SaleFood1'),0);
 });
 
-test('TKC行モデルは8区分と売上返還等11を定義し、空の末尾行を取引にしない', () => {
-  assert.deepEqual(Object.keys(CODE_DETAILS), ['1','3','5','6','7','11','52','62','72']);
+test('TKC行モデルは国内・輸入3区分と売上返還等11を定義し、空の末尾行を取引にしない', () => {
+  assert.deepEqual(Object.keys(CODE_DETAILS), ['1','3','5','6','7','11','52','55','62','65','72','75']);
   const result = aggregateTaxRows({ sales:[createTaxEntryRow('sales')], purchases:[createTaxEntryRow('purchases')] });
   assert.equal(result.ready, true);
   assert.equal(result.fields.type2Sale10.entered, false);

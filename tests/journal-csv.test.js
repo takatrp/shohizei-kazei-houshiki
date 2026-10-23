@@ -410,13 +410,14 @@ test('TKC課税区分、貸借、税率、事業区分、控除割合から必�
   assert.equal(resolved.values.commonPurchaseTax, 8);
 });
 
-test('未対応の輸入課税仕入は集計へ混ぜず注意対象にする', () => {
+test('輸入課税仕入は国内集計へ混ぜず行区分の確認用に保持する', () => {
   const result = analyzeTkcJournalText(buildCsv([
     entry('借方', { account:'輸入仕入', code:'55', reduced:'0', rate:'10', amount:1100 })
   ]));
   assert.deepEqual(result.invoicePurchases, { '10':0, '8':0, '1':0 });
-  assert.equal(result.unsupportedEntries.length, 1);
-  assert.equal(result.unsupportedEntries[0].code, '55');
+  assert.equal(result.unsupportedEntries.length, 0);
+  assert.equal(result.importEntries[0].code, '55');
+  assert.equal(result.importEntries[0].importComponent, '');
 });
 
 test('必須列が不足するCSVは取り込まない', () => {

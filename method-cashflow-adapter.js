@@ -74,7 +74,8 @@
     const sourceCtx = calc?.ctx || null;
     const currentCtx = ctx || sourceCtx || {};
     const reasons = [];
-    const assumptions = [];
+    if(currentCtx.taxScenario==='foodProposal'&&calc?.purchases?.imported?.policyUnknown) reasons.push('輸入税の行区分・金額・概算前提を確認するまで、政策試算の資金繰りは未算定です。');
+    const assumptions = [...(calc?.purchases?.imported?.assumptions || [])];
     const start = currentCtx.start || '';
     const end = currentCtx.end || '';
     if(!validDate(start) || !validDate(end) || start > end){

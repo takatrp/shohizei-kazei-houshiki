@@ -1,8 +1,9 @@
 (function(root, factory){
-  const api = factory();
+  const imports=typeof module==='object'&&module.exports?require('./import-purchases.js'):root.ShohizeiImportPurchases;
+  const api = factory(imports);
   if(typeof module === 'object' && module.exports) module.exports = api;
   root.ShohizeiJournalCsv = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function(){
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(imports){
   'use strict';
 
   const BUSINESS_TYPE_KEYS = Object.freeze(['type1','type2','type3','type4','type5','type6']);
@@ -23,12 +24,11 @@
     '72':'common', '73':'common'
   });
   const IGNORED_TAX_CODES = new Set(['', '0', '8']);
+  const IMPORT_PURCHASE_USAGE = Object.freeze({'55':'taxableOnly','65':'nonTaxableOnly','75':'common'});
   const KNOWN_UNSUPPORTED_CODES = Object.freeze({
     '2':'輸出売上げ', '21':'輸出売上げの対価の返還',
     '25':'非課税品の輸出売上げ', '26':'同輸出売上げの対価の返還',
     '4':'有価証券等の譲渡', '12':'課税売上げの貸倒れ',
-    '55':'輸入課税仕入れ（課税売上対応）', '65':'輸入課税仕入れ（非課税売上対応）',
-    '75':'輸入課税仕入れ（共通対応）',
     '57':'特定課税仕入れ（課税売上対応）', '58':'同対価の返還',
     '67':'特定課税仕入れ（非課税売上対応）', '68':'同対価の返還',
     '77':'特定課税仕入れ（共通対応）', '78':'同対価の返還',
@@ -240,6 +240,8 @@
       entry[`${side}税率`] = validRate ? match[2] : source['税率'];
       entry[`${side}軽減税率か否か`] = validRate ? (match[2] === '10' ? '0' : '1') : '';
       entry[`${side}消費税等`] = source['内、消費税等'];
+      entry[`${side}輸入区分`] = source['輸入区分'] || '';
+      entry[`${side}輸入元税抜額`] = source['税抜き金額'];
       entry[`${side}事業区分`] = source['業'];
       entry[`${side}控除割合`] = String(source['控'] ?? '').normalize('NFKC').trim().replace(/%$/, '');
     }
@@ -291,6 +293,7 @@
   }
 
   function entryCategory(code){
+    if(IMPORT_PURCHASE_USAGE[code]) return 'importPurchase';
     if(TAXABLE_SALES_CODES.has(code)) return 'sales';
     if(NON_TAXABLE_SALES_CODES.has(code)) return 'nonTaxableSales';
     if(INVOICE_PURCHASE_USAGE[code]) return 'invoicePurchase';
@@ -307,6 +310,7 @@
     if(!amount.entered || !amount.valid) problems.push(['amount', '取引金額を読み取れません。']);
     if(!category) problems.push(['category', '課税区分を自動集計できません。']);
     if(category && category !== 'nonTaxableSales' && !rateForEntry(entry, side)) problems.push(['rate', '税率を10％・軽減8％・1％として判定できません。']);
+    if(category === 'importPurchase' && rateForEntry(entry, side) === '1') problems.push(['rate','輸入1％実績は国税・地方税の別途確認が必要です。']);
     if(category === 'exemptPurchase'){
       const ratio = parseNumber(entry[`${side}控除割合`]);
       if(!ratio.entered || !ratio.valid || !EXEMPT_RATIOS.includes(String(ratio.value))) problems.push(['creditRatio', '免税事業者等仕入の控除割合を判定できません。']);
@@ -421,6 +425,7 @@
     let invalidEntries = recoverySummary.unresolvedCount;
     let exemptTransactionCount = 0;
     const actualOnePercentEntries = [];
+    const importEntries = [];
     let start = '';
     let end = '';
     let effectiveStart = '';
@@ -497,6 +502,19 @@
           return;
         }
 
+        if(IMPORT_PURCHASE_USAGE[code]){
+          const component = String(entry[`${side}輸入区分`] || '').trim();
+          const candidate=imports.classify({component,memo:entry['摘要']||entry['元帳摘要（仕入れ資産等の総称）']||'',tax:entry[`${side}消費税等`],net:entry[`${side}輸入元税抜額`],value:entry[`${side}取引金額`]});
+          importEntries.push({id:`csv-import-${entry.__recordNumber || rowIndex+2}-${side}`,code,
+            rate:rateForEntry(entry,side),amount:String(amountState.value * amountDirection('purchase',side)),
+            importComponent:candidate.component,importBasis:candidate.basis,importRule:candidate.reason,importAssumed:candidate.assumed,
+            source:'csv',sourceRow:entry.__recordNumber || rowIndex+2,
+            sourceImportTax:String(entry[`${side}消費税等`] ?? ''),sourceImportNet:String(entry[`${side}輸入元税抜額`] ?? '')});
+          // Import principal/tax components never enter domestic gross buckets
+          // or food-price monthly allocations. The cash journal is independent.
+          mappedEntries += 1;
+          return;
+        }
         const invoiceUsage = INVOICE_PURCHASE_USAGE[code];
         if(invoiceUsage){
           const rate = rateForEntry(entry, side);
@@ -608,6 +626,7 @@
       exemptPurchases,
       exemptTransactionCount,
       actualOnePercentEntries,
+      importEntries,
       nonTaxableSales,
       purchaseTaxByUse,
       purchaseAmountsByUse,

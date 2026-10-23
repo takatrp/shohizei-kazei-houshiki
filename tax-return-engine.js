@@ -1,8 +1,9 @@
 (function(root, factory){
-  const api = factory();
+  const imports = typeof module === 'object' && module.exports ? require('./import-purchases.js') : root.ShohizeiImportPurchases;
+  const api = factory(imports);
   if(typeof module === 'object' && module.exports) module.exports = api;
   root.ShohizeiTaxReturn = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function(){
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(imports){
   'use strict';
 
   const RATES = Object.freeze({ '8':{national:624,total:10800,base:10000}, '10':{national:78,total:1100,base:1000} });
@@ -48,11 +49,12 @@
     }
     const hasOnePercent = Boolean(analysis.returnSales.taxableGross?.['1'] || analysis.returnSales.returnGross?.['1']
       || analysis.invoicePurchases?.['1'] || Object.values(analysis.exemptPurchases || {}).some(group => group?.['1']));
+    const imported=imports.aggregate(analysis.importEntries || [],{estimateFromBase:options.estimateFromBase});
     return {
       taxableSalesGross:analysis.returnSales.taxableGross,
       salesReturnGross:analysis.returnSales.returnGross,
       nonTaxableSales:integer(analysis.nonTaxableSales,'非課税売上'),
-      invoiceByUse, exemptByUse,
+      invoiceByUse, exemptByUse, importNationalByUse:imported.nationalByUse, importErrors:imported.errors,importAssumptions:imported.assumptions,
       unsupportedCodes:[...(analysis.unsupportedEntries || []).map(item => item.code),...(analysis.unhandledReturnCodes || []),...(hasOnePercent ? ['1％'] : [])],
       unresolvedCount:(analysis.problemEntries || []).filter(item => item.status === 'unresolved').length,
       temporaryExcludedCount:(analysis.problemEntries || []).filter(item => item.status === 'temporaryExcluded').length,
@@ -68,6 +70,7 @@
     const invoiceByUse = Object.fromEntries(USAGES.map(usage => [usage,emptyRates()]));
     const exemptByUse = Object.fromEntries(USAGES.map(usage => [usage,{}]));
     const salesByType = {};
+    const imported=imports.aggregate(rows?.purchases || [],{estimateFromBase:options.estimateFromBase});
     let nonTaxableSales = 0;
     let nonTaxableEntered = options.knownNonTaxableZero === true;
     const parseRow = (row,label) => {
@@ -81,6 +84,7 @@
       for(const row of Array.isArray(list) ? list : []){
         if(!row || !String(row.code || '').trim() && !String(row.amount ?? '').trim()) continue;
         const code = String(row.code || '').trim();
+        if(side==='purchases' && imports.USAGE[code]) continue;
         const value = parseRow(row,`課税区分${code || '未選択'}`);
         if(value === null) continue;
         if(side === 'sales' && code === '3'){
@@ -90,6 +94,7 @@
         }
         const rate = String(row.rate || '').trim();
         if(!RATES[rate]){ errors.push(`課税区分${code}の税率を10％または軽減8％で指定してください。`); continue; }
+        if(side==='purchases' && imports.USAGE[code]) continue;
         if(side === 'sales' && (code === '1' || code === '11')){
           if(value < 0){ errors.push('売上返還等は課税区分11へ正の税込金額で入力してください。'); continue; }
           if(code === '1') taxableSalesGross[rate] += value;
@@ -113,11 +118,12 @@
     }
     if(nonTaxableSales < 0) errors.push('非課税売上等の合計がマイナスです。');
     return {input:{taxableSalesGross,salesReturnGross,nonTaxableSales,invoiceByUse,exemptByUse,
-      nonTaxableEntered,salesByType,unsupportedCodes:options.unsupportedCodes || [],
+      nonTaxableEntered,salesByType,importNationalByUse:imported.nationalByUse,importErrors:imported.errors,importAssumptions:imported.assumptions,unsupportedCodes:options.unsupportedCodes || [],
       unresolvedCount:options.unresolvedCount || 0,temporaryExcludedCount:options.temporaryExcludedCount || 0},reasons:errors};
   }
 
   function buildSchedule23(input, method = 'individual'){
+    if(input.importErrors?.length) throw new RangeError(input.importErrors.join(' '));
     if(!['auto','individual','proportional','full'].includes(method)) throw new TypeError('控除方法を確認してください。');
     const taxableTransfer = emptyRates();
     const returnTransfer = emptyRates();
@@ -130,6 +136,7 @@
     const exemptGrossByRatio = {};
     const exemptTaxByRatio = {};
     const purchaseTaxTotal = emptyRates();
+    const importNationalTax = emptyRates();
     const purchaseTaxByUse = Object.fromEntries(USAGES.map(usage => [usage,emptyRates()]));
     const useRoundingDifferences = [];
     for(const rate of Object.keys(RATES)){
@@ -141,6 +148,10 @@
       taxableSalesNet[rate] = taxableTransfer[rate] - returnTransfer[rate];
       returnNationalTax[rate] = nationalFromGross(returned,rate);
       for(const usage of USAGES){
+        const importedNational=amount(input.importNationalByUse?.[usage],rate,`${usage}輸入国税`);
+        if(importedNational<0) throw new RangeError('返品・訂正差引後の輸入国税額がマイナスです。');
+        importNationalTax[rate]+=importedNational;
+        purchaseTaxByUse[usage][rate]+=importedNational;
         const invoice = amount(input.invoiceByUse?.[usage],rate,`${usage}仕入`);
         if(invoice < 0) throw new RangeError('仕入の集計額がマイナスです。元仕訳を確認してください。');
         invoiceGross[rate] += invoice;
@@ -169,7 +180,7 @@
         exemptTaxByRatio[ratio][rate] = exemptNationalFromGross(exemptGrossByRatio[ratio][rate],rate,Number(ratio));
       }
       exemptCreditableTax[rate] = Object.values(exemptTaxByRatio).reduce((sum,group) => sum + group[rate],0);
-      purchaseTaxTotal[rate] = invoiceNationalTax[rate] + exemptCreditableTax[rate];
+      purchaseTaxTotal[rate] = invoiceNationalTax[rate] + exemptCreditableTax[rate] + importNationalTax[rate];
     }
     const taxableSales = sumRates(taxableSalesNet);
     if(taxableSales < 0) throw new RangeError('売上返還等控除後の課税売上がマイナスです。元仕訳を確認してください。');
@@ -209,13 +220,14 @@
       annualizedTaxableSales:periodAssessment.annualizedTaxableSales,
       periodReasons:periodAssessment.reasons,taxableTransfer, returnTransfer, taxableSalesNet, taxableSales,
       nonTaxableSales:input.nonTaxableSales, denominator, ratioRaw, ratioDisplayPercent,
-      invoiceGross, invoiceNationalTax, exemptGross, exemptCreditableTax, exemptGrossByRatio, exemptTaxByRatio, purchaseTaxTotal,
+      invoiceGross, invoiceNationalTax, exemptGross, exemptCreditableTax, exemptGrossByRatio, exemptTaxByRatio, importNationalTax,purchaseTaxTotal,
       purchaseTaxByUse, creditableByRate, creditableTotal:sumRates(creditableByRate), returnNationalTax,
       fields:{'①A':taxableSalesNet['8'],'①B':taxableSalesNet['10'],'①C':taxableSales,'④C':taxableSales,'⑤C':taxableSales,'⑥C':input.nonTaxableSales,
         '⑦C':denominator,'⑧C':ratioDisplayPercent,'⑨A':invoiceGross['8'],'⑨B':invoiceGross['10'],'⑨C':sumRates(invoiceGross),
         '⑩A':invoiceNationalTax['8'],'⑩B':invoiceNationalTax['10'],'⑩C':sumRates(invoiceNationalTax),
         '⑪A':exemptGross['8'],'⑪B':exemptGross['10'],'⑪C':sumRates(exemptGross),
         '⑫A':exemptCreditableTax['8'],'⑫B':exemptCreditableTax['10'],'⑫C':sumRates(exemptCreditableTax),
+        '⑮A':importNationalTax['8'],'⑮B':importNationalTax['10'],'⑮C':sumRates(importNationalTax),
         '⑰A':purchaseTaxTotal['8'],'⑰B':purchaseTaxTotal['10'],'⑰C':sumRates(purchaseTaxTotal),
         '⑲A':purchaseTaxByUse.taxableOnly['8'],'⑲B':purchaseTaxByUse.taxableOnly['10'],'⑲C':sumRates(purchaseTaxByUse.taxableOnly),
         '㉑A':creditableByRate['8'],'㉑B':creditableByRate['10'],'㉑C':sumRates(creditableByRate),
@@ -393,12 +405,12 @@
   }
 
   function calculateCurrentLawReturn(input, method = 'individual', options = {}){
-    const reasons = [];
+    const reasons = [...(input.importErrors || [])];
     if(input.unresolvedCount) reasons.push(`未処理のCSV明細${input.unresolvedCount}件`);
     if(input.temporaryExcludedCount && !options.allowTemporaryExcluded) reasons.push(`仮除外のCSV明細${input.temporaryExcludedCount}件`);
     if(input.unsupportedCodes?.length) reasons.push(`未対応課税区分${[...new Set(input.unsupportedCodes)].join('・')}`);
     if(reasons.length) return {complete:false,exactComplete:false,referenceCalculable:false,reasons};
-    const provisionalReasons = [...new Set([...(options.provisionalReasons || []),
+    const provisionalReasons = [...new Set([...(options.provisionalReasons || []),...(input.importAssumptions || []),
       ...(input.temporaryExcludedCount ? [`仮除外のCSV明細${input.temporaryExcludedCount}件。除外部分の税額影響は未算定`] : [])])];
     const exactComplete = provisionalReasons.length === 0;
     const schedule23 = buildSchedule23(input,method);

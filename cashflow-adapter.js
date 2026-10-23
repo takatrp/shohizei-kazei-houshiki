@@ -209,7 +209,8 @@
     distribution = 'uniform',sourcePeriodStart = '',sourcePeriodEnd = '',sourcePeriodConfirmed = false,
     csvMonthlyDateUnknownCount = 0,transactionBasis = null} = {}){
     const reasons = [];
-    const assumptions = [];
+    if(calc?.purchases?.imported?.policyUnknown) reasons.push('輸入税の行区分・金額・概算前提を確認するまで、輸入税支出を含む政策資金繰りは未算定です。');
+    const assumptions = [...(calc?.purchases?.imported?.assumptions || [])];
     const periodStart = ctx?.start || calc?.ctx?.start || '';
     const periodEnd = ctx?.end || calc?.ctx?.end || '';
     const months = monthsBetween(periodStart,periodEnd);
@@ -273,7 +274,14 @@
       return uniformDistribution(total,months,periodStart,periodEnd);
     };
     const salesDeltas = transactionBasis ? transactionBasis.salesDeltas : allocate('sales',annualSalesDelta);
-    const purchaseDeltas = transactionBasis ? transactionBasis.purchaseDeltas : allocate('purchases',annualPurchaseDelta);
+    const importDelta=roundedYen((calc?.purchases?.imported?.paid||0)-(comparison?.current?.purchases?.imported?.paid||0));
+    let purchaseDeltas=transactionBasis?transactionBasis.purchaseDeltas:allocate('purchases',annualPurchaseDelta===null?null:annualPurchaseDelta-(importDelta||0));
+    if(importDelta){
+      const extra=uniformDistribution(importDelta,months,periodStart,periodEnd);
+      if(extra&&purchaseDeltas){const byMonth=new Map(extra.map(row=>[row.month,row.amount]));purchaseDeltas=purchaseDeltas.map(row=>({...row,amount:row.amount+(byMonth.get(row.month)||0)}));}
+      else purchaseDeltas=null;
+      distributionNotes.push('輸入の国税・地方税の支払差額だけを対象期間へ日数均等配分。輸入本体・関税は固定し、通常の支払遅延設定を使う概算です。現金CSVの輸入支出へ再加算しません。');
+    }
     const used = bySide.sales === bySide.purchases ? bySide.sales : 'mixed';
     if(!salesDeltas || !purchaseDeltas){
       reasons.push(months.some(month => eligibleMonthDays(month,periodStart,periodEnd) > 0)

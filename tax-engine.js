@@ -950,6 +950,16 @@
     return { valid:errors.length === 0, errors };
   }
 
+  function validateFoodProposalPeriod(ctx = {}){
+    const period = validateTaxPeriod(ctx.start,ctx.end);
+    const applicable = ctx.entity === 'corporation' && ctx.taxScenario === 'foodProposal';
+    const outside = applicable && period.valid
+      && (ctx.end < FOOD_PROPOSAL.start || ctx.start > FOOD_PROPOSAL.end);
+    const errors = [...period.errors];
+    if(outside) errors.push('法人の飲食料品1％試算では、比較対象課税期間に2027年4月1日～2029年3月31日を1日以上含めてください。');
+    return {applicable,outside,valid:period.valid && !outside,errors};
+  }
+
   function weightedExemptPurchaseRatio(startInclusive, endInclusive){
     const startDay = isoDateToEpochDay(startInclusive);
     const inclusiveEndDay = isoDateToEpochDay(endInclusive);
@@ -1193,6 +1203,7 @@
     weightedExemptPurchaseRatio,
     periodIncludes,
     validateTaxPeriod,
+    validateFoodProposalPeriod,
     assessFoodSimplifiedDiscontinuance,
     calculateEligibility,
     sanitizeCsvCell,

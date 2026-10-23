@@ -94,6 +94,18 @@
     // must not become ordinary forecast rows or be added to 8% amounts.
     const actualOnePercentEntries = (resolved.actualOnePercentEntries || analysis.actualOnePercentEntries || [])
       .map(({accountName, mappingKey, ...entry}) => ({...entry}));
+    const imports=new Map();
+    for(const entry of analysis.importEntries || []){
+      const key=[entry.code,entry.rate,entry.importComponent||'unknown'].join('-');
+      const current=imports.get(key)||{...entry,id:'csv-import-'+key,amount:'0',sourceCount:0,foodAmount:'',creditRatio:'',businessType:''};
+      current.amount=String(safeAmount(current.amount)+safeAmount(entry.amount));current.sourceCount++;
+      current.importAssumed ||= entry.importAssumed;
+      if(entry.importRule&&!String(current.importRule||'').includes(entry.importRule))current.importRule=[current.importRule,entry.importRule].filter(Boolean).join('／');
+      if(entry.importAssumed)current.importBasis='candidate';
+      if(current.sourceCount>1){current.sourceRow=null;current.sourceImportTax='複数行';current.sourceImportNet='複数行';}
+      imports.set(key,current);
+    }
+    purchases.push(...imports.values());
     return {
       sales,
       purchases,

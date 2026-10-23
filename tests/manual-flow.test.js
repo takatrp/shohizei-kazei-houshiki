@@ -46,6 +46,8 @@ function flowHarness(names){
       return null;
     } },
     parseAmountInput:engine.parseAmountInput,
+    TAX_SCENARIOS:{current:{},foodProposal:{}},
+    validateFoodProposalPeriod:engine.validateFoodProposalPeriod,
     normalizeExemptPurchaseRatio:engine.normalizeExemptPurchaseRatio,
     summarizeActualOnePercentEntries:taxRows.summarizeActualOnePercentEntries,
     engineTaxFromAmount:engine.taxFromAmount,
@@ -79,7 +81,7 @@ function flowHarness(names){
     analyzeTkcJournalText(){ return { errors:[], actualOnePercentEntries:[] }; },
     aggregateReturnInputs(){ return null; }
   });
-  vm.runInContext([...new Set(['normalizeCsvRecovery', 'csvRecoverySummaryText',
+  vm.runInContext([...new Set(['selectedValue','taxScenarioKey','currentProposalPeriodCheck','normalizeCsvRecovery', 'csvRecoverySummaryText',
     'cashflowScopeDigest','cashflowImportScopeKey','currentCashflowConfirmationScope','clearCashflowSourceConfirmation',...names])].map(functionSource).join('\n'), context);
   return { context, element, updates:() => updates };
 }

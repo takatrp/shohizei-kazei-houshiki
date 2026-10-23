@@ -36,6 +36,8 @@
   function taxPeriodLabel(start,end){ return `${start}～${end}`; }
   function plan(input){
     if(!input || typeof input !== 'object') return unavailable('中間納付の計算条件がありません。');
+    if(input.taxScenario === 'foodProposal' && !calendar.isFullYearPeriod(input.currentStart,input.currentEnd))
+      return unavailable('1％試算の課税期間が1年以外のため、中間納付は自動計算しません。予定を手入力して確認してください。');
     if(input.periodShortening === 'yes') return {
       status:'not_applicable',count:0,installments:[],totals:{national:0,local:0,total:0},distinctDueDateCount:0,
       calendarConfidence:'not_needed',calendarVersion:calendar.VERSION,reasons:['課税期間短縮特例の適用により、通常の中間申告予定は生成しません。'],warnings:[],priorMonths:null,lawVersion:LAW_VERSION

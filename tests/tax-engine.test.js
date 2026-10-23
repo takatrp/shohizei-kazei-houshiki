@@ -673,12 +673,16 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r35.3');
+  assert.equal(release.APP_META.version, 'r35.5');
   assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,false);
-  assert.match(release.RELEASE_HISTORY[0].title,/8％対1％比較.*課税方式/);
-  assert.equal(release.RELEASE_HISTORY[1].version,'r35.2');
-  assert.match(release.RELEASE_HISTORY[1].title,/資金増減基準/);
-  const previous = release.RELEASE_HISTORY.slice(2);
+  assert.match(release.RELEASE_HISTORY[0].title,/変更案B.*日常の増減.*納付.*還付/);
+  assert.equal(release.RELEASE_HISTORY[1].version,'r35.4');
+  assert.match(release.RELEASE_HISTORY[1].title,/FX4クラウド.*CSV/);
+  assert.equal(release.RELEASE_HISTORY[2].version,'r35.3');
+  assert.match(release.RELEASE_HISTORY[2].title,/8％対1％比較.*課税方式/);
+  assert.equal(release.RELEASE_HISTORY[3].version,'r35.2');
+  assert.match(release.RELEASE_HISTORY[3].title,/資金増減基準/);
+  const previous = release.RELEASE_HISTORY.slice(4);
   assert.equal(previous[0].version,'r35.1');
   assert.equal(previous[0].recalcRecommended,false);
   assert.equal(previous[1].version,'r35');

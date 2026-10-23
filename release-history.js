@@ -7,6 +7,16 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r35.9',date:'2026-10-24',
+      title:'前期実績とCSV元資料の共用',
+      category:'usability',recalcRecommended:true,
+      changes:Object.freeze([
+        '届出判定と中間納付で前期の実績期間を共用。前期国税額・CSV元資料情報を比較モードの切替で上書きせず、STEP3の代理値とは分離して保持',
+        '同じ元CSVの正式期間・全月網羅を月別配分と現預金実績で再利用。元資料の差替え・期間修正では確認を解除し、税区分の再集計だけでは正式期間を失わない',
+        '旧保存の異なる前期実績・元資料期間は候補を保持し、必要な箇所で選択して解消。未分類売上や負額調整も食品対象なしとの矛盾判定に含める'
+      ])
+    }),
+    Object.freeze({
       version:'r35.8',date:'2026-10-24',
       title:'通常の金額入力から任意の確認欄を整理',
       category:'usability',recalcRecommended:false,

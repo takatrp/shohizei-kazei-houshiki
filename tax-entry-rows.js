@@ -63,6 +63,42 @@
     return {rows:nextRows,changedCount};
   }
 
+  // Read classification evidence from individual inputs, before business-type
+  // grouping or signed adjustments can hide a food target in a zero net total.
+  // `available` only enables a user's review; it never confirms classification.
+  // Ordinary rows support 8% food subsets. Actual 1% records stay in the CSV
+  // sidecar; their dates and original transaction rates are validated elsewhere.
+  function foodTargetEvidence(rows, side, {actualOnePercentEntries = []} = {}){
+    if(!Array.isArray(rows)) throw new TypeError('rows must be an array');
+    if(side !== 'sales' && side !== 'purchases') throw new TypeError('side must be sales or purchases');
+    const states = [];
+    rows.forEach((row, index) => {
+      const code = String(row?.code ?? '').trim();
+      const rate = String(row?.rate ?? '').trim();
+      const detail = CODE_DETAILS[code];
+      if(!detail || detail.side !== side || detail.import || code === '3' || rate !== '8') return;
+      const amount = engine.parseAmountInput(row.amount, {allowNegative:true});
+      const target = engine.parseAmountInput(row.foodAmount, {allowNegative:true});
+      const valid = amount.valid && target.valid && (!target.entered || amount.entered
+        && Math.abs(target.value) <= Math.abs(amount.value) + 1e-8
+        && (target.value === 0 || Math.sign(target.value) === Math.sign(amount.value)));
+      states.push({index,code,rate,amount,target,valid});
+    });
+    const actualEntries = (Array.isArray(actualOnePercentEntries) ? actualOnePercentEntries : [])
+      .filter(entry => side === 'sales' ? entry?.kind === 'sale'
+        : entry?.kind === 'invoicePurchase' || entry?.kind === 'exemptPurchase');
+    const actualAmounts = actualEntries.map(entry => engine.parseAmountInput(entry.amount, {allowNegative:true}));
+    const valid = states.every(state => state.valid)
+      && actualAmounts.every(amount => amount.valid && amount.entered);
+    const targetEntered = states.some(state => state.target.entered) || actualAmounts.some(amount => amount.entered);
+    const targetPresent = states.some(state => state.valid && state.target.entered && state.target.value !== 0)
+      || actualAmounts.some(amount => amount.valid && amount.entered && amount.value !== 0);
+    return {
+      targetPresent,targetEntered,valid,available:valid && targetEntered,
+      states,actualEntries,actualEntryCount:actualEntries.length
+    };
+  }
+
   // One-shot input aid for the food 1% scenario. The row amount is already
   // gross, so do not convert its tax rate, apply a credit ratio, or reverse
   // TKC 11 here. The ordinary aggregation path owns the TKC 11 sign.
@@ -474,7 +510,7 @@
 
   return Object.freeze({
     BUSINESS_TYPES, RATES, EXEMPT_RATIOS, CODE_DETAILS,
-    createTaxEntryRow, applyFoodAmountDefaults, bulkFillFoodAmount, aggregateTaxRows, aggregateScenarioPurchases,
+    createTaxEntryRow, applyFoodAmountDefaults, foodTargetEvidence, bulkFillFoodAmount, aggregateTaxRows, aggregateScenarioPurchases,
     summarizeActualOnePercentEntries
   });
 });

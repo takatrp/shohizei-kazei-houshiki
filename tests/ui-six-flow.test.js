@@ -28,6 +28,7 @@ function harness(names){
   };
   const context = vm.createContext({
     $:element, parseAmountInput:engine.parseAmountInput,
+    ShohizeiTaxEntryRows:require('../tax-entry-rows.js'),
     BUSINESS_TYPES:[{key:'type2'}], EXEMPT_PURCHASE_BUCKETS:[{key:'80'}],
     importedActualOnePercent:null, importedCsvRecovery:null, appliedJournalImport:null, foodConfirmationSignatures:{},
     workflowStep:1, switchDecisionOpen:false, visibleBusinessTypes:new Set(),
@@ -51,6 +52,36 @@ function harness(names){
   return {context,element};
 }
 const foodFunctions = ['amountState','exemptPurchaseInputId','foodConfirmationEvidence','normalizeFoodConfirmations'];
+
+test('[共通食品根拠] 未分類売上と負額調整も対象なしとの矛盾を実バリデータへ渡す', () => {
+  const h = harness([...foodFunctions,'validateProposalClassification']);
+  h.context.entryMode = 'rows';
+  h.context.taxEntryRows = {sales:[],purchases:[]};
+  const ctx = {taxScenario:'foodProposal',proposalFoodClassificationState:'none',proposalPurchaseClassificationState:'none'};
+  for(const amount of ['108,000','-108,000']){
+    h.context.taxEntryRows.sales = [{code:'1',rate:'8',businessType:'',amount,foodAmount:amount}];
+    h.context.taxEntryRows.purchases = [{code:'52',rate:'8',creditRatio:'',amount,foodAmount:amount}];
+    const errors = h.context.validateProposalClassification(ctx);
+    assert.ok(errors.some(error => /食品売上.*対象なし.*矛盾/.test(error)));
+    assert.ok(errors.some(error => /食品仕入.*対象なし.*矛盾/.test(error)));
+  }
+  h.context.taxEntryRows.sales[0].foodAmount = '0';
+  h.context.taxEntryRows.purchases[0].foodAmount = '0';
+  assert.equal(h.context.validateProposalClassification(ctx).length,0);
+});
+
+test('[共通食品根拠] 未分類行の食品額を編集すると照合済みだけを解除する', () => {
+  const h = harness(foodFunctions);
+  h.context.entryMode = 'rows';
+  h.context.taxEntryRows = {sales:[{code:'1',rate:'8',businessType:'',amount:'108,000',foodAmount:'54,000'}],purchases:[]};
+  h.element('proposalFoodClassificationState').value = 'confirmed';
+  h.element('proposalPurchaseClassificationState').value = 'none';
+  h.context.normalizeFoodConfirmations();
+  h.context.taxEntryRows.sales[0].foodAmount = '108,000';
+  h.context.normalizeFoodConfirmations();
+  assert.equal(h.element('proposalFoodClassificationState').value,'unknown');
+  assert.equal(h.element('proposalPurchaseClassificationState').value,'none');
+});
 
 function navigationHarness(step){
   const h = harness(['renderWorkflow']);

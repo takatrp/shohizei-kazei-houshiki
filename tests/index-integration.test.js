@@ -76,6 +76,7 @@ function harness(csv){
     summarizeActualOnePercentEntries:taxRows.summarizeActualOnePercentEntries,
     weightedExemptPurchaseRatio:engine.weightedExemptPurchaseRatio,
     ShohizeiTaxEngine:engine,
+    ShohizeiTaxEntryRows:taxRows,
     ShohizeiInputDiagnostics:inputDiagnostics,
     inputRequirementContext(calc){ return {values:{...Object.fromEntries([...elements].map(([id,input])=>[id,input.value])),...calc.ctx},comparisonMethods:calc.ctx?.comparisonMethods || calc.methods.map(item=>item.key),taxScenario:calc.ctx?.taxScenario,entryMode:context.entryMode || 'legacy',rows:context.taxEntryRows}; },
     ShohizeiElectionDeadline:electionDeadline,

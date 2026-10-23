@@ -7,6 +7,26 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r35.5',date:'2026-10-23',
+      title:'変更案Bの日常の増減・納付・還付の数値を強調',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        'STEP4の変更案B「日常の増減」「納付」「還付」の3行の数値を拡大・太字で統一',
+        '納付・還付・負数の色分けを保ち、強調した数字に合わせて月列幅と印刷表示を調整',
+        '表示する金額・税額・計算式は変更せず、FX4クラウドCSV対応の更新履歴も反映'
+      ])
+    }),
+    Object.freeze({
+      version:'r35.4',date:'2026-10-23',
+      title:'FX4クラウド仕訳帳CSVの共通列形式に対応',
+      category:'calculation',recalcRecommended:false,
+      changes:Object.freeze([
+        '共通の課税区分・取引金額・税率・控除割合を既存の貸借別形式へ正規化し、従来CSVとの互換性を維持',
+        '税込金額を一度だけ集計し、返還・負数・8桁の取引年月日を現預金集計にも引き継ぐ',
+        '未対応区分や事業区分・返還の確認を残し、未知区分・合計行・列構造不良は明示エラーにする'
+      ])
+    }),
+    Object.freeze({
       version:'r35.3',date:'2026-09-27',
       title:'STEP4の8％対1％比較を固定し、表示する課税方式を切替',
       category:'usability',recalcRecommended:false,

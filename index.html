@@ -2693,6 +2693,7 @@ function renderWorkflow(calc, decision){
   $('workflowNext').textContent = workflowStep === 1 ? '金額を手入力して進む' : workflowStep === 2 ? '税額を計算する' : workflowStep === 4 ? '納付・還付の時期まで比較する' : '税額の比較へ戻る';
   $('workflowNext').disabled = Boolean(periodBlocked);
   $('openJournalImportBtn').disabled = Boolean(periodBlocked);
+  for(const id of ['copySummaryBtn','downloadCsvBtn','printBtn','printComparisonBtn']) $(id).disabled = Boolean(periodBlocked);
   $('salesInputGuide').textContent = pendingJournalImport?.applied
     ? 'CSVから取り込んだ金額を確認してください。必要な箇所は修正できます。明示1％実績は元行を保持し、必要な確認事項は結果に残ります。'
     : 'お手元の資料を見ながら、金額を入力してください。';

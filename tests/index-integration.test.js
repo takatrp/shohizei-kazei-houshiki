@@ -23,6 +23,7 @@ function functionSource(name){
   return html.slice(start, end < 0 ? undefined : end);
 }
 const names = [
+  'currentProposalPeriodCheck',
   'cashflowScopeDigest', 'cashflowImportScopeKey', 'currentCashflowConfirmationScope', 'clearCashflowSourceConfirmation',
   'normalizeCsvRecovery', 'csvRecoverySummaryText', 'renderJournalRecovery', 'journalRowHasInput', 'journalManualRows', 'journalImportHasExistingInput',
   'journalImportTotals', 'currentJournalImportTotals', 'journalImportTotalsText', 'updateJournalRecovery', 'excludeUnresolvedJournalEntries', 'openAppliedJournalRecovery',
@@ -85,6 +86,7 @@ function harness(csv){
     assessCsvOnePercentEntry:engine.assessCsvOnePercentEntry,
     assessCurrentMethodChoice:engine.assessCurrentMethodChoice,
     validateTaxPeriod:engine.validateTaxPeriod,
+    validateFoodProposalPeriod:engine.validateFoodProposalPeriod,
     FOOD_PROPOSAL:engine.FOOD_PROPOSAL,
     sanitizeCsvCell:engine.sanitizeCsvCell,
     calculateQuotedCost:switchDecision.calculateQuotedCost,

@@ -46,6 +46,9 @@ function harness(text){
   const types = ['type1','type2','type3','type4','type5','type6'].map(key => ({key}));
   const context = vm.createContext({
     $:element,
+    document:{querySelector(){return null;}},
+    TAX_SCENARIOS:{current:{},foodProposal:{}},
+    validateFoodProposalPeriod:engine.validateFoodProposalPeriod,
     parseAmountInput:engine.parseAmountInput,
     resolveImportValues:journal.resolveImportValues,
     prepareEstimatedImport:journal.prepareEstimatedImport,
@@ -71,7 +74,7 @@ function harness(text){
     currentJournalImportTotals:() => ({totals:{sales:0,nonTaxableSales:0,invoicePurchases:0,exemptPurchases:0},invalid:false}),
     renderJournalImport(){}, update(){}
   });
-  vm.runInContext(['formatInput','normalizeCsvRecovery','csvRecoverySummaryText',
+  vm.runInContext(['selectedValue','taxScenarioKey','currentProposalPeriodCheck','formatInput','normalizeCsvRecovery','csvRecoverySummaryText',
     'cashflowScopeDigest','cashflowImportScopeKey','currentCashflowConfirmationScope','clearCashflowSourceConfirmation','journalRowHasInput',
     'journalManualRows','journalImportHasExistingInput','journalImportTotals','journalImportTotalsText',
     'setImportedAmount','applyJournalImport'].map(source).join('\n'),context);

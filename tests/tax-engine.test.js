@@ -675,7 +675,9 @@ test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
   assert.equal(release.APP_META.version, 'r35.6');
   assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
-  assert.match(release.RELEASE_HISTORY[0].title,/輸入55.*65.*75.*1年/);
+  assert.match(release.RELEASE_HISTORY[0].title,/輸入55.*65.*75.*法人1％.*期間/);
+  assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/1年以外/);
+  assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/両端の1日/);
   assert.equal(release.RELEASE_HISTORY[1].version,'r35.5');
   assert.match(release.RELEASE_HISTORY[1].title,/変更案B.*日常の増減.*納付.*還付/);
   assert.equal(release.RELEASE_HISTORY[2].version,'r35.4');

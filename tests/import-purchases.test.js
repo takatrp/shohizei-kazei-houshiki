@@ -148,8 +148,9 @@ function source(name){const start=html.indexOf('function '+name+'(');const end=h
 function periodHarness(){
   const fields={periodStart:{value:'2028-01-01'},periodEnd:{value:'2028-12-31'},taxScenarioFood1:{checked:true},taxScenarioCurrent:{checked:false},cashflowInterimStatus:{value:'auto'},proposalPeriodConfirmationNotice:{classList:{toggle(){}}}};
   const context=vm.createContext({$:id=>fields[id],ShohizeiTaxCalendar:calendar,validateTaxPeriod:require('../tax-engine.js').validateTaxPeriod,
+    validateFoodProposalPeriod:require('../tax-engine.js').validateFoodProposalPeriod,selectedValue:()=> 'corporation',workflowStep:1,
     taxScenarioKey:()=>fields.taxScenarioFood1.checked?'foodProposal':'current',window:{confirm:()=>true},proposalPeriodLastAccepted:null,proposalPeriodConfirmedScope:'',latestCalculation:{calc:{sentinel:true}}});
-  vm.runInContext(source('confirmProposalPeriod')+'\n'+source('update'),context);
+  vm.runInContext(source('currentProposalPeriodCheck')+'\n'+source('confirmProposalPeriod')+'\n'+source('update'),context);
   context.confirmProposalPeriod();return {fields,context};
 }
 test('期間確認キャンセルで計算・保存せず、直前の期間とモードへ戻す',()=>{

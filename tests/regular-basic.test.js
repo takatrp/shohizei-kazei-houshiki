@@ -23,6 +23,7 @@ function harness(){
     importedCsvRecovery:null,
     importedCsvOrigin:null,
     validateTaxPeriod:engine.validateTaxPeriod,
+    validateFoodProposalPeriod:engine.validateFoodProposalPeriod,
     assessCurrentMethodChoice:engine.assessCurrentMethodChoice,
     creditModeLabel:() => '旧概算率'
   });

@@ -50,6 +50,16 @@
     const next = shiftMonths(start, months);
     return next ? shiftDays(next, -1) : null;
   }
+  function annualPeriodEnd(start){
+    const date=parseDate(start);
+    if(!date) return null;
+    // Calendar anniversary, exclusive. Feb 29 rolls to Mar 1 in a common
+    // year, so an inclusive one-year period ends on Feb 28, not Feb 27.
+    return shiftDays(formatDate(utcDate(date.getUTCFullYear()+1,date.getUTCMonth()+1,date.getUTCDate())),-1);
+  }
+  function isFullYearPeriod(start,end){
+    return Boolean(parseDate(end))&&annualPeriodEnd(start)===end;
+  }
   function priorMonths(start, end){
     const first = parseDate(start), last = parseDate(end);
     if(!first || !last || first > last) return null;
@@ -128,5 +138,5 @@
     }
     return {status:'unavailable',adjustedDueDate:null,adjustmentReasons:['休日繰延べを確定できません。'],confidence:'unknown',calendarVersion:VERSION};
   }
-  return {VERSION,parseDate,shiftDays,shiftMonths,periodEnd,priorMonths,deadlineAfterPeriod,deadlineFromStart,holidayInfo,adjustDueDate};
+  return {VERSION,parseDate,shiftDays,shiftMonths,periodEnd,annualPeriodEnd,isFullYearPeriod,priorMonths,deadlineAfterPeriod,deadlineFromStart,holidayInfo,adjustDueDate};
 });

@@ -68,7 +68,10 @@
         debitAmount:debitAmount.valid ? debitAmount.value : null,
         creditAmount:creditAmount.valid ? creditAmount.value : null};
       if(OPENING.test(`${debitAccount} ${creditAccount} ${memo}`)) openingCandidates.push({...candidate,label:`${candidate.month || '日付不明'} 開始残高等の候補`});
-      else if(TAX.test(`${debitAccount} ${creditAccount} ${memo}`)) taxCandidates.push({...candidate,label:`${candidate.month || '日付不明'} 消費税納付・還付の候補`});
+      // Import tax is an operating payment already present in gross cash.
+      // It is not the annual return's settlement to exclude and add again.
+      else if(!['借方課税区分','貸方課税区分'].some(key=>['55','65','75'].includes(String(source[key]||'').trim()))
+        && TAX.test(`${debitAccount} ${creditAccount} ${memo}`)) taxCandidates.push({...candidate,label:`${candidate.month || '日付不明'} 消費税納付・還付の候補`});
     }
     const accountNames = [...accounts].sort((a,b) => a.localeCompare(b,'ja'));
     return {fileKey:key, rowCount:rows.length, rows, accounts:accountNames,explicitOnePercentCount,

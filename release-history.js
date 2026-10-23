@@ -7,6 +7,17 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r35.6',date:'2026-10-23',
+      title:'輸入55・65・75の国税控除と1年以外の1％試算確認',
+      category:'calculation',recalcRecommended:true,
+      changes:Object.freeze([
+        '輸入55・65・75を摘要等から本体・関税・国税・地方税の候補へ分類し、集約行でまとめて確認・補正',
+        '輸入税の実額を優先し、国地方合計の比率分割・課税価格代理・1％側の固定価格概算は前提付き参考値として算定。簡易課税等への追加控除なし',
+        '1年以外の1％試算は実行前に確認し、キャンセル時は実行しない。承認後も自動中間納付は未算定',
+        '輸入時の支出を資金CSVに一度だけ残し、申告税額の納付・還付として除外・再加算しない'
+      ])
+    }),
+    Object.freeze({
       version:'r35.5',date:'2026-10-23',
       title:'変更案Bの日常の増減・納付・還付の数値を強調',
       category:'usability',recalcRecommended:false,

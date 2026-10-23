@@ -246,6 +246,8 @@
   .period-inline-notice{margin-top:8px;font-weight:800}
   .major-warning{border-width:2px;font-size:13px;font-weight:800}
   .major-warning strong{display:block;color:#5f3402;font-size:14px;margin-bottom:4px}
+  .proposal-period-block{border:3px solid #b91c1c!important;background:#fff1f2!important;font-size:16px;line-height:1.7;padding:16px;margin:12px 0}
+  .proposal-period-block strong{display:block;font-size:clamp(20px,3vw,26px);line-height:1.4;margin-bottom:8px}
   .inline-warning{margin-top:6px;font-weight:800}
   .is-hidden{display:none!important}
   .notice ul{margin:6px 0 0 18px;padding:0}
@@ -734,6 +736,8 @@
           <div class="mini">今回の比較対象を選びます。現在の申告方式や制度上の適用可否は変更しません。一般課税だけなら簡易課税の事業区分・届出は比較に使いません。</div>
         </div>
         <div class="notice warn period-inline-notice" id="periodInlineNotice" style="display:none"></div>
+        <p class="notice warn is-hidden" id="proposalPeriodConfirmationNotice">課税期間が1年以外のため、中間納付は自動計算しません。中間納付予定は手入力で確認してください。</p>
+        <div class="notice bad proposal-period-block is-hidden" id="proposalPeriodBlockedNotice" role="alert" aria-live="assertive"><strong id="proposalPeriodBlockedTitle"></strong><span id="proposalPeriodBlockedReason"></span><p>このツールの政策試算対象期間です。改正案・法案成立前の試算として扱います。日付を修正するか、現行税率へ切り替えてください。</p></div>
 
         <h3 id="amountModeHeading">入力金額</h3>
         <div class="segmented" id="amountModeChoices">
@@ -1087,11 +1091,19 @@
           <span class="mini">仕入税額控除の概算</span>
         </div>
         <div class="row-entry-only" id="rowPurchaseInput">
-          <p class="tkc-code-guide">5・6・7、52・62・72を入力できます。免税事業者等仕入は取引時期の控除割合を選び、時期をまたぐ場合は行を分けてください。</p>
-          <datalist id="taxPurchaseCodeList"><option value="5　課税仕入れ（課税売上対応）"></option><option value="6　課税仕入れ（非課税売上対応）"></option><option value="7　課税仕入れ（共通対応）"></option><option value="52　免税事業者等（課税売上対応）"></option><option value="62　免税事業者等（非課税売上対応）"></option><option value="72　免税事業者等（共通対応）"></option></datalist>
+          <p class="tkc-code-guide">5・6・7、52・62・72、輸入55・65・75に対応します。輸入は摘要の国税・地方税・関税・本体から分類候補を作り、用途・税率・税種で集約します。候補と概算前提を確認し、必要な集計行だけ補正してください。関税を消費税控除へ加えません。</p>
+          <div id="importTools" class="notice warn" hidden>
+            <strong>輸入の分類候補・概算前提</strong><p id="importClassificationSummary"></p>
+            <label for="importBulkComponent">未分類の集計行をまとめて補正</label><select id="importBulkComponent"><option value="">行区分を選択</option><option value="goods">本体</option><option value="duty">関税</option><option value="national">国税</option><option value="local">地方税</option><option value="taxTotal">国地方税合計（78％・22％で概算分割）</option></select>
+            <button type="button" id="importBulkApply" class="btn secondary">未分類に一括適用</button><span id="importBulkStatus" role="status"></span>
+            <div class="field"><label for="importFoodPercent">輸入軽減8％の食品対象割合（概算・％）</label><input id="importFoodPercent" type="number" min="0" max="100" value="100"><small>1％側は対象分の国税・地方税を8分の1とする概算。本体・関税・数量・課税価格を固定し、税関の端数や為替変動は再現しません。</small></div>
+            <label><input id="importEstimateBase" type="checkbox" checked> 税額がない場合、本体＋関税を課税価格の代理として概算する</label>
+            <p id="importEstimateNotes"></p>
+          </div>
+          <datalist id="taxPurchaseCodeList"><option value="5　課税仕入れ（課税売上対応）"></option><option value="6　課税仕入れ（非課税売上対応）"></option><option value="7　課税仕入れ（共通対応）"></option><option value="52　免税事業者等（課税売上対応）"></option><option value="62　免税事業者等（非課税売上対応）"></option><option value="72　免税事業者等（共通対応）"></option><option value="55　輸入課税仕入れ（課税売上対応）"></option><option value="65　輸入課税仕入れ（非課税売上対応）"></option><option value="75　輸入課税仕入れ（共通対応）"></option></datalist>
           <div class="bulk-food-tools is-hidden" id="bulkFoodPurchasesTools"><button type="button" class="btn secondary" id="bulkFoodPurchases">全て食品1％対象とする</button><span class="mini">軽減8％と確認できる仕入行の税込額を、食品対象額へ転記します。食品以外は転記後に修正してください。</span></div>
           <div class="table-wrap"><table class="tkc-row-table" aria-label="TKC課税区分別の仕入行入力">
-            <thead><tr><th>課税区分</th><th>税率</th><th>税込金額</th><th data-row-column="foodAmount">うち食品1％対象</th><th>控除割合等</th><th>入力元・操作</th></tr></thead>
+            <thead><tr><th>課税区分</th><th>税率</th><th>金額（国内は税込）</th><th data-row-column="importComponent">輸入の行区分</th><th data-row-column="foodAmount">うち食品1％対象</th><th>控除割合等</th><th>入力元・操作</th></tr></thead>
             <tbody id="taxPurchaseRowBody"></tbody>
           </table></div>
           <div class="tkc-row-actions"><button type="button" class="btn secondary" id="addTaxPurchaseRow">＋ 仕入行を追加</button><span class="mini" id="purchaseRowStatus"></span></div>
@@ -1399,6 +1411,7 @@
 <script src="tax-calendar.js"></script>
 <script src="election-deadline.js"></script>
 <script src="tax-engine.js"></script>
+<script src="import-purchases.js"></script>
 <script src="tax-return-engine.js"></script>
 <script src="switch-decision.js"></script>
 <script src="journal-csv.js"></script>
@@ -1442,6 +1455,7 @@ const {
   calculateEligibility,
   assessCurrentMethodChoice,
   validateTaxPeriod,
+  validateFoodProposalPeriod,
   sanitizeCsvCell,
   serializeStateIfEnabled
 } = ShohizeiTaxEngine;
@@ -1517,6 +1531,8 @@ let cashflowConfirmedScope = '';
 let importedReturnEvidence = null;
 let appliedJournalImport = null;
 let latestCalculation = null;
+let proposalPeriodLastAccepted = null;
+let proposalPeriodConfirmedScope = '';
 let latestCashflow = null;
 let cashActualAnalysis = null;
 let cashActualSavedSnapshot = null;
@@ -2135,7 +2151,7 @@ function refreshTaxRowTableLayout(){
     const table = $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody').closest('table');
     table.dataset.rowLayout = side === 'sales' ? business && food ? 'business-food' : business ? 'business' : food ? 'food' : 'basic' : food ? 'food' : 'basic';
     table.querySelectorAll('[data-row-column]').forEach(cell => {
-      cell.hidden = cell.dataset.rowColumn === 'businessType' ? !business : !food;
+      cell.hidden = cell.dataset.rowColumn === 'businessType' ? !business : cell.dataset.rowColumn === 'importComponent' ? !taxEntryRows.purchases.some(row=>TAX_ROW_CODES[row.code]?.import) : !food;
     });
     table.querySelectorAll('tbody tr').forEach(refreshTaxRowControls);
   }
@@ -2157,6 +2173,17 @@ function refreshTaxRowTableLayout(){
   }
 }
 
+function renderImportTools(calc){
+  const rows=taxEntryRows.purchases.filter(row=>ShohizeiImportPurchases.USAGE[row.code]);
+  const panel=$('importTools');panel.hidden=!rows.length;if(!rows.length)return;
+  const counts={},sums={};let unknown=0,candidates=0;
+  for(const row of rows){const count=Number(row.sourceCount)||1,key=row.importComponent||'unknown';counts[key]=(counts[key]||0)+count;sums[key]=(sums[key]||0)+Number(String(row.amount||0).replace(/,/g,''));if(key==='unknown')unknown+=count;if(row.importAssumed)candidates+=count;}
+  $('importClassificationSummary').textContent=`元明細${Object.values(counts).reduce((a,b)=>a+b,0)}件を${rows.length}集計行で確認。${Object.entries(counts).map(([key,count])=>`${ShohizeiImportPurchases.COMPONENTS[key]||'未分類'} ${count}件・${Number.isFinite(sums[key])?yen(sums[key]):'金額要確認'}`).join('／')}。摘要等の候補${candidates}件、未分類${unknown}件。`;
+  $('importBulkApply').disabled=!unknown;
+  const imported=calc?.purchases?.imported || ShohizeiImportPurchases.aggregate(rows,{estimateFromBase:$('importEstimateBase').checked});
+  $('importEstimateNotes').textContent=[...imported.errors,...imported.assumptions].join('／');
+}
+
 function renderTaxEntryRows(side){
   const target = $(side === 'sales' ? 'taxSalesRowBody' : 'taxPurchaseRowBody');
   target.innerHTML = taxEntryRows[side].map(row => {
@@ -2173,7 +2200,7 @@ function renderTaxEntryRows(side){
     return `<tr data-tax-row-key="${escapeHtml(row.id)}" data-row-side="${side}">
       <td>${codeInput}<span class="row-code-name" title="${escapeHtml(taxRowCodeName(row.code))}">${escapeHtml(taxRowCodeName(row.code))}</span></td>
       ${side === 'sales' ? `<td data-row-column="businessType">${rowCellInput(row, side, 'businessType', '事業区分番号', 'row-business js-row-field').replace('autocomplete="off"', 'autocomplete="off" inputmode="numeric" list="taxBusinessTypeList"')}</td>` : ''}
-      <td>${rateInput}</td><td>${amountInput}</td><td data-row-column="foodAmount">${foodInput}</td>
+      <td>${rateInput}</td><td>${amountInput}</td>${side==='purchases'?`<td data-row-column="importComponent"><select class="js-row-field" data-row-side="purchases" data-row-key="${escapeHtml(row.id)}" data-row-field="importComponent" aria-label="輸入の行区分"><option value="">未確認</option>${Object.entries(ShohizeiImportPurchases.COMPONENTS).map(([key,label])=>`<option value="${key}"${row.importComponent===key?' selected':''}>${escapeHtml(label)}</option>`).join('')}</select>${row.sourceCount?`<small>元CSV ${row.sourceCount}明細を集約／${escapeHtml(row.importRule||'行区分を確認')}</small>`:''}${row.sourceRow?`<small>CSV ${row.sourceRow}行目／税額欄 ${escapeHtml(row.sourceImportTax===''?'空欄':row.sourceImportTax)}／税抜額 ${escapeHtml(row.sourceImportNet===''?'空欄':row.sourceImportNet)}</small>`:''}</td>`:''}<td data-row-column="foodAmount">${foodInput}</td>
       ${side === 'purchases' ? `<td><select class="js-row-field" data-row-side="${side}" data-row-key="${escapeHtml(row.id)}" data-row-field="creditRatio" aria-label="控除割合・対象時期"><option value="">未確認</option>${EXEMPT_PURCHASE_BUCKETS.map(bucket => `<option value="${bucket.key}"${String(row.creditRatio) === bucket.key ? ' selected' : ''}${taxRowRatioOverlapsPeriod(bucket, purchaseRatioContext(row,$('periodStart').value,$('periodEnd').value).start, purchaseRatioContext(row,$('periodStart').value,$('periodEnd').value).end) ? '' : ' disabled'}>${bucket.key}%｜${escapeHtml(bucket.range)}</option>`).join('')}</select><span class="row-ratio-period">${escapeHtml(taxRowRatioPeriod(row.creditRatio))}</span></td>` : ''}
       <td>${actions}</td></tr>`;
   }).join('');
@@ -2193,7 +2220,11 @@ function refreshTaxRowControls(tr){
   const ratio = tr.querySelector('[data-row-field="creditRatio"]');
    if(business) business.disabled = !showBusinessTypeColumn() || !['1','11'].includes(row.code);
   rate.disabled = row.code === '3';
-  food.disabled = !showFoodAmountColumn() || row.code === '3' || row.rate !== '8';
+  food.disabled = !showFoodAmountColumn() || row.code === '3' || row.rate !== '8' || Boolean(code?.import);
+  const importComponent=tr.querySelector('[data-row-field="importComponent"]');
+  if(importComponent) importComponent.disabled=!code?.import;
+  const amount=tr.querySelector('[data-row-field="amount"]');
+  if(amount) amount.setAttribute('aria-label',code?.import?'輸入の構成要素金額':'税込金額');
   if(ratio){
     const ratioContext = purchaseRatioContext(row,$('periodStart').value,$('periodEnd').value);
     ratio.disabled = !code?.exempt;
@@ -2227,7 +2258,7 @@ function syncTaxEntryRows(){
     purchases:purchaseRowsForScenario('current')
   };
   latestTaxRowAggregate = aggregateTaxRows(activeRows, {
-    amountMode:'included', actualOnePercentEntries:importedActualOnePercent?.entries || []
+    amountMode:'included', actualOnePercentEntries:importedActualOnePercent?.entries || [], estimateFromBase:$('importEstimateBase')?.checked===true
   });
   for(const id of ['nonTaxableSales','purchase10','purchase8']){
     if(rowCsvKnownZeros[id] && !latestTaxRowAggregate.fields[id]?.entered){
@@ -2252,12 +2283,14 @@ function syncTaxEntryRows(){
   $('taxRowErrorSummary').textContent = count ? `入力確認が${count}件あります。該当行をご確認ください。`
     : (typeof selectedComparisonMethods !== 'function' || selectedComparisonMethods().includes('simplified')) && latestTaxRowAggregate.unclassifiedSales.length ? '事業区分未確認の売上があります。簡易課税は区分の確認が必要です。' : '';
   const fields = latestTaxRowAggregate.fields;
-  const show = id => fields[id]?.entered ? yen(fields[id].value) : '未入力';
+  const importIncomplete=latestTaxRowAggregate.imported?.present && !latestTaxRowAggregate.imported.complete;
+  const show = id => importIncomplete && ['taxableOnlyPurchaseTax','commonPurchaseTax'].includes(id) ? '未算定' : fields[id]?.entered ? yen(fields[id].value) : '未入力';
   const csvZeroNote = Object.values(rowCsvKnownZeros).some(Boolean)
     ? 'CSVで0円と判明した合計は保持し、元の課税区分を復元できない0円行は推測して作りません。' : '';
   const actualOneNote = importedActualOnePercent?.entries?.length
     ? 'CSV明示1％実績は通常の8％行と分け、従来の実績情報として計算します。' : '';
-  $('rowAggregateSummary').textContent = `売上：${BUSINESS_TYPES.map(type => `${type.name} 10% ${show(type.key + 'Sale10')}・軽8% ${show(type.key + 'Sale8')}`).join('／')}。非課税売上 ${show('nonTaxableSales')}。仕入：10% ${show('purchase10')}・軽8% ${show('purchase8')}。課税売上対応の仕入税額 ${show('taxableOnlyPurchaseTax')}、非課税売上対応 ${yen(latestTaxRowAggregate.nonTaxableOnlyPurchaseTax)}、共通対応 ${show('commonPurchaseTax')}。${csvZeroNote}${actualOneNote}`;
+  const importNote=latestTaxRowAggregate.imported?.present ? latestTaxRowAggregate.imported.complete ? `輸入国税 ${yen(latestTaxRowAggregate.imported.national)}、地方税 ${yen(latestTaxRowAggregate.imported.local)}${latestTaxRowAggregate.imported.estimated?'（摘要候補・概算を含む）':''}。用途別の合計は概算比較用の国・地方換算額で、輸入時支払税額そのものではありません。` : '輸入の行区分・国税・地方税は未確認のため、本則税額は未算定です。' : '';
+  $('rowAggregateSummary').textContent = `売上：${BUSINESS_TYPES.map(type => `${type.name} 10% ${show(type.key + 'Sale10')}・軽8% ${show(type.key + 'Sale8')}`).join('／')}。非課税売上 ${show('nonTaxableSales')}。仕入：10% ${show('purchase10')}・軽8% ${show('purchase8')}。課税売上対応の仕入税額 ${show('taxableOnlyPurchaseTax')}、非課税売上対応 ${importIncomplete ? '未算定' : yen(latestTaxRowAggregate.nonTaxableOnlyPurchaseTax)}、共通対応 ${show('commonPurchaseTax')}。${csvZeroNote}${actualOneNote}${importNote}`;
 }
 
 function updateAutomaticRowRatios(){
@@ -2291,6 +2324,7 @@ function applyTaxRowEdit(input){
   if(comparable(oldValue) === comparable(nextValue)) return;
   if(choice !== input.value && ['code','businessType','rate'].includes(field)) input.value = choice;
   row[field] = nextValue;
+  if(field==='importComponent'){row.importBasis='manual';row.importAssumed=false;row.importRule='手修正';}
   if(field === 'creditRatio') row.creditRatioSource = 'manual';
   if(field === 'code' && oldValue !== row.code){
     if(row.code === '3'){
@@ -2499,6 +2533,7 @@ function initWorkflow(){
   periodDetails.innerHTML = '<summary>開始日・終了日を個別に指定（法人・特殊期間）</summary><div class="grid two" id="specialPeriodDates" style="margin-top:8px"></div>';
   periodDetails.querySelector('#specialPeriodDates').append($('periodStart').closest('.field'), $('periodEnd').closest('.field'));
   $('individualYearField').after(periodDetails);
+  periodDetails.after($('proposalPeriodBlockedNotice'));
   const expert = document.createElement('details');
   expert.id = 'expertReview';
   expert.className = 'panel expert-section no-print';
@@ -2582,6 +2617,11 @@ function initWorkflow(){
 }
 
 function renderWorkflow(calc, decision){
+  const periodBlocked = calc.proposalPeriodCheck?.applicable && !calc.proposalPeriodCheck.valid;
+  if(periodBlocked) workflowStep = 1;
+  $('proposalPeriodBlockedNotice').classList.toggle('is-hidden',!periodBlocked);
+  $('proposalPeriodBlockedTitle').textContent = calc.proposalPeriodCheck?.outside ? 'シミュレーション対象期間外です' : '課税期間を確認してください';
+  $('proposalPeriodBlockedReason').textContent = periodBlocked ? calc.proposalPeriodCheck.errors.join(' ') : '';
   const chosen = calc.ctx.comparisonMethods || ['regular','simplified','special2','special3'];
   const wantsSpecial = chosen.includes('special2') || chosen.includes('special3');
   const wantsSimplified = chosen.includes('simplified');
@@ -2622,7 +2662,7 @@ function renderWorkflow(calc, decision){
   for(const {id} of WORKFLOW_STEPS.slice(1)){
     const button = document.querySelector(`[data-workflow-step="${id}"]`);
     if(button){
-      button.disabled = false;
+      button.disabled = Boolean(periodBlocked);
     }
   }
   $('workflowScreen3').classList.remove('is-active');
@@ -2651,7 +2691,8 @@ function renderWorkflow(calc, decision){
   $('openJournalImportBtn').setAttribute('aria-expanded', $('journalImportDisclosure').open ? 'true' : 'false');
   $('journalImportPanel').classList.toggle('is-hidden', !$('journalImportDisclosure').open);
   $('workflowNext').textContent = workflowStep === 1 ? '金額を手入力して進む' : workflowStep === 2 ? '税額を計算する' : workflowStep === 4 ? '納付・還付の時期まで比較する' : '税額の比較へ戻る';
-  $('workflowNext').disabled = false;
+  $('workflowNext').disabled = Boolean(periodBlocked);
+  $('openJournalImportBtn').disabled = Boolean(periodBlocked);
   $('salesInputGuide').textContent = pendingJournalImport?.applied
     ? 'CSVから取り込んだ金額を確認してください。必要な箇所は修正できます。明示1％実績は元行を保持し、必要な確認事項は結果に残ります。'
     : 'お手元の資料を見ながら、金額を入力してください。';
@@ -2966,6 +3007,11 @@ function renderJournalImport(){
   ` : '<div class="notice">簡易課税の事業区分はCSVから取得できました。</div>';
 
   const messages = [];
+  if(analysis.importEntries?.length){
+    const counts=Object.fromEntries(Object.keys(ShohizeiImportPurchases.COMPONENTS).map(key=>[key,0]));let unknown=0;
+    for(const entry of analysis.importEntries){if(Object.hasOwn(counts,entry.importComponent))counts[entry.importComponent]++;else unknown++;}
+    messages.push(`<div class="notice warn"><strong>輸入55・65・75が${analysis.importEntries.length}明細あります。</strong>摘要等から分類した候補：${Object.entries(counts).filter(([,count])=>count).map(([key,count])=>`${escapeHtml(ShohizeiImportPurchases.COMPONENTS[key])} ${count}件`).join('／')}。未分類${unknown}件。反映後は税率・用途・税種で集約した行をまとめて確認・補正できます。摘要候補・比率分割・課税価格代理は概算として表示し、簡易課税等へ実額控除は追加しません。</div>`);
+  }
   const openGroups = new Set(Array.from(preview.querySelectorAll?.('[data-recovery-group]') || []).filter(group => group.open).map(group => group.dataset.recoveryGroup));
   messages.push(renderJournalRecovery(analysis, openGroups));
   if(analysis.errors.length){
@@ -3041,6 +3087,8 @@ function setImportedAmount(id, value){
 
 function applyJournalImport(){
   if(!pendingJournalImport) return;
+  const periodCheck = currentProposalPeriodCheck();
+  if(periodCheck.applicable && !periodCheck.valid){ update(); focusInputTarget($('periodStart')); return; }
   if(typeof selectedComparisonMethods === 'function' && !selectedComparisonMethods().length){
     comparisonMethodAttempted = true;
     update();
@@ -3325,6 +3373,8 @@ function getContext(){
     foodSalesPriceBasis:$('foodSalesPriceBasis').value || 'netFixed',
     foodPurchasePriceBasis:$('foodPurchasePriceBasis').value || 'netFixed',
     foodForecastMethod:$('foodForecastMethod').value || 'uniform',
+    importFoodFraction:String($('importFoodPercent')?.value??'100').trim()===''?NaN:Number($('importFoodPercent')?.value??100)/100,
+    importEstimateBase:$('importEstimateBase')?.checked===true,
     proposalFoodClassificationState:$('proposalFoodClassificationState').value || 'unknown',
     proposalPurchaseClassificationState:$('proposalPurchaseClassificationState').value || 'unknown',
     exemptPurchaseState:$('exemptPurchaseState').value || 'unknown',
@@ -3483,6 +3533,10 @@ function projectProposalSales(sales, ctx){
 
 function projectProposalPurchases(purchases, ctx, index){
   const projectionRatio = weightedExemptPurchaseRatio(ctx.start, ctx.end);
+  if(ctx.taxScenario==='foodProposal'&&purchases.imported?.present&&typeof entryMode!=='undefined'&&entryMode==='rows'){
+    const projected=aggregateScenarioPurchases({purchases:purchaseRowsForScenario('foodProposal'),actualOnePercentEntries:importedActualOnePercent?.entries||[]},{taxScenario:'foodProposal',foodForecastMethod:ctx.foodForecastMethod,proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),foodPurchasePriceBasis:ctx.foodPurchasePriceBasis,importFoodFraction:ctx.importFoodFraction??1,estimateFromBase:ctx.importEstimateBase===true,exemptRatioOverride:index>0?projectionRatio.ratio:null});
+    return {...purchases,...projected,purchaseTaxByUse:projected.purchaseTaxByUse,purchaseUsageErrors:projected.errors,purchaseCalculationErrors:projected.calculationErrors};
+  }
   if(ctx.taxScenario !== 'foodProposal'){
     if(index > 0 && typeof entryMode !== 'undefined' && entryMode === 'rows'){
       const projected = aggregateScenarioPurchases({purchases:purchaseRowsForScenario('current')}, {
@@ -3598,7 +3652,7 @@ function returnInputForProjection(ctx,index){
     purchases.forEach(row => { if(['52','62','72'].includes(row.code)) row.creditRatio = value; });
   }
   const built = aggregateReturnRows({sales:taxEntryRows.sales,purchases},{
-    knownNonTaxableZero:rowCsvKnownZeros.nonTaxableSales,
+    knownNonTaxableZero:rowCsvKnownZeros.nonTaxableSales,estimateFromBase:ctx.importEstimateBase===true,
     unsupportedCodes:importedUnsupportedEntries.map(item => item.code),
     unresolvedCount:importedCsvRecovery?.unresolvedCount || 0,
     temporaryExcludedCount:importedCsvRecovery?.temporaryExcludedCount || 0
@@ -3844,6 +3898,7 @@ function collectPurchases(ctx){
     actualOnePercentEntries:importedActualOnePercent?.entries || []
   }, {
     taxScenario:ctx.taxScenario,
+    estimateFromBase:ctx.importEstimateBase===true,importFoodFraction:ctx.importFoodFraction??1,
     foodForecastMethod:ctx.foodForecastMethod,
     proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),
     foodPurchasePriceBasis:ctx.foodPurchasePriceBasis,
@@ -3856,7 +3911,7 @@ function collectPurchases(ctx){
     // Keep the CSV transaction's original ratio for source-date validation, but
     // apply the target period's ratio when that past entry is a forecast basis.
     const historicalIds = new Set(historicalRows.map(row => row.id));
-    const scenarioOptions = {taxScenario:ctx.taxScenario,
+    const scenarioOptions = {taxScenario:ctx.taxScenario,estimateFromBase:ctx.importEstimateBase===true,importFoodFraction:ctx.importFoodFraction??1,
       foodForecastMethod:ctx.foodForecastMethod,
       proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),
       foodPurchasePriceBasis:ctx.foodPurchasePriceBasis};
@@ -3887,7 +3942,7 @@ function collectPurchases(ctx){
     || exemptPurchases.anyEntered
     || (ctx.taxScenario === 'foodProposal' && (importedActualOnePercent?.entries || []).some(entry => ['invoicePurchase','exemptPurchase'].includes(entry.kind)))
     || (typeof entryMode !== 'undefined' && entryMode === 'rows' && (
-      taxEntryRows.purchases.some(row => ['5','6','7','52','62','72'].includes(row.code)
+      taxEntryRows.purchases.some(row => ['5','6','7','52','62','72','55','65','75'].includes(row.code)
         && parseAmountInput(row.amount, {allowNegative:true}).entered)
       || rowCsvKnownZeros.purchase10 || rowCsvKnownZeros.purchase8)));
   return {
@@ -3914,6 +3969,7 @@ function collectPurchases(ctx){
     exemptCreditableTax:rowScenario?.exemptCreditableTax ?? exemptPurchases.creditableTax,
     totalAmount:rowScenario?.totalAmount ?? totalAmount,
     totalTax:rowScenario?.totalTax ?? totalTax,
+    imported:rowScenario?.imported || null,
     purchaseTaxByUse:rowScenario?.purchaseTaxByUse || null,
     historicalRatioAdjustment:rowScenario?.historicalRatioAdjustment || 0,
     historicalForecastRatio:rowScenario?.historicalForecastRatio ?? null,
@@ -3924,13 +3980,13 @@ function collectPurchases(ctx){
     adjustment,
     adjustmentEntered:adjustmentState.entered,
     purchaseAmountEntered,
-    anyEntered:state10.entered || state8.entered || (ctx.taxScenario === 'foodProposal' && stateFood1.entered) || actualGross !== 0 || exemptPurchases.anyEntered || adjustmentState.entered,
+    anyEntered:state10.entered || state8.entered || (ctx.taxScenario === 'foodProposal' && stateFood1.entered) || actualGross !== 0 || exemptPurchases.anyEntered || adjustmentState.entered || Boolean(rowScenario?.imported?.present),
     errors:[...errors, ...exemptPurchases.errors]
   };
 }
 
 function calculateRegularForContext(ctx, sales, purchases, exemptCreditableTax = purchases.exemptCreditableTax){
-  const purchaseTax = purchases.invoiceTax + exemptCreditableTax;
+  const purchaseTax = purchases.invoiceTax + exemptCreditableTax + (purchases.imported?.comparisonCredit || 0);
   const totalSales = sales.totalTaxableBase + ctx.nonTaxableSales;
   const usage = purchases.purchaseTaxByUse;
   const regular = { ...calculateDetailedRegular({
@@ -4034,7 +4090,7 @@ function currentReturnCalculation(ctx){
   if(adjustment.entered && adjustment.value !== 0 && !$('returnAdjustmentConfirmed').checked)
     reasons.push('申告調整の根拠と符号を確認してください。');
   const currentRows = aggregateReturnRows(taxEntryRows,{
-    knownNonTaxableZero:rowCsvKnownZeros.nonTaxableSales,
+    knownNonTaxableZero:rowCsvKnownZeros.nonTaxableSales,estimateFromBase:ctx.importEstimateBase===true,
     unsupportedCodes:importedUnsupportedEntries.map(item => item.code),
     unresolvedCount:importedCsvRecovery?.unresolvedCount || 0,
     temporaryExcludedCount:importedCsvRecovery?.temporaryExcludedCount || 0
@@ -4059,7 +4115,7 @@ function currentSalesMethodCalculation(ctx, method){
   if(ctx.taxScenario !== 'current' || ctx.returnCalculationEnabled === false || ctx.comparisonMethods?.includes(method) === false) return null;
   if(typeof entryMode === 'undefined' || entryMode !== 'rows') return {complete:false,reasons:['旧形式の集計入力は税込行を復元できません。行入力で確認してください。']};
   const currentRows = aggregateReturnRows(taxEntryRows,{
-    knownNonTaxableZero:rowCsvKnownZeros.nonTaxableSales,
+    knownNonTaxableZero:rowCsvKnownZeros.nonTaxableSales,estimateFromBase:ctx.importEstimateBase===true,
     unsupportedCodes:importedUnsupportedEntries.map(item => item.code),
     unresolvedCount:importedCsvRecovery?.unresolvedCount || 0,
     temporaryExcludedCount:importedCsvRecovery?.temporaryExcludedCount || 0
@@ -4260,17 +4316,19 @@ function calculate(contextOverride){
   const foodRowMissing = typeof missingFoodRowInputs === 'function' && typeof ShohizeiInputRequirements !== 'undefined'
     ? missingFoodRowInputs(ctx) : {sales:[],purchases:[]};
   const periodCheck = validateTaxPeriod(ctx.start, ctx.end);
+  const proposalPeriodCheck = validateFoodProposalPeriod(ctx);
   const inputErrors = [...ctx.inputErrors, ...periodCheck.errors, ...sales.errors,
     ...(ctx.comparisonMethods?.includes('regular') !== false ? purchases.errors.filter(reason => !/1％対象食品仕入/.test(reason)) : []), ...validateProposalClassification(ctx)];
+  if(proposalPeriodCheck.outside) inputErrors.push(...proposalPeriodCheck.errors);
   const rowErrors = typeof entryMode !== 'undefined' && entryMode === 'rows' ? (latestTaxRowAggregate?.errors || []).filter(error =>
-    !(ctx.taxScenario === 'foodProposal' && error.side === 'purchases' && /食品1％対象額/.test(error.message))) : [];
+    !error.importOnly && !(ctx.taxScenario === 'foodProposal' && error.side === 'purchases' && /食品1％対象額/.test(error.message))) : [];
   if(rowErrors.length){
     inputErrors.push(`行入力の確認が${rowErrors.length}件あります。該当する売上・仕入行を確認してください。`);
   }
   const csvReview = validateImportedOnePercentEntries(ctx);
   inputErrors.push(...csvReview.errors);
   const regular = calculateRegularForContext(ctx, sales, purchases);
-  const creditablePurchaseTax = purchases.invoiceTax + purchases.exemptCreditableTax;
+  const creditablePurchaseTax = purchases.invoiceTax + purchases.exemptCreditableTax + (purchases.imported?.comparisonCredit || 0);
   const regularEligibilityOverride = detailedRegularEligibility(ctx, regular, creditablePurchaseTax);
   const eligibility = getEligibility(ctx, regularEligibilityOverride);
   const regularCalculationAvailability = mergeCalculationAvailability(eligibility.regular, regularEligibilityOverride);
@@ -4315,6 +4373,7 @@ function calculate(contextOverride){
   const salesEntryRequired = !sales.anyEntered && purchases.anyEntered;
   const comparisonReady = (!ctx.comparisonMethods || ctx.comparisonMethods.length > 0) && sales.anyEntered && inputErrors.length === 0;
   const inputUnconfirmedItems = [
+    ...(purchases.imported?.assumptions || []),
     ...(returnCalculation && !returnCalculation.referenceCalculable ? [`申告書計算：未算定。${returnCalculation.reasons.join(' / ')}`]
       : returnCalculation && !returnCalculation.exactComplete ? [`申告書再現：未完了。確認できた行の端数処理後の参考額です。${returnCalculation.reasons.join(' / ')}`] : []),
     ...(!returnCalculation && Object.values(salesMethodCalculations).some(value => value?.referenceCalculable && !value.exactComplete)
@@ -4331,8 +4390,9 @@ function calculate(contextOverride){
     : state === ELIGIBILITY.UNKNOWN ? selection?.eligibility === ELIGIBILITY.UNKNOWN ? '選択可否未確認' : '計算条件を確認' : '入力条件では適用対象外';
   const buildMethod = (key, amount, result, calculationMethod, eligibleReason) => {
     const missing = [...foodRowMissing.sales,...(key === 'regular' ? foodRowMissing.purchases : [])];
-    const calculatedAmount = missing.length ? null : amount;
-    const methodReasons = missing.length ? [...new Set([...result.reasons,...missing])] : result.reasons;
+    const periodBlocked = proposalPeriodCheck.applicable && !proposalPeriodCheck.valid;
+    const calculatedAmount = missing.length || periodBlocked ? null : amount;
+    const methodReasons = [...new Set([...result.reasons,...missing,...(periodBlocked ? proposalPeriodCheck.errors : [])])];
     return ({
     key,
     amount:calculatedAmount,
@@ -4386,7 +4446,7 @@ function calculate(contextOverride){
     difference < 10000 || (Math.abs(best.amount) > 0 && difference < Math.abs(best.amount) * 0.01)
   );
   return {
-    ctx, eligibility, selectionEligibility, periodCheck, sales, purchases, creditablePurchaseTax, regularCredit, methods, valid, sorted, best, csvRecovery, csvRecoveryText, csvPartial, csvOriginText, csvOriginReference,
+    ctx, eligibility, selectionEligibility, periodCheck, proposalPeriodCheck, sales, purchases, creditablePurchaseTax, regularCredit, methods, valid, sorted, best, csvRecovery, csvRecoveryText, csvPartial, csvOriginText, csvOriginReference,
      regular, returnCalculation, salesMethodCalculations, roundingDetails, special2Base, special3Base, highAssetRegular, unknownMethods, unconfirmedItems, inputUnconfirmedItems, foodRowMissing, comparisonProvisional, csvReview, inputErrors, hasComparisonInput, salesEntryRequired, comparisonReady, smallDifference
   };
 }
@@ -4457,7 +4517,7 @@ function calculateProjectionMethods(calc, period, index){
   const regularEligibilityOverride = detailedRegularEligibility(
     ctx,
     projectedRegular.detail,
-    snapshot.purchases.invoiceTax + projectedRegular.exemptCreditableTax
+    snapshot.purchases.invoiceTax + projectedRegular.exemptCreditableTax + (snapshot.purchases.imported?.comparisonCredit || 0)
   );
   const eligibility = getEligibility(ctx, regularEligibilityOverride);
   const regularCalculationAvailability = mergeCalculationAvailability(eligibility.regular, regularEligibilityOverride);
@@ -4961,6 +5021,7 @@ function renderReturnCalculationTrace(calc){
     traceLine('⑨B 10％通常仕入の支払対価',`現在の入力行 ${traceMoney(rawInvoice10)} ＋ 明示した申告調整 ${traceMoney(adjustment)} = ${traceMoney(s23.invoiceGross['10'])}`),
     traceLine('⑩A・⑩B 通常仕入の国税',`軽8％ ${traceMoney(s23.invoiceGross['8'])} × 6.24 ÷ 108 → ${traceMoney(s23.invoiceNationalTax['8'])} ／ 10％ ${traceMoney(s23.invoiceGross['10'])} × 7.8 ÷ 110 → ${traceMoney(s23.invoiceNationalTax['10'])}（各円未満切捨て）`),
     traceLine('⑫A・⑫B 免税事業者等仕入',`${exemptBasis}（税率別・割合別に円未満切捨て）`),
+    ...(s23.importNationalTax && (s23.importNationalTax['8'] || s23.importNationalTax['10']) ? [traceLine('⑮A・⑮B 課税貨物の国税',`採用した輸入国税（概算・分類候補を含む）：軽8％ ${traceMoney(s23.importNationalTax['8'])}、10％ ${traceMoney(s23.importNationalTax['10'])}。輸入地方税を含めず、国内税込仕入れ式から割り戻しません。`)] : []),
     traceLine(`⑲・㉑・㉖ ${s23.method === 'individual' ? '個別対応方式' : s23.method === 'proportional' ? '一括比例配分方式' : '全額控除'}`,methodExplanation),
     '<div class="trace-subhead">付表1-3 → 第一表</div>',
     traceLine('①1B・①B 課税標準額',`${traceMoney(s23.taxableTransfer['10'])} → 1,000円未満切捨て ${traceMoney(s13.taxableBase['10'])}`),
@@ -5931,7 +5992,7 @@ function saveState(){
   }
   const ids = [
     'periodStart','periodEnd','individualYear','currentReturnMethod','exemptPurchaseState','baseTaxableSales','specificTaxableSales','specificPayrollAmount','purchase10','purchase8',
-    'purchaseFood1','foodSalesPriceBasis','foodPurchasePriceBasis','foodForecastMethod','proposalFoodClassificationState','proposalPurchaseClassificationState',
+    'importFoodPercent','purchaseFood1','foodSalesPriceBasis','foodPurchasePriceBasis','foodForecastMethod','proposalFoodClassificationState','proposalPurchaseClassificationState',
     ...getExemptPurchaseInputIds(), 'creditPercent','regularAdjustment','simpleElectionStatus','futureElectionPlan','currentDiscontinuanceReady','regularDetailMethod',
     'priorTaxMethod','priorPeriodStart','priorPeriodEnd','electionFilingStatus','electionFilingDate','electionAsOfDate','consumptionTaxExtension','confirmedReturnDeadline',
     'nonTaxableSales','taxableOnlyPurchaseTax','commonPurchaseTax','returnPurchaseAdjustment10','highAssetAmount','highAssetType',
@@ -5984,6 +6045,7 @@ function saveState(){
   if(typeof entryMode !== 'undefined' && entryMode === 'rows') data.taxEntryRows = Object.fromEntries(['sales','purchases'].map(side => [side,
     taxEntryRows[side].filter(row => row.code || row.rate || row.amount || row.foodAmount || row.businessType).map(row => ({
       code:row.code, businessType:row.businessType, rate:row.rate, amount:row.amount,
+      importComponent:row.importComponent || '', importBasis:row.importBasis||'',importRule:row.importRule||'',importAssumed:row.importAssumed===true,sourceCount:row.sourceCount||1,sourceRow:row.sourceRow || null, sourceImportTax:row.sourceImportTax, sourceImportNet:row.sourceImportNet,
       foodAmount:row.foodAmount, creditRatio:row.creditRatio, creditRatioSource:row.creditRatioSource || '', source:row.source,
       sourceDateStart:row.sourceDateStart || '', sourceDateEnd:row.sourceDateEnd || '',
       sourceAdjustmentCount:Number(row.sourceAdjustmentCount || 0), sourceDateUnknownCount:Number(row.sourceDateUnknownCount || 0)
@@ -5993,7 +6055,7 @@ function saveState(){
     if(!el) return;
     data[id] = el.value;
   });
-  ['advancedMode','declarationRounding','highAssetSelfConstructed','switchCreditIncludedInBTax','switchOtherCostsNone','switchTimeEvaluation'].forEach(id => { data[id] = $(id).checked; });
+  ['importEstimateBase','advancedMode','declarationRounding','highAssetSelfConstructed','switchCreditIncludedInBTax','switchOtherCostsNone','switchTimeEvaluation'].forEach(id => { data[id] = $(id).checked; });
   ['workflowPurpose','entityType','amountMode','taxScenario','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState'].forEach(name => {
     data[name] = selectedValue(name);
   });
@@ -6035,6 +6097,9 @@ function restoreState(){
         data.taxEntryRows[side].filter(row => row && typeof row === 'object').map(row => createTaxEntryRow(side, {
           id:`saved-${nextTaxEntryId++}`, code:String(row.code || ''), businessType:String(row.businessType || ''),
           rate:String(row.rate || ''), amount:String(row.amount ?? ''), foodAmount:String(row.foodAmount ?? ''),
+          importComponent:['goods','duty','national','local','taxTotal'].includes(row.importComponent)?row.importComponent:'',
+          importBasis:String(row.importBasis||''),importRule:String(row.importRule||''),importAssumed:row.importAssumed===true,sourceCount:Number.isSafeInteger(row.sourceCount)?row.sourceCount:1,
+          sourceRow:Number.isSafeInteger(row.sourceRow)?row.sourceRow:null,sourceImportTax:String(row.sourceImportTax ?? ''),sourceImportNet:String(row.sourceImportNet ?? ''),
           creditRatio:String(row.creditRatio || ''), creditRatioSource:row.creditRatioSource === 'auto' ? 'auto' : row.creditRatioSource === 'manual' ? 'manual' : '',
           source:['manual','csv','csv-edited'].includes(row.source) ? row.source : 'manual',
           sourceDateStart:String(row.sourceDateStart || ''), sourceDateEnd:String(row.sourceDateEnd || ''),
@@ -6061,7 +6126,7 @@ function restoreState(){
       if(!el) return;
       el.value = value;
     });
-    ['advancedMode','declarationRounding','highAssetSelfConstructed','switchCreditIncludedInBTax','switchOtherCostsNone','switchTimeEvaluation'].forEach(id => { if(typeof data[id] === 'boolean') $(id).checked = data[id]; });
+    ['importEstimateBase','advancedMode','declarationRounding','highAssetSelfConstructed','switchCreditIncludedInBTax','switchOtherCostsNone','switchTimeEvaluation'].forEach(id => { if(typeof data[id] === 'boolean') $(id).checked = data[id]; });
     ['workflowPurpose','entityType','amountMode','taxScenario','viewMode','invoiceRegisteredState','invoiceTransitionState','noSpecialExclusionState','simpleNoticeReadyState','creditMode','highAssetState'].forEach(name => {
       const option = document.querySelector(`input[name="${name}"][value="${data[name]}"]`);
       if(option) option.checked = true;
@@ -6263,7 +6328,7 @@ function cashflowAutoPlan(calc,comparison,methodKey){
     if(changedNational === null) basis.reasons.push('変更案に仮定する前期確定国税額を入力してください。');
   }
   const options = {priorStart:basis.priorStart,priorEnd:basis.priorEnd,
-    currentStart:calc.ctx.start,currentEnd:calc.ctx.end,entityType:selectedValue('entityType','individual'),
+    currentStart:calc.ctx.start,currentEnd:calc.ctx.end,taxScenario:calc.ctx.taxScenario,entityType:selectedValue('entityType','individual'),
     periodShortening:$('cashflowPeriodShortening').value,corporateExtension:$('cashflowCorporateExtension').value,
     specialCircumstances:$('cashflowSpecialCircumstances').value};
   const unavailable = reason => ({status:'unavailable',count:null,installments:[],totals:null,reasons:[reason],warnings:[],calendarConfidence:'unknown'});
@@ -6407,7 +6472,7 @@ function methodCashflowAutoPlan(calc, comparison){
     basis.national = null;
     basis.reasons.push('旧保存データの両案の前期額設定を判別できません。画面で再確認するまで自動中間納付を未算定とします。');
   }
-  const options = {priorStart,priorEnd,currentStart:calc.ctx.start,currentEnd:calc.ctx.end,
+  const options = {priorStart,priorEnd,currentStart:calc.ctx.start,currentEnd:calc.ctx.end,taxScenario:calc.ctx.taxScenario,
     entityType:selectedValue('entityType','individual'),periodShortening:$('cashflowPeriodShortening').value,
     corporateExtension:$('cashflowCorporateExtension').value,specialCircumstances:$('cashflowSpecialCircumstances').value};
   const unavailable = {status:'unavailable',count:null,installments:[],totals:null,reasons:['前期国税額が未算定です。'],warnings:[]};
@@ -7140,7 +7205,37 @@ function downloadCashflowCsv(snapshot){
   URL.revokeObjectURL(url);
 }
 
+function currentProposalPeriodCheck(){
+  return validateFoodProposalPeriod({entity:selectedValue('entityType','individual'),taxScenario:taxScenarioKey(),start:$('periodStart').value,end:$('periodEnd').value});
+}
+
+function confirmProposalPeriod(){
+  const state={start:$('periodStart').value,end:$('periodEnd').value,scenario:taxScenarioKey()};
+  const check=currentProposalPeriodCheck();
+  const blocked=check.applicable&&!check.valid;
+  if(blocked) workflowStep=1;
+  const valid=validateTaxPeriod(state.start,state.end).valid&&!blocked;
+  const nonAnnual=state.scenario==='foodProposal'&&valid&&!ShohizeiTaxCalendar.isFullYearPeriod(state.start,state.end);
+  const scope=JSON.stringify(state);
+  if(nonAnnual&&proposalPeriodConfirmedScope!==scope){
+    if(!window.confirm('中間納付が自動計算されませんがよろしいですか？')){
+      const prior=proposalPeriodLastAccepted || {...state,scenario:'current'};
+      $('periodStart').value=prior.start;$('periodEnd').value=prior.end;
+      $('taxScenarioFood1').checked=prior.scenario==='foodProposal';
+      $('taxScenarioCurrent').checked=prior.scenario!=='foodProposal';
+      return false;
+    }
+    proposalPeriodConfirmedScope=scope;
+    if($('cashflowInterimStatus').value==='auto') $('cashflowInterimStatus').value='unknown';
+  }
+  if(!nonAnnual) proposalPeriodConfirmedScope='';
+  $('proposalPeriodConfirmationNotice').classList.toggle('is-hidden',!nonAnnual);
+  if(valid) proposalPeriodLastAccepted=state;
+  return true;
+}
+
 function update(){
+  if(!confirmProposalPeriod()) return latestCalculation?.calc || null;
   if(typeof activateCashflowMode === 'function' && cashflowComparisonType() !== activeCashflowMode)
     activateCashflowMode(cashflowComparisonType());
   if(entryMode === 'rows'){
@@ -7149,6 +7244,7 @@ function update(){
   }
   normalizeFoodConfirmations();
   const calc = calculate();
+  renderImportTools(calc);
   const decision = calculateSwitchDecision(calc);
   renderSalesTax(calc.sales.rows);
   renderPeriodInlineNotice(calc);
@@ -7317,6 +7413,13 @@ function loadSampleInput(kind){
 }
 
 function bindEvents(){
+  $('importBulkApply').addEventListener('click',()=>{
+    const component=$('importBulkComponent').value;
+    if(!Object.hasOwn(ShohizeiImportPurchases.COMPONENTS,component)){$('importBulkStatus').textContent='行区分を選択してください。';return;}
+    const targets=taxEntryRows.purchases.filter(row=>ShohizeiImportPurchases.USAGE[row.code]&&!row.importComponent);
+    for(const row of targets){row.importComponent=component;row.importBasis='bulk';row.importAssumed=true;row.importRule='未分類を一括補正';if(row.source==='csv')row.source='csv-edited';}
+    $('importBulkStatus').textContent=`未分類${targets.length}集計行へ適用しました。`;renderTaxEntryRows('purchases');update();
+  });
   $('sampleInputMenu').addEventListener('click', event => {
     const button = event.target.closest('[data-sample-input]');
     if(button) loadSampleInput(button.dataset.sampleInput);

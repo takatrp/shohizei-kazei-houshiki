@@ -76,9 +76,11 @@ test('FX4の仕入用途区分・非課税売上を保持する', () => {
 
 test('FX4の既知未対応区分は要確認に残し、未知区分は行番号つきで停止する', () => {
   const result = analyze(['4','55','75'].map(税=>entry({税})));
-  assert.deepEqual(result.unsupportedEntries.map(x=>x.code),['4','55','75']);
-  assert.equal(result.recoverySummary.unresolvedCount,3);
-  assert.equal(result.stats.mappedEntries,0);
+  assert.deepEqual(result.unsupportedEntries.map(x=>x.code),['4']);
+  assert.equal(result.recoverySummary.unresolvedCount,1);
+  assert.equal(result.importEntries.length,2);
+  assert.ok(result.importEntries.every(row=>row.importComponent===''));
+  assert.equal(result.stats.mappedEntries,2);
   assert.equal(journal.resolveImportValues(result).ready,false);
   for(const 税 of ['99','?','','9']){
     assert.throws(()=>analyze([entry({税})]),/FX4 CSV 2行目: 課税区分/);

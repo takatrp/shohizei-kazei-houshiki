@@ -34,9 +34,33 @@
   function createTaxEntryRow(side, overrides = {}){
     if(side !== 'sales' && side !== 'purchases') throw new TypeError('side must be sales or purchases');
     return {
-      id:'', code:'', businessType:'', rate:'', amount:'', foodAmount:'',
+      id:'', code:'', businessType:'', rate:'', amount:'', foodAmount:'', foodAmountSource:'',
       creditRatio:'', importComponent:'', source:'manual', ...overrides
     };
+  }
+
+  // The food scenario starts with the whole reduced-rate gross amount. Keep
+  // explicit edits (including zero and blank) and pre-existing saved subsets.
+  // This is an input assumption only; it does not confirm tax classification.
+  function applyFoodAmountDefaults(rows, side){
+    if(!Array.isArray(rows)) throw new TypeError('rows must be an array');
+    if(side !== 'sales' && side !== 'purchases') throw new TypeError('side must be sales or purchases');
+    let changedCount = 0;
+    const nextRows = rows.map(row => {
+      const detail = CODE_DETAILS[String(row?.code ?? '').trim()];
+      if(!detail || detail.side !== side || detail.import || String(row.code).trim() === '3'
+        || String(row.rate ?? '').trim() !== '8') return row;
+      if(row.foodAmountSource === 'manual') return row;
+      const foodText = String(row.foodAmount ?? '').trim();
+      if(row.foodAmountSource !== 'auto' && foodText !== '') return {...row,foodAmountSource:'manual'};
+      const amount = engine.parseAmountInput(row.amount, {allowNegative:true});
+      if(row.foodAmountSource !== 'auto' && (!amount.valid || !amount.entered)) return row;
+      const foodAmount = amount.valid && amount.entered ? String(row.amount).trim() : '';
+      if(foodText !== foodAmount) changedCount += 1;
+      if(foodText === foodAmount && row.foodAmountSource === 'auto') return row;
+      return {...row,foodAmount,foodAmountSource:'auto'};
+    });
+    return {rows:nextRows,changedCount};
   }
 
   // One-shot input aid for the food 1% scenario. The row amount is already
@@ -450,7 +474,8 @@
 
   return Object.freeze({
     BUSINESS_TYPES, RATES, EXEMPT_RATIOS, CODE_DETAILS,
-    createTaxEntryRow, bulkFillFoodAmount, aggregateTaxRows, aggregateScenarioPurchases,
+    createTaxEntryRow, applyFoodAmountDefaults, bulkFillFoodAmount, aggregateTaxRows, aggregateScenarioPurchases,
     summarizeActualOnePercentEntries
   });
 });
+

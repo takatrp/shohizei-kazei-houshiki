@@ -53,19 +53,24 @@
         if(returned !== 0) sales.push(row(`csv-sale-11-${businessType}-${rate}`, '11', returned, {businessType, rate}));
       }
     }
-    // Other comparisons need the full taxable-sales amount, not a guessed
-    // simplified-tax business type. Keep an unmapped CSV sale visibly unknown.
-    (resolved.unclassifiedSales || []).forEach((group, index) => {
-      for(const rate of RATES){
-        const returned = safeAmount(group.returnGross?.[rate]);
-        const amount = safeAmount(group.amounts?.[rate]) + returned;
-        const count = safeAmount(group.entryCounts?.[rate]);
-        if(amount !== 0 || count > 0){
-          sales.push(row(`csv-sale-1-unclassified-${index}-${rate}`, '1', amount, {rate}));
-        }
-        if(returned !== 0) sales.push(row(`csv-sale-11-unclassified-${index}-${rate}`, '11', returned, {rate}));
+    // Keep unmapped sales visibly unknown, but combine account-level groups
+    // for STEP2 by code and rate. Account mappings and monthly evidence remain
+    // in the resolved/parser data; a sale and its return stay separate rows.
+    for(const rate of RATES){
+      let amount = 0;
+      let returned = 0;
+      let count = 0;
+      for(const group of resolved.unclassifiedSales || []){
+        const groupReturn = safeAmount(group.returnGross?.[rate]);
+        amount += safeAmount(group.amounts?.[rate]) + groupReturn;
+        returned += groupReturn;
+        count += safeAmount(group.entryCounts?.[rate]);
       }
-    });
+      if(amount !== 0 || count > 0){
+        sales.push(row(`csv-sale-1-unclassified-${rate}`, '1', amount, {rate}));
+      }
+      if(returned !== 0) sales.push(row(`csv-sale-11-unclassified-${rate}`, '11', returned, {rate}));
+    }
     const nonTaxableSales = safeAmount(values.nonTaxableSales);
     if(nonTaxableSales !== 0){
       sales.push(row('csv-sale-3', '3', nonTaxableSales));
@@ -118,3 +123,4 @@
 
   return Object.freeze({rowsFromJournalAnalysis});
 });
+

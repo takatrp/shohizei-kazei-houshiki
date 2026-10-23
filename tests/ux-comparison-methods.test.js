@@ -64,7 +64,7 @@ test('[T01-T04][T09] 隠す列はth/tdとも非表示になり、表幅は必要
   for(const table of Object.values(tables)) table.querySelectorAll = selector => selector === '[data-row-column]' ? table.columns : [];
   const h = context(['refreshTaxRowTableLayout'], {
     showBusinessTypeColumn:()=>business,showFoodAmountColumn:()=>food,refreshTaxRowControls(){},
-    $:id => ({closest:()=>tables[id === 'taxSalesRowBody' ? 'sales' : 'purchases']})
+    $:id => ({value:'uniform',classList:{toggle(){}},closest:()=>tables[id === 'taxSalesRowBody' ? 'sales' : 'purchases']})
   });
   const check = (expectedSales,expectedPurchases,salesHidden,purchaseHidden) => {
     h.refreshTaxRowTableLayout();
@@ -119,3 +119,4 @@ test('[T07-T08] 単独試算と比較可能範囲が限定された複数方式�
   assert.match(html,/id="resultMethodSelection"/);
   assert.match(source('bindEvents'),/changeComparisonMethods[\s\S]*workflowStep = 1/);
 });
+

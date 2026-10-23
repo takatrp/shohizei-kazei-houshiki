@@ -142,7 +142,7 @@
     put('switchCustomerHours switchHourlyRate',extra&&value('switchTimeEvaluation')===true?required([TARGETS.extraCostResult],'工数参考額を含める場合に必要です。'):absent('工数参考額を使用していません。'));
     put('switchCreditState switchCreditIncludedInBTax',extra?optional('追加費用の仕入控除を別途確認する場合だけ指定します。',{allowUnknown:true}):absent('追加費用比較は使用していません。'));
     put('switchAdditionalCredit',extra&&value('switchCreditState')==='confirmed'?required([TARGETS.extraCostResult],'確認済み控除額を指定します。'):absent('確認済み控除額を反映しません。'));
-    put('switchCustomerComment officeHours officeHourlyCost officeOtherCost officeInternalMemo',extra?optional('記載・所内検討に使う場合のみ入力します。'):absent('追加費用比較は使用していません。'));
+    put('officeHours officeHourlyCost officeOtherCost',extra?optional('所内採算を検討する場合のみ入力します。'):absent('追加費用比較は使用していません。'));
 
     const rows={sales:[],purchases:[]};
     for(const side of ['sales','purchases']) for(const row of context.rows?.[side]||[]){
@@ -215,3 +215,4 @@
   }
   return {TARGETS,evaluate,validate,hasValue};
 });
+

@@ -23,7 +23,7 @@ function functionSource(name){
   return html.slice(start, end < 0 ? undefined : end);
 }
 const names = [
-  'currentProposalPeriodCheck',
+  'currentProposalPeriodCheck', 'resetProposalPeriodConfirmation',
   'cashflowScopeDigest', 'cashflowImportScopeKey', 'currentCashflowConfirmationScope', 'clearCashflowSourceConfirmation',
   'normalizeCsvRecovery', 'csvRecoverySummaryText', 'renderJournalRecovery', 'journalRowHasInput', 'journalManualRows', 'journalImportHasExistingInput',
   'journalImportTotals', 'currentJournalImportTotals', 'journalImportTotalsText', 'updateJournalRecovery', 'excludeUnresolvedJournalEntries', 'openAppliedJournalRecovery',
@@ -2689,3 +2689,4 @@ test('[食品1％価格前提] 折りたたみ中も現在の売上・仕入前�
   h.context.renderTaxScenarioNotice({ ctx:{ ...ctx, foodSalesPriceBasis:'grossFixed', foodPurchasePriceBasis:'grossFixed' } });
   assert.equal(h.element('foodPriceBasisSummary').textContent, '現在：売上・仕入とも税込価格据置');
 });
+

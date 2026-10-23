@@ -96,13 +96,21 @@ const csv=()=>[headers,...[
       assert.equal((await snapshot()).alert,true);assert.equal((await snapshot()).step,1);
       await period('2028-01-01','2028-12-31');await page.reload({waitUntil:'domcontentloaded'});assert.equal((await snapshot()).alert,false);
     });
-    await check('非1年の取消では期間・計算・端末保存を変えず、承認後も自動中間未算定',async()=>{
+    await check('非1年は終了日blurで初めて確認し、取消で期間・計算・端末保存を復元する',async()=>{
       const before=await page.evaluate(()=>({saved:storageGet(STORAGE_KEY),end:$('periodEnd').value,amount:latestCalculation.calc.methods.map(row=>row.amount)}));
-      accept=false;await page.locator('#periodEnd').fill('2028-06-30');await page.locator('#periodEnd').dispatchEvent('change');
+      const dialogCount=evidence.dialogs.length;
+      accept=false;await page.locator('#periodEnd').focus();await page.locator('#periodEnd').fill('2028-06-30');await page.locator('#periodEnd').dispatchEvent('change');
+      assert.equal(evidence.dialogs.length,dialogCount,'input and change must not ask for confirmation');
+      assert.equal(await page.locator('#periodEnd').inputValue(),'2028-06-30');
+      await page.locator('#periodEnd').blur();
+      assert.equal(evidence.dialogs.length,dialogCount+1);
       const after=await page.evaluate(()=>({saved:storageGet(STORAGE_KEY),end:$('periodEnd').value,amount:latestCalculation.calc.methods.map(row=>row.amount)}));assert.deepEqual(after,before);
-      accept=true;await page.locator('#periodEnd').fill('2028-06-30');await page.locator('#periodEnd').dispatchEvent('change');
+      accept=true;await page.locator('#periodEnd').focus();await page.locator('#periodEnd').fill('2028-06-30');await page.locator('#periodEnd').dispatchEvent('change');
+      assert.equal(evidence.dialogs.length,dialogCount+1);
+      await page.locator('#periodEnd').blur();
+      assert.equal(evidence.dialogs.length,dialogCount+2);
       assert.equal(await page.locator('#proposalPeriodConfirmationNotice').isVisible(),true);assert.equal((await snapshot()).interim,'unknown');
-      assert.ok(evidence.dialogs.includes('中間納付が自動計算されませんがよろしいですか？'));
+      assert.equal(evidence.dialogs.at(-1),'中間納付額が自動計算されませんが、よろしいですか？');
       await period('2028-01-01','2028-12-31');
     });
     await check('匿名FX4 CSVを選択し、55・65・75の候補を集約、未分類は未算定',async()=>{
@@ -155,3 +163,4 @@ const csv=()=>[headers,...[
     await browser.close();server.close();
   }
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});
+

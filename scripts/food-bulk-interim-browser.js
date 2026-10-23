@@ -27,10 +27,10 @@ async function run(){
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror',error => errors.push(error.message));
-    let acceptOverwrite = false, overwriteDialogs = 0;
+    const dialogs = [];
     page.on('dialog',async dialog => {
-      overwriteDialogs++;
-      if(acceptOverwrite) await dialog.accept(); else await dialog.dismiss();
+      dialogs.push(dialog.message());
+      await dialog.accept();
     });
     await page.goto(pathToFileURL(path.join(__dirname,'..','index.html')).href);
     await page.locator('#compareRegular').check({force:true});
@@ -39,35 +39,39 @@ async function run(){
     await page.locator('#periodStart').fill('2027-04-01');
     await page.locator('#periodEnd').fill('2028-03-31');
     await page.locator('[data-workflow-step="2"]').click();
-    assert.equal(await page.locator('#bulkFoodSales').isDisabled(),true);
-    assert.match(await page.locator('#bulkFoodSalesStatus').innerText(),/転記できる軽減8％行がありません/);
+    assert.equal(await page.locator('#bulkFoodSales, #bulkFoodPurchases').count(),0);
+    assert.equal(await page.locator('#foodDefaultAssumptionNotice').isVisible(),true);
+    assert.match(await page.locator('#foodDefaultAssumptionNotice').innerText(),/軽減税率8％対象が全て食品1％対象であると仮定/);
     for(const [side,code,amount] of [['sales','1','108000000'],['purchases','5','75600000']]){
       await page.locator(`[data-row-side="${side}"][data-row-field="code"]`).first().fill(code);
       await page.locator(`[data-row-side="${side}"][data-row-field="rate"]`).first().fill('8');
       await page.locator(`[data-row-side="${side}"][data-row-field="amount"]`).first().fill(amount);
     }
     const food = side => page.locator(`[data-row-side="${side}"][data-row-field="foodAmount"]`).first();
-    await page.locator('#bulkFoodSales').click();
-    await page.locator('#bulkFoodPurchases').click();
     assert.equal(await food('sales').inputValue(),'108,000,000');
     assert.equal(await food('purchases').inputValue(),'75,600,000');
+    const salesAmount = page.locator('[data-row-side="sales"][data-row-field="amount"]').first();
+    await salesAmount.fill('109000000');
+    assert.equal(await food('sales').inputValue(),'109,000,000','automatic food amount follows the reduced-rate amount');
+    await salesAmount.fill('108000000');
     await food('sales').fill('54,000,000');
-    await page.locator('#bulkFoodSales').click();
-    assert.equal(await food('sales').inputValue(),'54,000,000','cancel must preserve every row');
-    acceptOverwrite = true;
-    await page.locator('#bulkFoodSales').click();
-    assert.equal(await food('sales').inputValue(),'108,000,000');
-    assert.equal(overwriteDialogs,2,'one confirmation per bulk operation');
+    await salesAmount.fill('109000000');
+    assert.equal(await food('sales').inputValue(),'54,000,000','manual food amount must be preserved');
+    await food('sales').fill('0');
+    await salesAmount.fill('108000000');
+    assert.equal(await food('sales').inputValue(),'0','explicit zero must be preserved');
+    await food('sales').fill('108000000');
+    assert.equal(dialogs.length,0,'food defaults and edits do not require a bulk confirmation');
     await page.locator('#addTaxSalesRow').click();
     await page.locator('[data-row-side="sales"][data-row-field="code"]').last().fill('3');
     await page.locator('[data-row-side="sales"][data-row-field="amount"]').last().fill('0');
     await page.locator('#proposalFoodClassificationState').selectOption('confirmed');
     await page.locator('#proposalPurchaseClassificationState').selectOption('confirmed');
-    await page.screenshot({path:path.join(outputDir,'bulk-food-input-anonymous.png'),fullPage:true});
+    await page.screenshot({path:path.join(outputDir,'food-default-input-anonymous.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
-    const mobileButton = await page.locator('#bulkFoodSales').boundingBox();
-    assert.ok(mobileButton && mobileButton.x >= 0 && mobileButton.x + mobileButton.width <= 390,'narrow-screen button remains in view');
-    await page.screenshot({path:path.join(outputDir,'bulk-food-narrow-anonymous.png'),fullPage:true});
+    const mobileNotice = await page.locator('#foodDefaultAssumptionNotice').boundingBox();
+    assert.ok(mobileNotice && mobileNotice.x >= 0 && mobileNotice.x + mobileNotice.width <= 390,'narrow-screen assumption notice remains in view');
+    await page.screenshot({path:path.join(outputDir,'food-default-narrow-anonymous.png'),fullPage:true});
     await page.setViewportSize({width:1365,height:900});
     await page.locator('#workflowNext').click();
     const step3 = await page.locator('#methodComparisonTable').innerText();
@@ -148,6 +152,7 @@ async function run(){
     assert.equal(await page.locator('#cashflowInterimStatus').inputValue(),'auto');
     await page.locator('#cashflowPriorNationalTax').fill('48000001');
     await page.locator('[data-workflow-step="1"]').click();
+    await page.locator('#taxScenarioCurrent').check({force:true});
     await page.locator('#periodStart').fill('2026-01-01');
     await page.locator('#periodEnd').fill('2026-12-31');
     await page.locator('[data-workflow-step="5"]').click();
@@ -181,10 +186,11 @@ async function run(){
     await csvPage.locator('#openJournalImportBtn').click();
     await csvPage.locator('#journalCsvFile').setInputFiles({name:'anonymous.csv',mimeType:'text/csv',buffer:Buffer.from(anonymousCsv())});
     await csvPage.locator('#applyJournalImportBtn').click();
-    await csvPage.locator('#bulkFoodSales').click();
-    await csvPage.locator('#bulkFoodPurchases').click();
+    assert.equal(await csvPage.locator('#bulkFoodSales, #bulkFoodPurchases').count(),0);
+    assert.equal(await csvPage.locator('#foodDefaultAssumptionNotice').isVisible(),true);
     assert.equal(await csvPage.evaluate(() => importedCsvOrigin.manualChanged),false);
     assert.equal(await csvPage.locator('[data-row-side="sales"][data-row-field="foodAmount"]').first().inputValue(),'108,000,000');
+    assert.equal(await csvPage.locator('[data-row-side="purchases"][data-row-field="foodAmount"]').first().inputValue(),'75,600,000');
     await csvPage.locator('#addTaxSalesRow').click();
     await csvPage.locator('[data-row-side="sales"][data-row-field="code"]').last().fill('3');
     await csvPage.locator('[data-row-side="sales"][data-row-field="amount"]').last().fill('0');
@@ -202,7 +208,7 @@ async function run(){
     await csvPage.locator('#cashflowSettlementMonth').fill('2028-05');
     await csvPage.locator('#cashflowRefundMonth').fill('2028-05');
     assert.equal(await csvPage.evaluate(() => latestCashflow.autoInterim.base.count),1);
-    await csvPage.screenshot({path:path.join(outputDir,'csv-bulk-auto-anonymous.png'),fullPage:true});
+    await csvPage.screenshot({path:path.join(outputDir,'csv-food-default-auto-anonymous.png'),fullPage:true});
     await csvPage.locator('[data-workflow-step="4"]').click();
     await csvPage.locator('#resetBtn').click();
     assert.equal(await csvPage.locator('#cashflowInterimStatus').inputValue(),'unknown');
@@ -210,10 +216,11 @@ async function run(){
     assert.equal(await csvPage.locator('#cashflowAutoSeparate').isChecked(),false);
     await csvContext.close();
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({bulk:{overwriteDialogs,step3:step3.slice(0,150)},proxy:proxy.slice(0,300),one:{count:one.base.count,total:one.base.totals.total},reconciliation,
+    console.log(JSON.stringify({foodDefaults:{dialogs,step3:step3.slice(0,150)},proxy:proxy.slice(0,300),one:{count:one.base.count,total:one.base.totals.total},reconciliation,
       holiday:holiday.installments.find(item => item.rawDueDate === '2026-10-31'),individualFirst3:individual.installments.slice(0,3).map(item => item.adjustedDueDate),
       exported:dl.suggestedFilename(),errors,outputDir},null,2));
     await context.close();
   }finally{await browser.close();}
 }
 run().catch(error => {console.error(error);process.exitCode=1;});
+

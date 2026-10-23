@@ -42,11 +42,11 @@ function fixture(overrides = {}){
 }
 const calc = {ctx:{start:'2026-01-01',end:'2026-12-31'},purchases:{adjustment:0}};
 
-test('B01-B12 一括転記はSTEP2の両表にのみあり、上書きは一度確認し、CSV月別出典を維持',()=>{
-  assert.match(html,/id="bulkFoodSales"/);
-  assert.match(html,/id="bulkFoodPurchases"/);
-  assert.match(source('bindTaxEntryRows'),/result\.overwrittenCount && !confirm/);
-  assert.match(source('bindTaxEntryRows'),/taxEntryRows\[side\] = result\.rows;[\s\S]*renderTaxEntryRows\(side\);[\s\S]*update\(\)/);
+test('食品既定値はSTEP2で前提を示し、操作ボタンを廃止してCSV月別出典を維持',()=>{
+  assert.doesNotMatch(html,/id="bulkFoodSales"|id="bulkFoodPurchases"/);
+  assert.match(html,/<div id="workflowScreen2"[^>]*>\s*<div[^>]*id="foodDefaultAssumptionNotice"/);
+  assert.match(html,/軽減税率8％対象が全て食品1％対象であると仮定し「うち食品1％対象」欄をセットしました。必要に応じて修正してください。/);
+  assert.doesNotMatch(source('bindTaxEntryRows'),/bulkFillFoodAmount|confirm\(/);
   assert.match(source('applyTaxRowEdit'),/field !== 'foodAmount'\) importedCsvOrigin\.manualChanged = true/);
   assert.match(source('applyTaxRowEdit'),/row\.source === 'csv' && field !== 'foodAmount'/);
 });
@@ -111,3 +111,4 @@ test('I08 短縮特例ありを前期額不足の0円扱いにしない',()=>{
   assert.match(context.cashflowAutoHtml(plan),/短縮特例のため対象外/);
   assert.ok(context.cashflowAutoExportRows(plan).some(row => row[0] === '基準案の中間納付合計' && row[1] === '対象外'));
 });
+

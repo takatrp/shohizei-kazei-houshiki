@@ -2,8 +2,45 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const estimator=require('../food-period-estimator.js');
+const {collectSalesScenario}=require('../sales-scenario.js');
 
 const total=rows=>rows.reduce((sum,row)=>sum+row.amount,0);
+
+test('全期間対象の日数按分は月別合計の誤差で食品売上の計算を止めない',()=>{
+  // Invented large amount; no customer CSV or values are used.
+  const amount=1000000001;
+  const row={id:'synthetic-food',code:'1',rate:'8',businessType:'type2',amount:String(amount),foodAmount:String(amount),source:'csv'};
+  const result=estimator.estimate({amount,row,kind:'sales',mode:'uniform',periodStart:'2027-09-01',periodEnd:'2028-08-31',
+    currentSourceId:'synthetic-source',sourceFacts:{status:'resolved',value:{sourceId:'synthetic-source',periodConfirmed:true,
+      fullMonthCoverageConfirmed:true,period:{start:'2025-09-01',end:'2026-08-31'}}}});
+  assert.equal(result.method,'uniform');assert.match(result.reason,/期間対応/);
+  assert.equal(result.amount,amount,'全期間対象の年額は元の食品内数そのもの');
+  const sales=collectSalesScenario({sales:[row]},{taxScenario:'foodProposal',foodSalesPriceBasis:'netFixed',foodPeriodAmount:()=>result.amount});
+  assert.deepEqual(sales.errors,[]);assert.ok(Math.abs(sales.totalTax-amount/108)<1e-7);
+  const cash=estimator.transactionDeltas({estimates:[result],annualDelta:Math.round(amount*(-7/108))});
+  assert.equal(cash.ready,true);assert.equal(total(cash.monthly),Math.round(amount*(-7/108)));
+});
+
+test('日数按分の年額は期間比率で求め、0円・負数・政策開始終了・閏年を保持',()=>{
+  for(const amount of [0,1080,-1080,1000000001])for(const [periodStart,periodEnd,fraction] of [
+    ['2027-01-01','2027-12-31',275/365],['2028-01-01','2028-12-31',1],
+    ['2029-01-01','2029-12-31',90/365],['2029-04-01','2030-03-31',0]
+  ]){
+    const result=estimator.estimate({amount,periodStart,periodEnd,mode:'uniform'});
+    assert.equal(result.amount,amount*fraction || 0);
+    assert.ok(Math.abs(total(result.monthly)-result.amount)<=Math.max(1e-7,Math.abs(amount)*Number.EPSILON*16));
+  }
+});
+
+test('食品期間額の未算定・真の超過・負額を0円補完して売上計算を通さない',()=>{
+  const row={code:'1',rate:'8',amount:'1080',foodAmount:'1080',businessType:'type2'};
+  for(const amount of [null,NaN,Infinity,-1,1081]){
+    const result=collectSalesScenario({sales:[row]},{taxScenario:'foodProposal',foodPeriodAmount:()=>amount});
+    assert.match(result.errors.join(' '),/食品対象期間額が未算定又は元金額を超え/);
+  }
+  assert.equal(estimator.estimate({amount:'',periodStart:'2028-01-01',periodEnd:'2028-12-31'}).amount,null);
+  assert.equal(estimator.estimate({amount:1080,periodStart:'2028-12-31',periodEnd:'2028-01-01'}).amount,null);
+});
 function input(overrides={}){
   return {amount:1080,kind:'sales',businessType:'type2',periodStart:'2027-01-01',periodEnd:'2027-12-31',mode:'uniform',
     rows:{sales:[{id:'sale',code:'1',rate:'8',businessType:'type2',amount:'1080',foodAmount:'1080',foodAmountSource:'auto',source:'csv'}]},

@@ -135,7 +135,9 @@
     }
     const fallback=reason=>{
       const monthly=uniformMonthly(amount,targetMonths,start,end,policyStart,policyEnd,false);
-      return {...result,amount:sum(monthly),method:'uniform',label:'期間内日数均等配分',reason,monthly,
+      // Derive the annual total directly: summing month fractions can exceed
+      // the source by a few floating-point units even for a fully covered year.
+      return {...result,amount:amount*(periodOverlap/days(start,end)),method:'uniform',label:'期間内日数均等配分',reason,monthly,
         notes:reason ? [`${reason}この部分は日数按分による仮定です。`] : ['取引は期間内に日数で均等発生すると仮定しています。']};
     };
     if(!periodOverlap) return {...result,amount:0,method:'outside',label:'食品1％対象期間外',monthly:emptyMonths(targetMonths)};

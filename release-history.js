@@ -7,6 +7,15 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r36.0.4',date:'2026-10-24',
+      title:'食品対象期間額の微小誤差による計算停止を修正',
+      category:'calculation',recalcRecommended:true,
+      changes:Object.freeze([
+        '日数按分の年額を期間比率から直接算定し、月別合計の微小誤差を元金額超過と誤判定して停止する不具合を修正',
+        '未入力・未算定・金額超過の確認、月別配分、保存形式、入力手順は維持。停止した案件は再試算してください'
+      ])
+    }),
+    Object.freeze({
       version:'r36.0.3',date:'2026-10-24',
       title:'マニュアル動画をページ内で再生',
       category:'usability',recalcRecommended:false,

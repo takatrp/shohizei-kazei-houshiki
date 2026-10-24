@@ -248,6 +248,35 @@ const server=http.createServer((request,response)=>{
       report.sharedPriorReturnUi={before,regular,selectedRegular,simplified,restored};
     });
 
+    await check('R12 前年CSVの正式期間から特定期間を再利用し方式可否・免税経路・保存へ共用する',async()=>{
+      await seed({start:'2027-01-01',end:'2027-12-31',exempt:true,current:true,individual:true});
+      const result=await page.evaluate(()=>{
+        importedCsvOriginalSourceId='review-anonymous-reference';
+        const period={start:'2026-01-01',end:'2026-12-31'};
+        sharedCaseFacts.priorActual=ShohizeiSharedCaseFacts.withPriorActual(sharedCaseFacts.priorActual,{period,nationalTax:'78000'});
+        sharedCaseFacts.csvSource=ShohizeiSharedCaseFacts.withCsvSource(sharedCaseFacts.csvSource,{sourceId:importedCsvOriginalSourceId,period,periodConfirmed:true,fullMonthCoverageConfirmed:true});
+        taxEntryRows={sales:[createTaxEntryRow('sales',{id:'reference-sale',source:'csv',code:'1',rate:'8',businessType:'type2',amount:'1080000',foodAmount:'1080000',foodAmountSource:'manual'})],purchases:[createTaxEntryRow('purchases',{id:'reference-purchase',source:'csv',code:'5',rate:'8',amount:'540000',foodAmount:'540000',foodAmountSource:'manual'})]};
+        importedCsvDailyGroups=[{kind:'sales',code:'1',rate:'8',businessType:'type2',date:'2026-01-15',amount:972000,transactionKind:'ordinary'},{kind:'sales',code:'1',rate:'8',businessType:'type2',date:'2026-07-15',amount:108000,transactionKind:'ordinary'},{kind:'purchases',code:'5',rate:'8',usage:'taxableOnly',date:'2026-01-15',amount:486000,transactionKind:'ordinary'},{kind:'purchases',code:'5',rate:'8',usage:'taxableOnly',date:'2026-07-15',amount:54000,transactionKind:'ordinary'}];
+        importedCsvMonthlyGroups=importedCsvDailyGroups.map(g=>({...g,month:g.date.slice(0,7)}));importedCsvMonthlyDateUnknownCount=0;rowCsvKnownZeros={nonTaxableSales:true};
+        $('baseTaxableSales').value='1000000';$('specificTaxableSales').value='';$('specificPayrollAmount').value='';
+        ShohizeiContinuationUI.restore({version:1,prior:{period,exactMethod:'regular'},voluntary:{route:'election',targetStatus:'unknown',filingStatus:'filed',filingDate:'2026-12-01',assetRestrictionState:'no',otherObligation:'no'}});
+        syncSharedCsvSourceInputs();renderTaxEntryRows('sales');renderTaxEntryRows('purchases');update();
+        const c=calculate();return {ready:c.comparisonReady,regular:c.methods.find(m=>m.key==='regular'),row:ShohizeiContinuationUI.exportRows(c).find(r=>r[0]==='免税・課税選択の検討'),specific:$('specificTaxableSales').value};
+      });
+      assert.equal(result.ready,true);assert.equal(result.regular.eligibility,'eligible');assert.equal(result.row[2],'available');assert.equal(result.specific,'');
+      assert.ok(!result.regular.reasons.some(x=>/特定期間.*未確認/.test(x)));
+      await page.evaluate(()=>{$('saveToDevice').checked=true;saveState();});await page.reload({waitUntil:'domcontentloaded'});
+      const restored=await page.evaluate(()=>{const c=calculate();return {ready:c.comparisonReady,regular:c.methods.find(m=>m.key==='regular'),row:ShohizeiContinuationUI.exportRows(c).find(r=>r[0]==='免税・課税選択の検討'),specific:$('specificTaxableSales').value,period:sharedCaseFacts.csvSource.value.period};});
+      assert.equal(restored.ready,true);assert.equal(restored.regular.eligibility,'eligible');assert.equal(restored.row[2],'available');assert.equal(restored.specific,'');assert.equal(restored.period.start,'2026-01-01');
+      const unknown=await page.evaluate(()=>{const s=ShohizeiContinuationUI.snapshot();s.prior={};ShohizeiContinuationUI.restore(s);update();const c=calculate();return {regular:c.methods.find(m=>m.key==='regular'),row:ShohizeiContinuationUI.exportRows(c).find(r=>r[0]==='免税・課税選択の検討'),copy:buildSummaryText(c),csv:buildCsvText(c)};});
+      assert.equal(unknown.regular.eligibility,'unknown');assert.equal(unknown.regular.include,false);assert.equal(unknown.row[2],'unknown');assert.match(unknown.row[7],/特定期間/);
+      for(const output of [unknown.copy,unknown.csv])assert.match(output,/特定期間.*未確認/);
+      await page.evaluate(()=>{$('specificTaxableSales').value='500000';update();});
+      const manual=await page.evaluate(()=>{const c=calculate();return {regular:c.methods.find(m=>m.key==='regular'),row:ShohizeiContinuationUI.exportRows(c).find(r=>r[0]==='免税・課税選択の検討')};});
+      assert.equal(manual.regular.eligibility,'eligible');assert.equal(manual.row[2],'available');
+      report.csvReference={result,restored,unknown,manual};
+    });
+
     assert.deepEqual(report.pageErrors,[]);await page.screenshot({path:path.join(output,'review-final.png'),fullPage:true});
     console.log(JSON.stringify({checks:report.checks,pageErrors:report.pageErrors,evidence:output},null,2));
   }finally{fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2));await browser.close();server.close();}

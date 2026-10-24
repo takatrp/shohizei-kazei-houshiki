@@ -24,3 +24,11 @@
 - 版数変更後も `npm test` は936成功・失敗0（`/tmp/kazei-release-tests.log`）。build・diff検査成功。
 - 公開URLを対象にできる検証スクリプトを整え、ローカルの通常導線・4金額・保存/出力・PDF等6群は成功、ページ例外0（`/tmp/kazei-release-local-browser/report.json`）。計算・保存仕様の変更はない。
 - 公開前の到達試行ではWeb取得不可、Chromium `net::ERR_TUNNEL_CONNECTION_FAILED`。公開後にも到達可否を確認し、Pages成功だけを公開画面の実操作成功とは扱わない。
+
+## PRレビュー後の最終確認
+
+- PR #8の指摘に対応し、前年CSVから特定期間実績を切り出す際の親期間を対象年からCSV正式期間へ修正。方式可否と免税経路は同じ実績を共有し、明示入力の優先と既存の資料対応検証を維持する。
+- 独立レビューで資料期の課税状態を現在方式から推定する問題も修正。期間に結び付く実前期の正確方式又は資料期の明示状態で総額/税抜を決め、不明・競合は未確認を維持する。現行NTA No.6125 Q&A A2を2026-10-24 JST確認。
+- 修正後の `npm test` と補助実行は各942件成功・失敗0・skip0。`npm run build`・`git diff --check`成功。
+- Chromiumは通常6群・拡張8群・レビュー回帰12群の計26群成功、ページ例外0。前年CSVによる当期方式可否・免税経路・保存再読込を追加確認した。以前の936件・25群とは別の実行結果。
+- 記録: `/tmp/kazei-pr8-final-tests.log`、`/tmp/kazei-pr8-final-unisolated.log`、`/tmp/kazei-pr8-{basic,expanded,review}-final/report.json`。公開URLでの実操作検証とは区別する。

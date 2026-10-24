@@ -17,6 +17,7 @@
 | 現行の納税義務・参照期間 | [国税庁No.6501](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6501.htm)、[No.6503](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6503.htm)、2026-04-01現在法令等 | 各期の実績・明示予測を完全一致の参照期間に結び付ける。短期・決算期変更の法人は一律2年前の期間へ置換せず未確認。 |
 | 現行の返品控除と原免税取引 | [No.6359](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6359.htm)「調整不可取引」「計算式」、[No.6363](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6363.htm)「調整方法」、2026-04-01現在法令等 | 元取引時の免税が明示された返還は控除対象外。課税/免税不明と旧課税区分による入力を区別し、返品取消の正負を保持。 |
 | 免税年の基準期間売上 | [国税庁質疑22/05](https://www.nta.go.jp/law/shitsugi/shohi/22/05.htm)、2025-08-01法令通達・回答要旨 | 免税年の課税資産譲渡対価は税抜換算しない。維持/課税/期中登録の状態に応じて履歴を組み立て、状態不明の年は確定基準額を作らない。 |
+| 特定期間の資料期状態 | [No.6125 Q&A A2](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6125_qa.htm)、2026-04-01現在法令等、2026-10-24 JST再確認 | 現行法。特定期間自体が免税なら税抜不要。現在の申告方式で過去CSV期の状態を推定しない。期間一致の実前期方式又は資料期の明示状態がない場合は特定期間額を自動事実化せず、既存入力で補足する。 |
 | 移行時棚卸と固定資産調整 | [No.6491](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6491.htm)内容1・2、[No.6421](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6421.htm)概要・注・計算式、2026-04-01現在法令等 | 現行制度として確定した要件。資料不足(b)と詳細申告計算の範囲を区別する。取得・保有・原税率・複数年割合等がない場合、調整0円とは断定しない。 |
 | 資産取得による復帰/届出制限 | [No.6501](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6501.htm)課税選択・調整対象固定資産、[No.6505](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6505.htm)対象・基本式、2026-04-01現在法令等 | 資産の既知取得・制限不明と将来設備仮定を共用。単位額・取得方式が不足した集計額を取得済み適用制限へ格上げせず、必要な期の可否を未確認に保つ。 |
 

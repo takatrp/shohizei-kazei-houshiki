@@ -51,6 +51,7 @@
       select('voluntaryAsset','資産取得等による制限',[['unknown','未確認'],['no','制限対象なし'],['yes','制限あり']])+
       select('voluntaryOther','基準期間等以外の納税義務',[['unknown','未確認'],['no','該当なし'],['yes','該当あり']])+
       field('voluntaryExit','課税選択・登録をやめたい期の開始日','date')+select('voluntaryExitStatus','取消・不適用届出の状態',[['unknown','未確認'],['planned','提出予定'],['filed','提出済み'],['none','提出しない']])+field('voluntaryExitFilingDate','取消・不適用届出の提出日・予定日','date')+'</div><div id="voluntaryResult" role="status"></div>';
+    voluntary.querySelector('p').textContent+=' CSVの特定期間実績は資料期の課税・免税を確認できる場合に共用します。不明な場合は既存の特定期間売上高で補足できます。';
     byId('currentReturnMethod').closest('.grid').after(voluntary);
     for(const [key,id] of Object.entries({registrationStatus:'voluntaryRegistrationStatus',targetStatus:'voluntaryTargetStatus',exitStatus:'voluntaryExitStatus',exitFilingDate:'voluntaryExitFilingDate',route:'voluntaryRoute',filingStatus:'voluntaryFiling',filingDate:'voluntaryFilingDate',registrationDate:'voluntaryRegistrationDate',assetRestrictionState:'voluntaryAsset',otherObligation:'voluntaryOther',exitDate:'voluntaryExit'})) bind(id,()=>state.voluntary[key],v=>state.voluntary[key]=v);
     const prior=document.createElement('details');prior.id='foodInterimDetails';prior.innerHTML='<summary>通常中間納付と食品特例を比較（政策試算）</summary><p class="mini">実際の前期資料を使います。STEP3の代理額・当期入力からは自動転記しません。旧保存の「一般課税など」は正確な方式へ推定しません。</p><div id="foodPriorScope" class="mini"></div><div class="grid two">'+
@@ -109,14 +110,23 @@
     const refs=ShohizeiTaxObligation.referencePeriods({entity:ctx.entity,period:{start:ctx.start,end:ctx.end}}),history=[];
     if(refs.base&&ctx.baseSalesEntered)history.push({...refs.base,taxableSales:ctx.baseTaxableSales,source:'actual',entered:true});
     if(refs.specified&&ctx.specificSalesEntered)history.push({...refs.specified,taxableSales:ctx.specificTaxableSales,source:'actual',entered:true});
+    appendCsvReference(history,ctx,refs.specified);
     return history;
   }
   function appendCsvReference(history,ctx,window){
     if(!window||history.some(p=>p.start===window.start&&p.end===window.end))return;
-    const sliced=csvWindow({start:ctx.start,end:ctx.end},window);if(!sliced.ready)return;
+    const sourcePeriod=sharedCaseFacts.csvSource?.status==='resolved'?sharedCaseFacts.csvSource.value?.period:null;
+    const sliced=csvWindow(sourcePeriod,window);if(!sliced.ready)return;
+    const same=p=>p?.start===sourcePeriod.start&&p?.end===sourcePeriod.end;
+    const priorTaxable=sharedCaseFacts.priorActual?.status==='resolved'&&same(sharedCaseFacts.priorActual.value?.period)&&same(state.prior.period)&&['regular','simplified','special2','special3'].includes(state.prior.exactMethod);
+    const confirmed=same(state.voluntary.targetStatusPeriod)?state.voluntary.targetStatus:null;
+    if(priorTaxable&&confirmed==='exempt')return;
+    const sourceStatus=priorTaxable?'taxable':['exempt','taxable'].includes(confirmed)?confirmed:null;
+    // The present method does not establish the historical CSV period's status.
+    if(!sourceStatus)return;
     const actual=ShohizeiSalesScenario.collectSalesScenario({sales:sliced.rows.sales,actualOnePercentEntries:sliced.actualOnePercentEntries},
       {businessTypes:BUSINESS_TYPES,taxScenario:ctx.taxScenario,amountMode:'included',foodForecastMethod:'uniform',proposalFraction:0,foodPeriodAmount:()=>0,periodStart:window.start,periodEnd:window.end});
-    const amount=ctx.currentReturnMethod==='exempt'?actual.totalAmount:actual.totalTaxableBase;
+    const amount=sourceStatus==='exempt'?actual.totalAmount:actual.totalTaxableBase;
     if(!actual.errors.length&&Number.isFinite(amount))history.push({...window,taxableSales:amount,source:'csv-actual',entered:true});
   }
   function periodAssetFacts(calc,periods){

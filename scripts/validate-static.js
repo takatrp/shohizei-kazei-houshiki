@@ -7,12 +7,12 @@ const root = path.resolve(__dirname, '..');
 const htmlPath = path.join(root, 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8');
 
-for(const file of ['taxable-window-rows.js','prior-actual-evidence.js','continuation-ui.js','food-period-estimator.js','food-interim-comparison.js','tax-obligation.js','four-amount-entry.js','sales-scenario.js','shared-case-facts.js','input-diagnostics.js','cashflow-event-chart.js','cashflow-panel-data.js','cashflow-panel-view.js']){
+for(const file of ['manual-video.js','taxable-window-rows.js','prior-actual-evidence.js','continuation-ui.js','food-period-estimator.js','food-interim-comparison.js','tax-obligation.js','four-amount-entry.js','sales-scenario.js','shared-case-facts.js','input-diagnostics.js','cashflow-event-chart.js','cashflow-panel-data.js','cashflow-panel-view.js']){
   if(!html.includes(`src="${file}"`)) throw new Error(`Missing presentation module: ${file}`);
   new Function(fs.readFileSync(path.join(root,file),'utf8'));
 }
 
-for(const file of ['import-purchases.js', 'tax-engine.js', 'tax-return-engine.js', 'switch-decision.js', 'journal-csv.js', 'tax-entry-rows.js', 'tax-entry-csv.js', 'cashflow-engine.js', 'cashflow-adapter.js', 'method-cashflow-adapter.js', 'cashflow-defaults.js', 'input-requirements.js', 'tax-calendar.js', 'election-deadline.js', 'interim-tax-engine.js', 'release-history.js', 'forstaff.png', 'manual/usage-manual.pdf']){
+for(const file of ['import-purchases.js', 'tax-engine.js', 'tax-return-engine.js', 'switch-decision.js', 'journal-csv.js', 'tax-entry-rows.js', 'tax-entry-csv.js', 'cashflow-engine.js', 'cashflow-adapter.js', 'method-cashflow-adapter.js', 'cashflow-defaults.js', 'input-requirements.js', 'tax-calendar.js', 'election-deadline.js', 'interim-tax-engine.js', 'release-history.js', 'forstaff.png', 'manual/usage-manual.pdf', 'manual/csv-import-guide.mp4']){
   if(!fs.existsSync(path.join(root, file))) throw new Error(`Missing static asset: ${file}`);
 }
 

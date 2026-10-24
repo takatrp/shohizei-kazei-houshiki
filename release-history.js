@@ -7,6 +7,16 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r36.0.3',date:'2026-10-24',
+      title:'マニュアル動画をページ内で再生',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        '固定ステップ欄の主ボタンを再生アイコン付き「マニュアル動画」へ変更。ブランド色に合わせた配色とキーボードフォーカスを用意',
+        'CSV取込みガイドの強調表示版をページ内プレイヤーで再生。自動再生せず、閉じる・Escで停止。スマホ縦横に対応し、文章マニュアルPDFも保持',
+        '税計算・保存形式・入力導線の変更なし'
+      ])
+    }),
+    Object.freeze({
       version:'r36.0.2',date:'2026-10-24',
       title:'中間納付の比較前提と4金額の入力案内を整理',
       category:'usability',recalcRecommended:true,

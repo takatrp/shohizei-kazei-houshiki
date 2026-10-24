@@ -5,6 +5,17 @@ const quick = require('../four-amount-entry.js');
 const rows = require('../tax-entry-rows.js');
 const input = {industry:'manufacturing',foodSales:'1,080,000',otherSales:'110000',foodPurchases:'540000',otherPurchases:'220000'};
 
+test('飲食店の4金額案内は8％テイクアウト等と10％店内・酒類を分け、現行税率を政策試算と呼ばない',()=>{
+  const view=quick.presentation({industry:'restaurant',taxScenario:'current'});
+  assert.match(view.labels.foodSales,/軽減8％/);assert.match(view.labels.otherSales,/10％/);assert.match(view.intro,/テイクアウト・物販.*店内飲食・酒類/);
+  assert.doesNotMatch(view.intro+view.assumptions.join(' '),/1％|政策試算/);assert.equal(Object.keys(view.labels).length,4);
+});
+test('4金額の政策前提・業種案内を変えても入力値と変換行を変更しない',()=>{
+  const original=JSON.stringify(input),before=quick.build(input);
+  for(const industry of ['restaurant','manufacturing']){const view=quick.presentation({industry,taxScenario:'foodProposal'});assert.match(view.intro,/8％実績.*1％政策試算/);assert.match(view.assumptions[0],/実際の1％取引ではありません/);}
+  assert.equal(JSON.stringify(input),original);assert.deepEqual(quick.build(input).rows,before.rows);
+});
+
 test('4金額: 同じ税込行を既存集計エンジンへ渡し二重換算しない',()=>{
   const result = quick.build(input);
   assert.equal(result.ready,true);

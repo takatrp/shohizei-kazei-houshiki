@@ -61,7 +61,8 @@ test('I01-I02 実績の国税187.2万円から1回・120万円、STEP3税額は�
   assert.equal(plan.basis.national,1872000);
   assert.equal(context.cashflowAutoEntries(plan.base)[0].amount,1200000);
   assert.match(context.cashflowAutoHtml(plan),/1回・1,200,000円/);
-  assert.match(context.cashflowAutoHtml(plan),/食品1％の中間申告特例・仮決算は自動適用しません/);
+  assert.match(context.cashflowAutoHtml(plan),/仮決算による減額等は自動適用しません/);
+  assert.doesNotMatch(context.cashflowAutoHtml(plan),/食品.*特例|明示.*利用予定/);
 });
 
 test('I03-I05 別前期額の明示、欠損は未算定、実績はSTEP3と独立',()=>{

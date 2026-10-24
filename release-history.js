@@ -7,6 +7,17 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r36.0.2',date:'2026-10-24',
+      title:'中間納付の比較前提と4金額の入力案内を整理',
+      category:'usability',recalcRecommended:true,
+      changes:Object.freeze([
+        '現行税率では食品中間特例を表示・接続せず、通常納付だけの場合は見出し・出力も通常納付と表示。食品シナリオの比較入口は維持',
+        '8％維持と1％の税率比較はAを通常納付に固定し、旧保存のA特例指定を適用しない。両案1％の方式比較はA/B別の指定を資金繰りへ反映。手入力への切替でも各案の予定を保持',
+        '飲食店の4金額に8％のテイクアウト・物販、10％の店内飲食・酒類の例を表示。欄数・必須確認・遷移は追加しない',
+        '年税額の計算式と保存形式は変更なし。過去の特例指定がある案件は中間納付・確定精算を再確認。制度資料の基準日は変更しない'
+      ])
+    }),
+    Object.freeze({
       version:'r36.0.1',date:'2026-10-24',
       title:'計算概要の税率合計と詳細表示を修正',
       category:'usability',recalcRecommended:false,

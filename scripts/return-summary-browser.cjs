@@ -34,7 +34,7 @@ const server=http.createServer((request,response)=>{
       await page.locator('#methodCards details[data-method="regular"] summary').click();
       const result=await page.evaluate(()=>{const c=calculate(),m=c.methods.find(m=>m.key==='regular');return {version:APP_META.version,method:m,main:c.returnCalculation.mainReturn,screen:$('methodCards').innerText,copy:buildSummaryText(c),csv:buildCsvText(c),print:$('comparisonPrintContent').innerText,summary:$('taxSummary').innerText,rows:taxEntryRows};});
       const y=n=>n.toLocaleString('ja-JP')+'円',formula=`第一表② ${y(sample.sales)} − ④ ${y(sample.credit)} − ⑤ 0円 → 国税 ${y(sample.national)} ＋ 地方税 ${y(sample.local)}`;
-      assert.equal(result.version,'r36.0.1');assert.equal(result.method.amount,sample.total);assert.equal(result.main.fields['②'],sample.sales);
+      assert.equal(result.version,process.env.KAZEI_EXPECTED_VERSION||'r36.0.2');assert.equal(result.method.amount,sample.total);assert.equal(result.main.fields['②'],sample.sales);
       for(const label of ['screen','copy','csv','print'])assert.ok(result[label].includes(formula),sample.name+':'+label);
       assert.ok(result.screen.includes('売上税額合計 '+y(sample.sales)));assert.ok(result.screen.includes('返還合計 0円'));
       if(sample.values[0])assert.match(result.screen,/②A 軽減8％売上消費税額/);

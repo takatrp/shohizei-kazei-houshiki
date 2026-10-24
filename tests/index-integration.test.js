@@ -246,6 +246,35 @@ function exactRowsHarness({sales=11000123,purchases=5500321,methods=['regular']}
   return h;
 }
 
+for(const sample of [
+  {name:'8％・10％混合',sales8:10800000,sales10:11000000,purchase8:5400000,purchase10:5500000,salesTax:1404000,credit:702000,returned:0,national:702000,local:198000,total:900000},
+  {name:'8％単独',sales8:10800000,sales10:0,purchase8:5400000,purchase10:0,salesTax:624000,credit:312000,returned:0,national:312000,local:88000,total:400000},
+  {name:'10％単独',sales8:0,sales10:11000000,purchase8:0,purchase10:5500000,salesTax:780000,credit:390000,returned:0,national:390000,local:110000,total:500000},
+  {name:'両税率の返品',sales8:10800000,sales10:11000000,purchase8:5400000,purchase10:5500000,return8:1080000,return10:1100000,salesTax:1404000,credit:702000,returned:140400,national:561600,local:158400,total:720000},
+  {name:'混合仕入の還付',sales8:1080000,sales10:1100000,purchase8:5400000,purchase10:5500000,salesTax:140400,credit:702000,returned:0,national:-561600,local:-158400,total:-720000}
+])test(`[r36.0.1] ${sample.name}の概要・詳細・コピー・CSV・印刷は第一表合計を使う`,()=>{
+  const h=exactRowsHarness();
+  h.context.yen=value=>`${Math.round(value).toLocaleString('ja-JP')}円`;
+  h.context.taxEntryRows={sales:[{id:'summary-zero',code:'3',amount:'0',source:'manual'}],purchases:[]};
+  for(const rate of ['8','10']){
+    h.context.taxEntryRows.sales.push({id:'summary-sale-'+rate,code:'1',businessType:'type3',rate,amount:String(sample['sales'+rate]),source:'manual'});
+    h.context.taxEntryRows.purchases.push({id:'summary-purchase-'+rate,code:'5',rate,amount:String(sample['purchase'+rate]),source:'manual'});
+    if(sample['return'+rate])h.context.taxEntryRows.sales.push({id:'summary-return-'+rate,code:'11',businessType:'type3',rate,amount:String(sample['return'+rate]),source:'manual'});
+  }
+  h.context.syncTaxEntryRows();const calc=h.context.calculate(),method=calc.methods[0],main=calc.returnCalculation.mainReturn;
+  // Independent gross-tax checks: 10.8m/108*6.24=624k; 11m/110*7.8=780k.
+  assert.equal(main.fields['②'],sample.salesTax);assert.equal(main.fields['④'],sample.credit);assert.equal(main.fields['⑤'],sample.returned);
+  assert.equal(main.national,sample.national);assert.equal(main.local,sample.local);assert.equal(method.amount,sample.total);
+  const y=h.context.yen,formula=`第一表② ${y(sample.salesTax)} − ④ ${y(sample.credit)} − ⑤ ${y(sample.returned)} → 国税 ${y(sample.national)} ＋ 地方税 ${y(sample.local)}`;
+  assert.ok(method.reason.includes(formula),method.reason);
+  vm.runInContext(['renderComparisonPrint','renderMethodCards'].map(functionSource).join('\n'),h.context);h.context.renderMethodCards(calc);
+  for(const output of [h.element('methodCards').innerHTML,h.context.buildSummaryText(calc),h.context.buildCsvText(calc),h.element('comparisonPrintContent').innerHTML])assert.ok(output.includes(formula),output);
+  const trace=h.context.renderReturnCalculationTrace(calc);
+  assert.ok(trace.includes(`売上税額合計 ${y(sample.salesTax)}`));assert.ok(trace.includes(`返還合計 ${y(sample.returned)}`));
+  assert.ok(trace.includes(`→ ${sample.total < 0 ? '1円' : '100円'}未満切捨て`));
+  if(sample.sales8||sample.return8){assert.match(trace,/②A 軽減8％売上消費税額/);assert.match(trace,/6.24％/);}
+});
+
 test('[R34診断UI] 非課税売上不足は本則だけを未算定とし算定済み簡易に赤字理由を出さない',()=>{
   const h=exactRowsHarness({methods:['regular','simplified']});
   h.context.taxEntryRows.sales=h.context.taxEntryRows.sales.filter(row=>row.code!=='3');

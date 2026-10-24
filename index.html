@@ -4633,7 +4633,7 @@ function calculate(contextOverride){
       'regular', regularAmount, eligibility.regular,
       `${regularMethodLabel(ctx, regular)}${returnCalculation?.referenceCalculable ? '・現行制度の申告書計算' : ''}${regular.unavailableReasons || regular.taxableSalesRatio === null ? '' : `・課税売上割合 ${(regular.taxableSalesRatio * 100).toFixed(2)}％`}`,
       returnCalculation?.referenceCalculable
-        ? `付表1-3② ${yen(returnCalculation.schedule13.fields['②B'])} − ④ ${yen(returnCalculation.schedule13.fields['④C'])} − ⑤ ${yen(returnCalculation.schedule13.fields['⑤B'])} → 国税 ${yen(returnCalculation.mainReturn.national)} ＋ 地方税 ${yen(returnCalculation.mainReturn.local)}`
+        ? `第一表② ${yen(returnCalculation.mainReturn.fields['②'])} − ④ ${yen(returnCalculation.mainReturn.fields['④'])} − ⑤ ${yen(returnCalculation.mainReturn.fields['⑤'])} → 国税 ${yen(returnCalculation.mainReturn.national)} ＋ 地方税 ${yen(returnCalculation.mainReturn.local)}`
         : `売上税額 ${yen(sales.totalTax)} - 仕入控除 ${yen(regularCredit)}（免税事業者仕入 ${calcExemptCreditLabel(purchases)}）+ 調整 ${yen(purchases.adjustment)}`
     ),
     buildMethod(
@@ -5245,11 +5245,16 @@ function renderReturnCalculationTrace(calc){
     ...(s23.importNationalTax && (s23.importNationalTax['8'] || s23.importNationalTax['10']) ? [traceLine('⑮A・⑮B 課税貨物の国税',`採用した輸入国税（概算・分類候補を含む）：軽8％ ${traceMoney(s23.importNationalTax['8'])}、10％ ${traceMoney(s23.importNationalTax['10'])}。輸入地方税を含めず、国内税込仕入れ式から割り戻しません。`)] : []),
     traceLine(`⑲・㉑・㉖ ${s23.method === 'individual' ? '個別対応方式' : s23.method === 'proportional' ? '一括比例配分方式' : '全額控除'}`,methodExplanation),
     '<div class="trace-subhead">付表1-3 → 第一表</div>',
+    ...(Number(input.taxableSalesGross['8'] || 0) || Number(input.salesReturnGross['8'] || 0) ? [
+      traceLine('①1A・①A 軽減8％課税標準額',`${traceMoney(s23.taxableTransfer['8'])} → 1,000円未満切捨て ${traceMoney(s13.taxableBase['8'])}`),
+      traceLine('②A 軽減8％売上消費税額',`${traceMoney(s13.taxableBase['8'])} × 6.24％ = ${traceMoney(s13.salesTax['8'])}`),
+      traceLine('⑤A 軽減8％返還等対価の税額',`${traceMoney(input.salesReturnGross['8'])} × 6.24 ÷ 108 → 円未満切捨て ${traceMoney(s23.returnNationalTax['8'])}`)
+    ] : []),
     traceLine('①1B・①B 課税標準額',`${traceMoney(s23.taxableTransfer['10'])} → 1,000円未満切捨て ${traceMoney(s13.taxableBase['10'])}`),
     traceLine('②B 売上消費税額',`${traceMoney(s13.taxableBase['10'])} × 7.8％ = ${traceMoney(s13.salesTax['10'])}`),
     traceLine('⑤B 返還等対価の税額',`${traceMoney(input.salesReturnGross['10'])} × 7.8 ÷ 110 → 円未満切捨て ${traceMoney(s23.returnNationalTax['10'])}`),
-    traceLine('⑦C・⑨C 差引国税',`${traceMoney(s13.salesTax['10'])} − 控除 ${traceMoney(s23.creditableTotal)} − 返還 ${traceMoney(s23.returnNationalTax['10'])} = ${traceMoney(s13.nationalRaw)} → 100円未満切捨て ${traceMoney(main.national)}`),
-    traceLine('⑬C・第一表⑳ 地方消費税',`${traceMoney(main.national)} × 22 ÷ 78 → 100円未満切捨て ${traceMoney(main.local)}`),
+    traceLine('⑦C・⑨C 差引国税',`売上税額合計 ${traceMoney(main.fields['②'])} − 控除 ${traceMoney(main.fields['④'])} − 返還合計 ${traceMoney(main.fields['⑤'])} = ${traceMoney(s13.nationalRaw)} → ${s13.nationalRaw < 0 ? '1円' : '100円'}未満切捨て ${traceMoney(main.national)}`),
+    traceLine('⑬C・第一表⑳ 地方消費税',`${traceMoney(main.national)} × 22 ÷ 78 → ${main.national < 0 ? '1円' : '100円'}未満切捨て ${traceMoney(main.local)}`),
     traceLine('中間納付前の当期税額',`${traceMoney(main.national)} ＋ ${traceMoney(main.local)} = ${yen(main.totalBeforeInterim)}`)
   ];
   return [calc.csvRecoveryText,calc.csvOriginText,...(calc.inputUnconfirmedItems || [])].filter(Boolean)

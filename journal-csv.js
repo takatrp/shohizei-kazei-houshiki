@@ -405,12 +405,19 @@
     // Only classification, month and signed totals leave the CSV parser for
     // cash-flow allocation; source names, memos and record IDs stay private.
     const monthlyGroupsByKey = new Map();
+    const dailyGroupsByKey = new Map();
     let monthlyDateUnknownEntryCount = 0;
     const addMonthlyGroup = ({kind,code,rate = '',businessType = '',usage = '',creditRatio = '',date,amount,transactionKind}) => {
       const month = date ? date.slice(0,7) : '';
       if(!month) monthlyDateUnknownEntryCount += 1;
       const group = {kind,code,rate,businessType,usage,creditRatio,month,amount:0,transactionKind:transactionKind === 'adjustment' || amount < 0 ? 'adjustment' : 'ordinary'};
       const key = JSON.stringify([group.kind,group.code,group.rate,group.businessType,group.usage,group.creditRatio,group.month,group.transactionKind]);
+      const daily = {kind,code,rate,businessType,usage,creditRatio,date:date || '',amount,
+        transactionKind:group.transactionKind};
+      const dailyKey = JSON.stringify([kind,code,rate,businessType,usage,creditRatio,daily.date,daily.transactionKind]);
+      const previousDay = dailyGroupsByKey.get(dailyKey);
+      if(previousDay) previousDay.amount += amount;
+      else dailyGroupsByKey.set(dailyKey,daily);
       const current = monthlyGroupsByKey.get(key);
       if(current) current.amount += amount;
       else {
@@ -631,6 +638,7 @@
       purchaseTaxByUse,
       purchaseAmountsByUse,
       monthlyGroups:[...monthlyGroupsByKey.values()].sort((a,b) => a.month.localeCompare(b.month) || a.kind.localeCompare(b.kind) || a.code.localeCompare(b.code) || a.rate.localeCompare(b.rate) || a.businessType.localeCompare(b.businessType) || a.usage.localeCompare(b.usage) || a.creditRatio.localeCompare(b.creditRatio) || a.transactionKind.localeCompare(b.transactionKind)),
+      dailyGroups:[...dailyGroupsByKey.values()].sort((a,b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind) || a.code.localeCompare(b.code)),
       monthlyDateUnknownEntryCount,
       exemptPurchaseProvenanceByUse,
       unsupportedEntries,

@@ -185,14 +185,16 @@ test('明示1％実績は予測8％行へ混ぜず、用途へ一度だけ加え
   closeTo(current.invoiceTax,8000);
 });
 
-test('食品内数の返品は符号を保って換算し、差引後の正額を維持', () => {
+test('旧8％仕入返品は元税率を維持し、通常食品取引だけを1％予測する', () => {
   const result = aggregateScenarioPurchases({purchases:[
     purchase('5','216000','8','','216000'),purchase('5','-108000','8','','-108000')
   ]}, {taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1});
   assert.equal(result.complete,true);
-  closeTo(result.invoiceTotalAmount,101000);
-  closeTo(result.invoiceTax,1000);
-  closeTo(result.purchaseTaxByUse.taxableOnly,1000);
+  // Q&A 1-4/1-5: the original 8% credit is reversed at 8%, independently
+  // of the new ordinary food purchase forecast (202000 - 108000).
+  closeTo(result.invoiceTotalAmount,94000);
+  closeTo(result.invoiceTax,-6000);
+  closeTo(result.purchaseTaxByUse.taxableOnly,-6000);
 });
 
 test('R02: 区分11の食品内数は分類済み・未分類とも減算し、部分返品と全額返品を保持する', () => {

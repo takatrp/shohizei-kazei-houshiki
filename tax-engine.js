@@ -178,8 +178,10 @@
   }
 
   function calculateDetailedRegular(input = {}){
-    const salesTax = nonNegativeNumber(input.salesTax);
-    const purchaseTax = nonNegativeNumber(input.purchaseTax);
+    // Sales tax is the signed balance after original-rate returns. A valid
+    // 1% sale and an old 8% return can have positive sales but negative tax.
+    const salesTax = finiteNumber(input.salesTax);
+    const purchaseTax = finiteNumber(input.purchaseTax);
     const adjustment = finiteNumber(input.adjustment);
     const taxableSales = nonNegativeNumber(input.taxableSales);
     const totalSales = nonNegativeNumber(input.totalSales);
@@ -194,6 +196,13 @@
     const annualizedTaxableSales = periodAssessment.annualizedTaxableSales;
     const fullCreditEligible = periodAssessment.fullCreditEligible;
 
+    // Full-credit net purchases retain signed original-rate returns. Partial
+    // credit needs the original use/ratio of a return; do not clamp it to zero.
+    if(!fullCreditEligible && (purchaseTax < 0 || Number(input.taxableOnlyTax) < 0 || Number(input.commonTax) < 0)) return {
+      amount:null,regularCredit:null,taxableSalesRatio,periodMonths,annualizedTaxableSales,
+      periodReasons:periodAssessment.reasons,fullCreditEligible:false,appliedMethod:'unresolved',purchaseTax,taxableSales,totalSales,creditBeforeCap:null,
+      unavailableReasons:['負の仕入税額・仕入返還の元の用途と控除割合が必要です。0円に切り上げず、この一般課税だけ未算定にします。']
+    };
     let regularCredit;
     let appliedMethod;
     let creditBeforeCap;
@@ -282,6 +291,19 @@
 
   function taxRateForProposalItem(input = {}){
     const category = String(input.category || 'unconfirmed');
+    // Returns follow the original transaction rate, not the return date
+    // (September 2026 proposal Q&A 1-5). A missing original rate is local
+    // uncertainty; it must not silently become a new 1% food sale.
+    if(input.transactionKind === 'adjustment'){
+      const original = Number(input.originalRatePercent);
+      if(![1,8,10].includes(original)) return {ratePercent:null,status:'unknown',reason:'返品・調整の元取引の適用税率を確認してください。'};
+      if(original === 1 && taxRateForProposalItem({date:input.originalDate,category:'food'}).ratePercent !== 1)
+        return {ratePercent:null,status:'unknown',reason:'1％返品の元取引日が制度対象期間内であることを確認してください。'};
+      if(original === 1 && isoDateToEpochDay(input.date) !== null
+        && isoDateToEpochDay(input.originalDate) > isoDateToEpochDay(input.date))
+        return {ratePercent:null,status:'unknown',reason:'返品日より後の元取引日は使用できません。'};
+      return {ratePercent:original,status:'confirmed',reason:'返品・調整は元取引の税率を維持します。'};
+    }
     if(category === 'standard') return { ratePercent:10, status:'confirmed', reason:'' };
     if(category === 'newspaperOrOtherReduced') return { ratePercent:8, status:'confirmed', reason:'' };
     if(category !== 'food'){
@@ -307,6 +329,9 @@
       return { status:'unknown', reasonCode:'dateUnknown', reason:'取引日を確認してください。元のCSV仕訳と税率の照合が必要です。' };
     }
     if(input.transactionKind === 'adjustment'){
+      const original = taxRateForProposalItem({...input,category:'food'});
+      if(original.status === 'confirmed' && original.ratePercent === 1)
+        return {status:'confirmed',reasonCode:'originalOnePercent',reason:'元取引日・元税率に基づく1％返品・調整です。'};
       return { status:'unknown', reasonCode:'adjustment', reason:'返品・調整のため、元取引の日付と適用税率の確認が必要です。返品日が1％対象期間内でも、元取引が8％なら1％とは確定できません。' };
     }
     if(input.transactionKind !== 'ordinary'){
@@ -329,14 +354,21 @@
   }
 
   function calculateSpecialMethodAmount(input = {}){
-    const totalSalesTax = nonNegativeNumber(input.totalSalesTax);
-    const foodOnePercentTax = Math.min(totalSalesTax, nonNegativeNumber(input.foodOnePercentTax));
+    const totalSalesTax = finiteNumber(input.totalSalesTax);
+    const foodOnePercentTax = finiteNumber(input.foodOnePercentTax);
     const burdenRatio = Math.min(1, Math.max(0, finiteNumber(input.burdenRatio)));
+    const otherSalesTax = totalSalesTax - foodOnePercentTax;
+    // Food's signed net tax is an equal deduction. Pure food returns therefore
+    // cancel too. A negative non-food basis needs a separate statutory return
+    // calculation; do not invent a zero or a negative deemed deduction here.
+    const valid = otherSalesTax >= -1e-8;
     return {
       totalSalesTax,
       foodOnePercentTax,
-      otherSalesTax:totalSalesTax - foodOnePercentTax,
-      amount:(totalSalesTax - foodOnePercentTax) * burdenRatio
+      otherSalesTax,
+      valid,
+      reasons:valid ? [] : ['食品以外の売上返還等が売上税額を超えるため、特例の申告書計算を個別確認してください。'],
+      amount:valid ? otherSalesTax * burdenRatio : null
     };
   }
 
@@ -347,10 +379,14 @@
     const errors = [];
     sales.forEach((item, index) => {
       const ratePercent = nonNegativeNumber(item.ratePercent);
-      const amount = finiteNumber(item.amount);
+      const returned = item.transactionKind === 'adjustment' || String(item.taxCode || '') === '11';
+      const enteredAmount = finiteNumber(item.amount);
+      const amount = returned ? -Math.abs(enteredAmount) : enteredAmount;
       const amountMode = item.amountMode === 'included' ? 'included' : 'excluded';
       const key = String(item.businessKey || 'unclassified');
-      if(item.confirmed === false || !ratePercent || amount < 0 || !Number.isFinite(Number(item.amount))){
+      const original = returned ? taxRateForProposalItem({...item,transactionKind:'adjustment',category:'food'}) : null;
+      if(item.confirmed === false || !ratePercent || (!returned && amount < 0) || !Number.isFinite(Number(item.amount))
+        || (returned && (original.status !== 'confirmed' || original.ratePercent !== ratePercent))){
         errors.push(`売上${index + 1}の税率・金額・品目区分を確認してください。`);
         return;
       }
@@ -367,6 +403,7 @@
       };
       current.rowTax += tax;
       current.rowTaxableBase += taxableBase;
+      current.hasReturns ||= returned;
       if(item.foodOnePercent === true && Math.abs(ratePercent - 1) < 1e-9){
         current.foodOnePercentTax += tax;
         current.foodOnePercentTaxableBase += taxableBase;
@@ -376,10 +413,13 @@
     let purchaseTax = 0;
     purchases.forEach((item, index) => {
       const ratePercent = nonNegativeNumber(item.ratePercent);
-      const amount = finiteNumber(item.amount);
+      const returned = item.transactionKind === 'adjustment';
+      const amount = returned ? -Math.abs(finiteNumber(item.amount)) : finiteNumber(item.amount);
       const amountMode = item.amountMode === 'included' ? 'included' : 'excluded';
       const creditRatio = Math.min(1, Math.max(0, finiteNumber(item.creditRatio, 1)));
-      if(item.confirmed === false || !ratePercent || amount < 0 || !Number.isFinite(Number(item.amount))){
+      const original = returned ? taxRateForProposalItem({...item,category:'food'}) : null;
+      if(item.confirmed === false || !ratePercent || (!returned && amount < 0) || !Number.isFinite(Number(item.amount))
+        || (returned && (original.status !== 'confirmed' || original.ratePercent !== ratePercent))){
         errors.push(`仕入${index + 1}の税率・金額・控除割合を確認してください。`);
         return;
       }
@@ -484,8 +524,43 @@
     ].join('|');
   }
 
+  function routeTaxAmount(value){
+    if(typeof value !== 'number' && typeof value !== 'string') return null;
+    if(typeof value === 'string' && value.trim() === '') return null;
+    const amount = Number(value);
+    return Number.isFinite(amount) ? amount : null;
+  }
+
+  function routeMethodSelectionStatus(method){
+    if(!method || typeof method !== 'object') return 'unknown';
+    // Explicit negative/unknown evidence wins over an older positive flag.
+    // Adapters may retain `eligible:true` while refreshing a newer assessment.
+    if(method.eligible === ELIGIBILITY.INELIGIBLE
+      || method.eligibility === ELIGIBILITY.INELIGIBLE || method.selectionStatus === 'unavailable') return 'unavailable';
+    if(method.eligible === ELIGIBILITY.UNKNOWN || method.eligibility === ELIGIBILITY.UNKNOWN
+      || method.selectionStatus === 'unknown') return 'unknown';
+    if(method.eligible === false) return 'unavailable';
+    if(method.eligibility != null && method.eligibility !== ELIGIBILITY.ELIGIBLE
+      || method.selectionStatus != null && !['available','planned'].includes(method.selectionStatus)
+      || method.eligible != null && method.eligible !== true && method.eligible !== ELIGIBILITY.ELIGIBLE) return 'unknown';
+    const positive = method.eligible === true || method.eligible === ELIGIBILITY.ELIGIBLE
+      || method.eligibility === ELIGIBILITY.ELIGIBLE;
+    if(!positive) return 'unknown';
+    return method.selectionStatus === 'planned' || method.conditional === true ? 'planned' : 'available';
+  }
+
+  function routeMethodCalculationStatus(method){
+    if(!method || routeTaxAmount(method.amount) === null) return 'unavailable';
+    if(method.calculationStatus === 'unknown') return 'unknown';
+    if(method.calculationStatus != null && method.calculationStatus !== 'calculated') return 'unavailable';
+    return 'calculated';
+  }
+
   function isEligibleRouteMethod(method){
-    return method && (method.eligible === true || method.eligible === ELIGIBILITY.ELIGIBLE);
+    // Calculation availability and choice eligibility are independent gates.
+    // Neither a stale amount nor a stale positive flag can remove the other.
+    return routeMethodCalculationStatus(method) === 'calculated'
+      && ['available','planned'].includes(routeMethodSelectionStatus(method));
   }
 
   function routeAction(methodKey, context){
@@ -511,7 +586,8 @@
   }
 
   function futureElectionAction(deadline){
-    return `${deadline.basisLabel}。翌期の届出計画を条件付きで反映`;
+    return `${deadline.basisLabel}。${deadline.filingAssessment === 'eligible'
+      ? '翌期を対象とする提出済みの届出を反映' : '翌期の届出計画を条件付きで反映'}`;
   }
 
   function routeElectionDeadline(state, period){
@@ -554,6 +630,19 @@
     let simplifiedApplied = state.simplifiedApplied;
     let binding = Math.max(0, state.binding - 1);
 
+    let foodDiscontinuance = null;
+    if(key === 'regular' && election && !simplifiedUnavailablePreservesElection
+      && period.foodDiscontinuanceInput){
+      foodDiscontinuance = assessFoodSimplifiedDiscontinuance({
+        ...period.foodDiscontinuanceInput,
+        // Scope the proposal to the period being evaluated; a copied initial
+        // assessment must never waive restrictions in the later periods.
+        periodStart:period.start,periodEnd:period.end,
+        simplifiedAppliedState:state.simplifiedApplied ? 'yes' : 'no'
+      });
+      if(foodDiscontinuance.eligibility !== ELIGIBILITY.ELIGIBLE) foodDiscontinuance = null;
+    }
+
     if(key === 'simplified'){
       if(state.assetRestriction > 0) return [];
       if(!election){
@@ -578,9 +667,9 @@
         binding = 1;
       }
     }else if(key === 'regular' && election){
-      if(state.binding > 0 && !simplifiedUnavailablePreservesElection) return [];
+      if(state.binding > 0 && !simplifiedUnavailablePreservesElection && !foodDiscontinuance) return [];
       if(!simplifiedUnavailablePreservesElection){
-        if(discontinuanceReady !== CONFIRMATION.YES) return [];
+        if(discontinuanceReady !== CONFIRMATION.YES && !foodDiscontinuance) return [];
         election = false;
         electionBasis = null;
         simplifiedApplied = false;
@@ -603,14 +692,25 @@
     const assetRestriction = highValueAssetTriggered
       ? 2
       : Math.max(0, state.assetRestriction - 1);
-    const action = routeAction(key, context)
+    const action = (foodDiscontinuance
+      ? `食品1％改正案の対象期に限る不適用届出（${foodDiscontinuance.filingExecution === 'planned' ? '期限内提出を仮定' : '提出済みとの入力'}）により本則課税へ移行。簡易課税の届出効力は終了`
+      : routeAction(key, context))
       + (context.conditionalElection && !context.discontinue && !context.newElection
         ? '（先の届出計画が実行された場合の条件付き）' : '')
       + (highValueAssetTriggered ? '。高額資産取得による簡易課税届出の制限を反映' : '');
     const transitions = [{
       state:{ election, simplifiedApplied, binding, assetRestriction, previousMethod:key,
         pendingElection:null,electionBasis },
-      action
+      action,
+      selectionStatus:foodDiscontinuance?.filingExecution === 'planned'
+        || context.electionDeadline?.filingAssessment === 'conditional'
+        || context.conditionalElection
+        || context.discontinue && !foodDiscontinuance
+          && (period.discontinuanceFilingStatus === 'planned'
+            || period.routeIndex > 0 && period.discontinuanceFilingStatus !== 'filed')
+        ? 'planned' : 'available',
+      policyScenario:!!foodDiscontinuance,
+      foodDiscontinuance
     }];
 
     // A valid election can take effect in this period even when the taxpayer
@@ -662,6 +762,14 @@
   function assessRouteMethodChoice(state, period, methodKey, noticeReady){
     const transitions = transitionRouteStates(state, period, { key:methodKey }, noticeReady);
     if(transitions.length) return { eligibility:ELIGIBILITY.ELIGIBLE, reasons:[], transitions };
+    if(methodKey === 'regular' && state.election && state.simplifiedApplied
+      && period.foodDiscontinuanceInput){
+      const food = assessFoodSimplifiedDiscontinuance({...period.foodDiscontinuanceInput,
+        periodStart:period.start,periodEnd:period.end,simplifiedAppliedState:'yes'});
+      if(food.eligibility === ELIGIBILITY.UNKNOWN){
+        return {eligibility:ELIGIBILITY.UNKNOWN,reasons:food.confirmations,transitions,foodDiscontinuance:food};
+      }
+    }
     if(methodKey === 'simplified'){
       if(state.assetRestriction > 0){
         return { eligibility:ELIGIBILITY.INELIGIBLE, reasons:['高額資産取得による簡易課税の選択制限があります。'], transitions };
@@ -763,8 +871,8 @@
     if(input.initialElectionStatus === 'unknown'){
       return emptyResult('簡易課税制度選択届出書の現在の状態が未確認です。');
     }
-    if(!Array.isArray(input.periods) || input.periods.length !== 4){
-      return emptyResult('4期分の候補が必要です。');
+    if(!Array.isArray(input.periods) || input.periods.length < 4 || input.periods.length > 16){
+      return emptyResult('原則4期、措置終了後の比較に必要な場合は最大16期分の候補が必要です。');
     }
 
     const initialState = INITIAL_ROUTE_STATES[input.initialElectionStatus];
@@ -772,7 +880,7 @@
 
     let candidates = new Map([[
       routeStateKey(initialState),
-      { state:initialState, cumulative:0, route:[] }
+      { state:initialState, cumulative:0, route:[], conditional:false, policyScenario:false }
     ]]);
 
     for(const [periodIndex, period] of input.periods.entries()){
@@ -793,24 +901,40 @@
           };
           const transitions = assessRouteMethodChoice(candidate.state, routePeriod, method.key, currentNoticeReady).transitions;
           transitions.forEach(transition => {
-            const amount = finiteNumber(method.amount);
+            const amount = routeTaxAmount(method.amount);
+            const conditional = candidate.conditional || routeMethodSelectionStatus(method) === 'planned'
+              || transition.selectionStatus === 'planned'
+              || transition.state.electionBasis?.status === 'conditional'
+              || !!transition.state.pendingElection
+                && !['filed','existingValid'].includes(transition.state.pendingElection.filingStatus);
+            const cumulative = candidate.cumulative + amount;
+            if(!Number.isFinite(cumulative)) return;
             const next = {
               state:transition.state,
-              cumulative:candidate.cumulative + amount,
+              cumulative,
+              conditional,
+              policyScenario:candidate.policyScenario || transition.policyScenario === true,
               route:[...candidate.route, {
                 label:String(period.label ?? ''),
                 action:transition.action,
                 method:method.key,
-                amount
+                amount,
+                selectionStatus:conditional ? 'planned' : 'available',
+                policyScenario:candidate.policyScenario || transition.policyScenario === true,
+                calculationStatus:'calculated',
+                electionActive:transition.state.election,
+                simplifiedBinding:transition.state.binding,
+                assetRestriction:transition.state.assetRestriction
               }]
             };
-            const stateKey = routeStateKey(next.state);
+            const stateKey = `${routeStateKey(next.state)}|${conditional ? 'planned' : 'available'}`;
             const current = nextCandidates.get(stateKey);
             if(!current || next.cumulative < current.cumulative) nextCandidates.set(stateKey, next);
           });
         });
       });
-      if(nextCandidates.size === 0) return emptyResult('選択可能な4期経路がありません。');
+      if(nextCandidates.size === 0) return {...emptyResult(`第${periodIndex+1}期まで連続して選択可能な経路がありません。算定可能な各期税額は個別に確認できます。`),
+        blockedPeriod:periodIndex,periodAssessments:input.periods.map(routePeriodSummary)};
       candidates = nextCandidates;
     }
 
@@ -820,12 +944,30 @@
       ok:true,
       bestRoute:best.route,
       cumulative:best.cumulative,
+      conditional:best.conditional,
+      policyScenario:best.policyScenario,
+      selectionStatus:best.conditional ? 'planned' : 'available',
+      bestConfirmedRoute:ranked.find(candidate => !candidate.conditional)?.route || [],
+      confirmedCumulative:ranked.find(candidate => !candidate.conditional)?.cumulative ?? null,
+      periodAssessments:input.periods.map(routePeriodSummary),
       alternatives:ranked.slice(1).map(candidate => ({
         route:candidate.route,
-        cumulative:candidate.cumulative
+        cumulative:candidate.cumulative,
+        selectionStatus:candidate.conditional ? 'planned' : 'available',
+        policyScenario:candidate.policyScenario
       })),
       reason:''
     };
+  }
+
+  function routePeriodSummary(period){
+    return {label:String(period?.label ?? ''),methods:(Array.isArray(period?.methods) ? period.methods : []).map(method => ({
+      key:method?.key ?? '',
+      amount:routeTaxAmount(method?.amount),
+      calculationStatus:routeMethodCalculationStatus(method),
+      selectionStatus:routeMethodSelectionStatus(method),
+      reasons:method?.reasons || []
+    }))};
   }
 
   function formatShare(share){
@@ -835,10 +977,10 @@
   function calculateSimplifiedTax(rows){
     const allocationErrors = rows.flatMap(row => {
       const errors = [];
-      if(nonNegativeNumber(row.foodOnePercentTax) > nonNegativeNumber(row.rowTax) + 1e-8){
+      if(!row.hasReturns && finiteNumber(row.rowTax) >= 0 && finiteNumber(row.foodOnePercentTax) > finiteNumber(row.rowTax) + 1e-8){
         errors.push(`${row.name || row.key || '事業区分'}の1％食品売上税額が売上税額を超えています。`);
       }
-      if(nonNegativeNumber(row.foodOnePercentTaxableBase) > nonNegativeNumber(row.rowTaxableBase) + 1e-8){
+      if(!row.hasReturns && finiteNumber(row.rowTaxableBase) >= 0 && finiteNumber(row.foodOnePercentTaxableBase) > finiteNumber(row.rowTaxableBase) + 1e-8){
         errors.push(`${row.name || row.key || '事業区分'}の1％食品売上高が課税売上高を超えています。`);
       }
       return errors;
@@ -846,16 +988,20 @@
     const totalSalesTax = rows.reduce((sum, row) => sum + row.rowTax, 0);
     const totalTaxableBase = rows.reduce((sum, row) => sum + row.rowTaxableBase, 0);
     const foodOnePercentTax = rows.reduce((sum, row) => (
-      sum + Math.min(nonNegativeNumber(row.rowTax), nonNegativeNumber(row.foodOnePercentTax))
+      sum + finiteNumber(row.foodOnePercentTax)
     ), 0);
     const foodOnePercentTaxableBase = rows.reduce((sum, row) => (
-      sum + Math.min(nonNegativeNumber(row.rowTaxableBase), nonNegativeNumber(row.foodOnePercentTaxableBase))
+      sum + finiteNumber(row.foodOnePercentTaxableBase)
     ), 0);
     const otherRows = rows.map(row => ({
       ...row,
-      rowTax:Math.max(0, nonNegativeNumber(row.rowTax) - nonNegativeNumber(row.foodOnePercentTax)),
-      rowTaxableBase:Math.max(0, nonNegativeNumber(row.rowTaxableBase) - nonNegativeNumber(row.foodOnePercentTaxableBase))
+      rowTax:finiteNumber(row.rowTax) - finiteNumber(row.foodOnePercentTax),
+      rowTaxableBase:finiteNumber(row.rowTaxableBase) - finiteNumber(row.foodOnePercentTaxableBase)
     }));
+    otherRows.forEach(row => {
+      if(row.rowTax < -1e-8 || row.rowTaxableBase < -1e-8)
+        allocationErrors.push(`${row.name || row.key || '事業区分'}の食品以外の売上返還等が売上を超えるため、簡易課税・75％判定を個別確認してください。`);
+    });
     const otherSalesTax = otherRows.reduce((sum, row) => sum + row.rowTax, 0);
     const otherTaxableBase = otherRows.reduce((sum, row) => sum + row.rowTaxableBase, 0);
     const normalOtherCredit = otherRows.reduce((sum, row) => sum + row.rowTax * row.deemed, 0);
@@ -919,8 +1065,8 @@
       otherSalesTax,
       otherTaxableBase,
       normalCredit,
-      deemedCredit:selected.deemedCredit,
-      amount:totalSalesTax - selected.deemedCredit,
+      deemedCredit:allocationErrors.length ? null : selected.deemedCredit,
+      amount:allocationErrors.length ? null : totalSalesTax - selected.deemedCredit,
       method:selected.kind,
       methodLabel:selected.methodLabel,
       selectedCandidate:selected,
@@ -1198,6 +1344,7 @@
     calculatePeriodTaxCase,
     assessHighValueAsset,
     assessCurrentMethodChoice,
+    assessRouteMethodChoice,
     optimizeFourPeriodRoutes,
     calculateSimplifiedTax,
     weightedExemptPurchaseRatio,

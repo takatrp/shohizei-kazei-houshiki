@@ -36,6 +36,40 @@ function converted(entries){
   return rowsFromJournalAnalysis(analysis, resolved);
 }
 
+test('CSV区分1に含まれた負額調整の出所を行へ残し、食品だけを要確認にする',()=>{
+  const rows=converted([
+    entry('貸方',{code:'1',business:'2',rate:'8',amount:216000,date:'2028/01/15'}),
+    entry('借方',{code:'1',business:'2',rate:'8',amount:108000,date:'2028/02/15'})
+  ]);
+  const sale=rows.sales.find(row=>row.code==='1'&&row.rate==='8');
+  assert.equal(sale.amount,'108000');
+  assert.ok(sale.sourceAdjustmentCount>0);
+  assert.deepEqual([sale.sourceDateStart,sale.sourceDateEnd],['2028-01-15','2028-02-15']);
+  const {collectSalesScenario}=require('../sales-scenario');
+  const withFood={sales:[{...sale,foodAmount:sale.amount}]};
+  const current=collectSalesScenario(withFood,{taxScenario:'current'});
+  assert.equal(current.totalTax,8000); // preserve 216000 - 108000 at 8%
+  assert.equal(current.errors.length,0);
+  const proposal=collectSalesScenario(withFood,{taxScenario:'foodProposal',foodForecastMethod:'manual',foodSalesPriceBasis:'netFixed'});
+  assert.match(proposal.errors.join(' '),/通常取引と返品・調整/);
+  assert.equal(aggregateTaxRows(rows).fields.type2Sale8.value,108000);
+});
+
+test('科目から事業区分へ補完したCSVも匿名の調整根拠を落とさない',()=>{
+  const text=csv([
+    entry('貸方',{code:'1',rate:'8',amount:216000,account:'匿名科目'}),
+    entry('借方',{code:'1',rate:'8',amount:108000,account:'匿名科目'})
+  ]);
+  const analysis=journal.analyzeTkcJournalText(text);
+  const mappings=Object.fromEntries(analysis.unclassifiedSales.map(group=>[group.key,'type2']));
+  const resolved=journal.resolveImportValues(analysis,mappings);
+  assert.equal(resolved.ready,true,resolved.errors.join(' / '));
+  const rows=rowsFromJournalAnalysis(analysis,resolved);
+  assert.equal(rows.sales[0].amount,'108000');
+  assert.ok(rows.sales[0].sourceAdjustmentCount>0);
+  assert.ok(!JSON.stringify(rows).includes('匿名科目'));
+});
+
 test('CSVの売上・仕入をTKC用途、税率、控除割合ごとの行へ集約する', () => {
   const rows = converted([
     entry('貸方',{code:'1',business:'2',rate:'10',amount:1100000}),
@@ -269,3 +303,17 @@ test('STEP2の科目横断集約はCSVの月別配分・返品月・科目別確
   assert.deepEqual(rowsFromJournalAnalysis(analysis, resolved), rows);
 });
 
+
+
+test('日付不明で日別集計が空でも月別調整根拠を失わない',()=>{
+  const analysis=journal.analyzeTkcJournalText(csv([
+    entry('貸方',{code:'1',business:'2',rate:'8',amount:216000,date:''}),
+    entry('借方',{code:'1',business:'2',rate:'8',amount:108000,date:''})]));
+  const resolved=journal.resolveImportValues(analysis);assert.equal(resolved.ready,true);
+  analysis.dailyGroups=[]; // Old summary without anonymous daily aggregates.
+  const rows=rowsFromJournalAnalysis(analysis,resolved),sale=rows.sales.find(r=>r.code==='1');
+  assert.equal(sale.amount,'108000');assert.ok(sale.sourceAdjustmentCount>0);assert.ok(sale.sourceDateUnknownCount>0);
+  const result=require('../sales-scenario.js').collectSalesScenario({sales:[{...sale,foodAmount:'108000'}]},
+    {taxScenario:'foodProposal',foodForecastMethod:'uniform',proposalFraction:1});
+  assert.match(result.errors.join(' '),/通常取引と返品・調整/);
+});

@@ -7,6 +7,15 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r36.0.1',date:'2026-10-24',
+      title:'計算概要の税率合計と詳細表示を修正',
+      category:'usability',recalcRecommended:false,
+      changes:Object.freeze([
+        '現行一般課税の計算概要を、第一表の売上税額・仕入控除・返還税額の税率合計へ統一。8％・10％混在時も画面・コピー・CSV・印刷に同じ結果を表示',
+        '詳細計算過程に軽減8％の課税標準・国税・返還を表示し、差引式に両税率を反映。税額本体・保存データ・入力導線の変更はない'
+      ])
+    }),
+    Object.freeze({
       version:'r36.0',date:'2026-10-24',
       title:'食品政策シナリオの継続検討と4金額入力',
       category:'calculation',recalcRecommended:true,

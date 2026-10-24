@@ -674,12 +674,15 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r36.0');
+  assert.equal(release.APP_META.version, 'r36.0.1');
+  assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,false);
+  assert.match(release.RELEASE_HISTORY[0].title,/計算概要.*税率合計/);
+  const featureRelease=release.RELEASE_HISTORY.find(item=>item.version==='r36.0');
   assert.ok(release.RELEASE_HISTORY.some(item=>item.version==='r35.9'));
-  assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
-  assert.match(release.RELEASE_HISTORY[0].title,/食品政策シナリオ.*4金額入力/);
-  assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/代理値とは分離/);
-  const historical = release.RELEASE_HISTORY.filter(item=>item.version!=='r36.0');
+  assert.equal(featureRelease.recalcRecommended,true);
+  assert.match(featureRelease.title,/食品政策シナリオ.*4金額入力/);
+  assert.match(featureRelease.changes.join(' '),/代理値とは分離/);
+  const historical = release.RELEASE_HISTORY.filter(item=>!item.version.startsWith('r36.'));
   assert.equal(historical[1].version,'r35.8');
   assert.equal(historical[1].recalcRecommended,false);
   assert.match(historical[1].title,/通常.*金額入力.*任意.*確認欄/);

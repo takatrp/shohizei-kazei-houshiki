@@ -104,7 +104,7 @@ function salesContext(){
 test('食品1％の期間別金額は日数均等按分を先頭の原則とし、手入力も選べる', () => {
   const select = html.match(/<select id="foodForecastMethod">([\s\S]*?)<\/select>/)?.[1];
   assert.ok(select);
-  assert.match(select,/^\s*<option value="uniform">年額・期間額を日数で均等按分（原則）<\/option>\s*<option value="manual">1％対象期間分を手入力<\/option>\s*$/);
+  assert.match(select,/^\s*<option value="uniform">CSV月別構成を優先・不足部分は日数按分<\/option>\s*<option value="manual">1％対象期間分を手入力<\/option>\s*$/);
   assert.match(functionSource('resetAll'),/\$\('foodForecastMethod'\)\.value = 'uniform'/);
   assert.match(functionSource('getContext'),/foodForecastMethod:\$\('foodForecastMethod'\)\.value \|\| 'uniform'/);
 });

@@ -165,13 +165,14 @@ test('1年未満の課税期間は課税売上高を年換算して5億円判定
   assert.equal(result.appliedMethod, 'individual');
 });
 
-test('個別対応方式の区分税額と異常入力を仕入税額の範囲内に収める', () => {
+test('返還後の売上税額の負号を保ち、異常な用途控除は仕入税額の範囲内に収める', () => {
   const result = calculateDetailedRegular({
     salesTax:-100, purchaseTax:500, adjustment:-50, method:'individual',
     taxableSales:50, totalSales:100, taxableOnlyTax:600, commonTax:Infinity
   });
   assert.equal(result.regularCredit, 500);
-  assert.equal(result.amount, -550);
+  // -100 sales tax after returns -500 capped credit -50 adjustment.
+  assert.equal(result.amount, -650);
   assert.equal(result.taxableSalesRatio, 0.5);
 });
 
@@ -673,32 +674,34 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r35.9');
+  assert.equal(release.APP_META.version, 'r36.0');
+  assert.ok(release.RELEASE_HISTORY.some(item=>item.version==='r35.9'));
   assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
-  assert.match(release.RELEASE_HISTORY[0].title,/前期実績.*CSV元資料.*共用/);
+  assert.match(release.RELEASE_HISTORY[0].title,/食品政策シナリオ.*4金額入力/);
   assert.match(release.RELEASE_HISTORY[0].changes.join(' '),/代理値とは分離/);
-  assert.equal(release.RELEASE_HISTORY[1].version,'r35.8');
-  assert.equal(release.RELEASE_HISTORY[1].recalcRecommended,false);
-  assert.match(release.RELEASE_HISTORY[1].title,/通常.*金額入力.*任意.*確認欄/);
-  assert.match(release.RELEASE_HISTORY[1].changes.join(' '),/STEP2から.*切替検討へ移動/);
-  assert.equal(release.RELEASE_HISTORY[2].version,'r35.7');
-  assert.equal(release.RELEASE_HISTORY[2].recalcRecommended,true);
-  assert.match(release.RELEASE_HISTORY[2].title,/終了日確認.*STEP2.*入力負担/);
-  assert.match(release.RELEASE_HISTORY[2].changes.join(' '),/フォーカスが外れた時だけ/);
-  assert.match(release.RELEASE_HISTORY[2].changes.join(' '),/初期値として自動設定/);
-  assert.equal(release.RELEASE_HISTORY[3].version,'r35.6');
-  assert.match(release.RELEASE_HISTORY[3].title,/輸入55.*65.*75.*法人1％.*期間/);
-  assert.match(release.RELEASE_HISTORY[3].changes.join(' '),/1年以外/);
-  assert.match(release.RELEASE_HISTORY[3].changes.join(' '),/両端の1日/);
-  assert.equal(release.RELEASE_HISTORY[4].version,'r35.5');
-  assert.match(release.RELEASE_HISTORY[4].title,/変更案B.*日常の増減.*納付.*還付/);
-  assert.equal(release.RELEASE_HISTORY[5].version,'r35.4');
-  assert.match(release.RELEASE_HISTORY[5].title,/FX4クラウド.*CSV/);
-  assert.equal(release.RELEASE_HISTORY[6].version,'r35.3');
-  assert.match(release.RELEASE_HISTORY[6].title,/8％対1％比較.*課税方式/);
-  assert.equal(release.RELEASE_HISTORY[7].version,'r35.2');
-  assert.match(release.RELEASE_HISTORY[7].title,/資金増減基準/);
-  const previous = release.RELEASE_HISTORY.slice(8);
+  const historical = release.RELEASE_HISTORY.filter(item=>item.version!=='r36.0');
+  assert.equal(historical[1].version,'r35.8');
+  assert.equal(historical[1].recalcRecommended,false);
+  assert.match(historical[1].title,/通常.*金額入力.*任意.*確認欄/);
+  assert.match(historical[1].changes.join(' '),/STEP2から.*切替検討へ移動/);
+  assert.equal(historical[2].version,'r35.7');
+  assert.equal(historical[2].recalcRecommended,true);
+  assert.match(historical[2].title,/終了日確認.*STEP2.*入力負担/);
+  assert.match(historical[2].changes.join(' '),/フォーカスが外れた時だけ/);
+  assert.match(historical[2].changes.join(' '),/初期値として自動設定/);
+  assert.equal(historical[3].version,'r35.6');
+  assert.match(historical[3].title,/輸入55.*65.*75.*法人1％.*期間/);
+  assert.match(historical[3].changes.join(' '),/1年以外/);
+  assert.match(historical[3].changes.join(' '),/両端の1日/);
+  assert.equal(historical[4].version,'r35.5');
+  assert.match(historical[4].title,/変更案B.*日常の増減.*納付.*還付/);
+  assert.equal(historical[5].version,'r35.4');
+  assert.match(historical[5].title,/FX4クラウド.*CSV/);
+  assert.equal(historical[6].version,'r35.3');
+  assert.match(historical[6].title,/8％対1％比較.*課税方式/);
+  assert.equal(historical[7].version,'r35.2');
+  assert.match(historical[7].title,/資金増減基準/);
+  const previous = historical.slice(8);
   assert.equal(previous[0].version,'r35.1');
   assert.equal(previous[0].recalcRecommended,false);
   assert.equal(previous[1].version,'r35');

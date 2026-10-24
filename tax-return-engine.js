@@ -65,6 +65,7 @@
   // Current rows, not the CSV import snapshot, own every subsequent result.
   function aggregateReturnRows(rows, options = {}){
     const errors = [];
+    const returnEvidenceReasons = [];
     const taxableSalesGross = emptyRates();
     const salesReturnGross = emptyRates();
     const invoiceByUse = Object.fromEntries(USAGES.map(usage => [usage,emptyRates()]));
@@ -96,6 +97,11 @@
         if(!RATES[rate]){ errors.push(`課税区分${code}の税率を10％または軽減8％で指定してください。`); continue; }
         if(side==='purchases' && imports.USAGE[code]) continue;
         if(side === 'sales' && (code === '1' || code === '11')){
+          if(code==='11'&&row.originalTaxableState==='exempt') continue;
+          if(code==='11'&&row.originalTaxableState!==undefined&&row.originalTaxableState!=='taxable'){
+            const reason='売上返還の元取引時の課税・免税状態が未確認です。';
+            errors.push(reason);returnEvidenceReasons.push(reason);continue;
+          }
           if(value < 0){ errors.push('売上返還等は課税区分11へ正の税込金額で入力してください。'); continue; }
           if(code === '1') taxableSalesGross[rate] += value;
           else salesReturnGross[rate] += value;
@@ -119,7 +125,8 @@
     if(nonTaxableSales < 0) errors.push('非課税売上等の合計がマイナスです。');
     return {input:{taxableSalesGross,salesReturnGross,nonTaxableSales,invoiceByUse,exemptByUse,
       nonTaxableEntered,salesByType,importNationalByUse:imported.nationalByUse,importErrors:imported.errors,importAssumptions:imported.assumptions,unsupportedCodes:options.unsupportedCodes || [],
-      unresolvedCount:options.unresolvedCount || 0,temporaryExcludedCount:options.temporaryExcludedCount || 0},reasons:errors};
+      unresolvedCount:options.unresolvedCount || 0,temporaryExcludedCount:options.temporaryExcludedCount || 0,
+      ...(returnEvidenceReasons.length?{returnEvidenceReasons}: {})},reasons:errors};
   }
 
   function buildSchedule23(input, method = 'individual'){
@@ -377,7 +384,7 @@
 
   function calculateCurrentLawSalesMethod(input, method, deemedByType = {}, options = {}){
     if(!['simplified','special2','special3'].includes(method)) throw new TypeError('申告方式を確認してください。');
-    const reasons = [];
+    const reasons = [...(input.returnEvidenceReasons || [])];
     if(input.unresolvedCount) reasons.push(`未処理のCSV明細${input.unresolvedCount}件`);
     if(input.temporaryExcludedCount && !options.allowTemporaryExcluded) reasons.push(`仮除外のCSV明細${input.temporaryExcludedCount}件`);
     if(input.unsupportedCodes?.length) reasons.push(`未対応課税区分${[...new Set(input.unsupportedCodes)].join('・')}`);
@@ -405,7 +412,7 @@
   }
 
   function calculateCurrentLawReturn(input, method = 'individual', options = {}){
-    const reasons = [...(input.importErrors || [])];
+    const reasons = [...(input.importErrors || []),...(input.returnEvidenceReasons || [])];
     if(input.unresolvedCount) reasons.push(`未処理のCSV明細${input.unresolvedCount}件`);
     if(input.temporaryExcludedCount && !options.allowTemporaryExcluded) reasons.push(`仮除外のCSV明細${input.temporaryExcludedCount}件`);
     if(input.unsupportedCodes?.length) reasons.push(`未対応課税区分${[...new Set(input.unsupportedCodes)].join('・')}`);

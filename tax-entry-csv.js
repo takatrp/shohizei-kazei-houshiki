@@ -30,6 +30,27 @@
       } : {})};
   }
 
+  function saleProvenance(analysis,values,code,rate,businessType=''){
+    const groups=Array.isArray(analysis.dailyGroups)&&analysis.dailyGroups.length ? analysis.dailyGroups : analysis.monthlyGroups;
+    if(!Array.isArray(groups)) return null;
+    // Mapping an account to a business type happens after the anonymous
+    // daily/monthly summaries were made. If that mapping absorbed an
+    // unclassified adjustment, preserve the warning on the affected mapped
+    // rate group rather than silently treating its signed net as ordinary.
+    const mapped=businessType && safeAmount(values.salesEntryCountsByTypeRate?.[businessType]?.[rate])
+      > safeAmount(analysis.salesEntryCountsByTypeRate?.[businessType]?.[rate]);
+    const matches=groups.filter(group=>group.kind==='sales' && String(group.code)===code
+      && String(group.rate)===rate && (String(group.businessType||'')===businessType
+        || mapped && !group.businessType && (group.transactionKind==='adjustment'||Number(group.amount)<0)));
+    if(!matches.length) return null;
+    const dates=matches.filter(group=>/^\d{4}-\d{2}-\d{2}$/.test(String(group.date||''))).map(group=>group.date).sort();
+    return {sourceDateStart:dates[0]||'',sourceDateEnd:dates.at(-1)||'',
+      // These are anonymous aggregate groups, so the count is a nonzero
+      // provenance signal, not a claim about the original journal row count.
+      sourceAdjustmentCount:matches.filter(group=>group.transactionKind==='adjustment'||Number(group.amount)<0).length,
+      sourceDateUnknownCount:matches.filter(group=>!group.date&&!group.month).length};
+  }
+
   // The journal parser owns correction, exclusion, assumptions and signed
   // debit/credit aggregation. Convert only its *resolved* summary, never raw
   // journal lines or the legacy DOM totals (which have already lost usage).
@@ -48,9 +69,11 @@
         const count = safeAmount(values.salesEntryCountsByTypeRate?.[businessType]?.[rate]);
         // A return and sale may cancel exactly: a known zero is still input.
         if(amount !== 0 || count > 0){
-          sales.push(row(`csv-sale-1-${businessType}-${rate}`, '1', amount, {businessType, rate}));
+          sales.push(row(`csv-sale-1-${businessType}-${rate}`, '1', amount, {businessType, rate,
+            provenance:saleProvenance(analysis,values,'1',rate,businessType)}));
         }
-        if(returned !== 0) sales.push(row(`csv-sale-11-${businessType}-${rate}`, '11', returned, {businessType, rate}));
+        if(returned !== 0) sales.push(row(`csv-sale-11-${businessType}-${rate}`, '11', returned, {businessType, rate,
+          provenance:saleProvenance(analysis,values,'11',rate,businessType)}));
       }
     }
     // Keep unmapped sales visibly unknown, but combine account-level groups
@@ -67,9 +90,11 @@
         count += safeAmount(group.entryCounts?.[rate]);
       }
       if(amount !== 0 || count > 0){
-        sales.push(row(`csv-sale-1-unclassified-${rate}`, '1', amount, {rate}));
+        sales.push(row(`csv-sale-1-unclassified-${rate}`, '1', amount, {rate,
+          provenance:saleProvenance(analysis,values,'1',rate)}));
       }
-      if(returned !== 0) sales.push(row(`csv-sale-11-unclassified-${rate}`, '11', returned, {rate}));
+      if(returned !== 0) sales.push(row(`csv-sale-11-unclassified-${rate}`, '11', returned, {rate,
+        provenance:saleProvenance(analysis,values,'11',rate)}));
     }
     const nonTaxableSales = safeAmount(values.nonTaxableSales);
     if(nonTaxableSales !== 0){

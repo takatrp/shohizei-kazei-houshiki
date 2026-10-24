@@ -156,6 +156,15 @@
     const errors = [];
     const warnings = [];
     const fields = {};
+    // Keep the legacy net food subset for saved-data compatibility. Scenario
+    // forecasting uses ordinary positive 8% transactions only; an 8% return
+    // remains 8% even when its date is inside the proposed 1% period.
+    const forecastFoodFields = {};
+    const forecastFoodReasons = [];
+    const addForecastFood = (id,value) => {
+      const current = forecastFoodFields[id] || field(0,false);
+      forecastFoodFields[id] = field(current.value + value,true);
+    };
     const salesByType = Object.fromEntries(BUSINESS_TYPES.map(type => [type, emptyRateTotals()]));
     const salesPresence = Object.fromEntries(BUSINESS_TYPES.map(type => [type, emptyRatePresence()]));
     const salesFoodByType = Object.fromEntries(BUSINESS_TYPES.map(type => [type, 0]));
@@ -221,14 +230,28 @@
           || (food.value !== 0 && Math.sign(food.value) !== Math.sign(amount.value)))){
           addError(side, index, '食品1％対象額が行の税込金額を超えるか、符号が異なります。');
         }
-        const legacyValue = (side === 'sales' && code === '11' ? -1 : 1) * legacyAmount(amount.value, rate, amountMode);
+        if(side==='sales'&&code==='11'&&row.originalTaxableState==='exempt'){
+          warnings.push({side,index,message:'免税期間の元売上に係る返品は返還控除へ含めません。元金額と符号は入力行に保持しています。'});
+          return;
+        }
+        if(side==='sales'&&code==='11'&&row.originalTaxableState!==undefined&&row.originalTaxableState!=='taxable'){
+          addError(side,index,'売上返還の元取引時の課税・免税状態が未確認です。');
+          return;
+        }
+        const signedAmount = side === 'sales' && code === '11' ? -amount.value : amount.value;
+        const signedFood = side === 'sales' && code === '11' ? -food.value : food.value;
+        const legacyValue = legacyAmount(signedAmount, rate, amountMode);
         const legacyFood = food.entered && food.valid
-          ? (side === 'sales' && code === '11' ? -1 : 1) * legacyAmount(food.value, rate, amountMode) : 0;
+          ? legacyAmount(signedFood, rate, amountMode) : 0;
+        const forecastEligible = code !== '11' && amount.value >= 0
+          && row.transactionKind !== 'adjustment' && !(Number(row.sourceAdjustmentCount) > 0);
+        if(rate === '8' && food.entered && food.valid && !forecastEligible)
+          forecastFoodReasons.push({side,index,reason:'返品・調整は元8％税率を維持し、通常取引の1％予測へ含めません。'});
         if(side === 'sales'){
           const type = String(row.businessType ?? '').trim();
           if(!BUSINESS_TYPES.includes(type)){
-            unclassifiedSales.push({ index, code, rate, amount:code === '11' ? -amount.value : amount.value,
-              foodAmount:food.entered && food.valid ? (code === '11' ? -food.value : food.value) : null,
+            unclassifiedSales.push({ index, code, rate, amount:signedAmount,
+              foodAmount:food.entered && food.valid ? signedFood : null,
               source:row.source || 'manual' });
             unclassifiedSalesTotals[rate] += legacyValue;
             if(rate === '8' && food.entered && food.valid) unclassifiedFoodTotal += legacyFood;
@@ -240,6 +263,7 @@
           if(rate === '8' && food.entered && food.valid){
             salesFoodByType[type] += legacyFood;
             salesFoodPresence[type] = true;
+            if(forecastEligible) addForecastFood(`${type}SaleFood1`,legacyFood);
           }
           return;
         }
@@ -255,6 +279,7 @@
           if(rate === '8' && food.entered && food.valid){
             exemptFoodByRatio[ratio] += legacyFood;
             exemptFoodPresence[ratio] = true;
+            if(forecastEligible) addForecastFood(`exemptPurchase${ratio}_1`,legacyFood);
           }
           return;
         }
@@ -263,6 +288,7 @@
         if(rate === '8' && food.entered && food.valid){
           invoiceFood += legacyFood;
           invoiceFoodEntered = true;
+          if(forecastEligible) addForecastFood('purchaseFood1',legacyFood);
         }
       });
     }
@@ -337,7 +363,7 @@
     fields.commonPurchaseTax = field(purchaseTaxByUse.common, purchaseEntered && imported.complete);
 
     return {
-      fields, salesByType, invoiceByUse, exemptByUse, purchaseTaxByUse, imported,
+      fields, forecastFoodFields, forecastFoodReasons, salesByType, invoiceByUse, exemptByUse, purchaseTaxByUse, imported,
       nonTaxableOnlyPurchaseTax:purchaseTaxByUse.nonTaxableOnly,
       unclassifiedSales, unclassifiedSalesTotals, unclassifiedFoodTotal,
       errors, warnings,
@@ -398,8 +424,18 @@
       if(!food.valid) return;
       if(food.entered && (rate !== '8' || Math.abs(food.value) > Math.abs(amount.value) + 1e-8
         || (food.value !== 0 && Math.sign(food.value) !== Math.sign(amount.value)))) return;
-      const foodOriginal = taxScenario === 'foodProposal' && rate === '8' && food.entered
-        ? food.value * (Number.isFinite(fraction) ? fraction : 0) : 0;
+      const forecastEligible = amount.value >= 0 && row.transactionKind !== 'adjustment'
+        && !(Number(row.sourceAdjustmentCount) > 0);
+      if(taxScenario === 'foodProposal' && rate === '8' && food.entered && food.value !== 0
+        && amount.value >= 0 && row.transactionKind !== 'adjustment' && !forecastEligible)
+        addCalculationError('通常取引と返品・調整の仕入集計内訳が未確認のため、食品1％対象額を確定できません。元税率別の行内訳を確認してください。');
+      let foodOriginal = taxScenario === 'foodProposal' && rate === '8' && food.entered && forecastEligible
+        ? (typeof options.foodPeriodAmount === 'function' ? options.foodPeriodAmount(row,food.value)
+          : food.value * (Number.isFinite(fraction) ? fraction : 0)) : 0;
+      if(!Number.isFinite(foodOriginal) || foodOriginal < 0 || foodOriginal > Math.abs(amount.value) + 1e-8){
+        addCalculationError('食品1％対象期間の仕入額が未算定、又は元行の税込金額を超えています。');
+        foodOriginal = 0;
+      }
       const originalRemainder = amount.value - foodOriginal;
       const foodGross = projectedFoodGross(foodOriginal);
       const taxOriginal = engine.taxFromAmount(originalRemainder, Number(rate), 'included');

@@ -2,18 +2,25 @@
 
 起点mainはr36.0.2 `ed483d5946a3686819d983ab6ea836fe89da58e4`。変更は上部マニュアル導線と、その静的動画資産・検証・更新履歴に限定する。税計算、保存形式、通常の4ステップは変更しない。
 
-主ボタンを再生アイコン付き「マニュアル動画」へ変更し、標準controls・playsinline・preload metadataを持つページ内dialogを開く。自動再生は行わない。閉じるボタンとEscは動画を停止し、開いたボタンへフォーカスを戻す。390px幅と横向きでも収まる表示。文章マニュアルのPDFは削除せず、dialog内から新しいタブで参照できる。
+主ボタンを再生アイコン付き「マニュアル動画」へ変更し、標準controls・playsinline・preload metadataを持つページ内dialogを開く。自動再生は行わない。閉じるボタンとEscは動画を一時停止し、開いたボタンへフォーカスを戻す。390px幅と横向きでも収まる表示。文章マニュアルのPDFは削除せず、dialog内から新しいタブで参照できる。
 
-動画は強調表示版v1を `manual/csv-import-guide.mp4` として既存サイト配下から配信する。指定仕様は8,126,620 bytes、約2分55秒、1920×1080、H264/AAC。実画面・架空データ、日本語字幕・合成音声、黄色の枠・矢印を含む。旧版やプレビューを混在させない。私的なダウンロードURLや期限付きURLをHTMLへ埋め込まない。
+## 配信する動画
 
-## 検証状況
+利用者がPCへ保存した強調表示版v1を、指定のサイズ・SHA256と照合して `manual/csv-import-guide.mp4` に収録した。私的なダウンロードURLや期限付きURLは使用しない。
 
-開始時は959テスト成功、build・diff検査成功。関連4テストは、導線・文章PDF保持・閉じた際の停止/フォーカス・色のコントラストを確認。通常色・ホバーの白文字は4.5以上、フォーカス色の白背景とのコントラストは3以上。
+- サイズ：8,126,620 bytes
+- SHA256：`a6741d97e67310fe6cb4e0d414dff93079e4263c87cbd72bfb83ef2f4b201dd7`
+- 実測：175.27秒、1920×1080、H.264（avc1）／AAC（mp4a）
+- 内容：架空データの実画面、日本語字幕・合成音声、黄色の枠・矢印。20秒・90秒・150秒の実画面を目視確認した。
 
-素材取得前の独立したChromium検証では、Enterで開く、標準controls等の属性、自動再生なし、Esc/閉じる、フォーカス復帰、390px縦/横向きの表示の4群が成功、ページ例外0。動画本体が未取得のため、実際の再生、duration、MIME/bytes、Range配信の検証は未実施。`npm run build` は動画資産がない状態で公開を進めないよう、MP4の存在も検査する。
+## 検証結果
 
-最終の素材同一性・メディア仕様の実測、全テスト、動画再生と停止、Pages実行、公開配信のMIME/bytesは、素材取得後に追記する。
+2026-10-24、動画を収録した状態で `npm run build`、962テスト、`git diff --check` が成功。Chromeで次の14群が成功し、ページ例外は0だった。
 
-動画取得待ち時点の通常テストは962成功・失敗0・skip0、diff検査成功。通常導線6群と既存税額概要式3群も成功。動画UI4群を加えて13群のUI確認を実施したが、動画再生の検証は成功扱いにしない。buildは `manual/csv-import-guide.mp4` の欠落で停止しており、素材取得までmain統合・公開は行わない。
+- 動画UI5群：再生アイコンとコントラスト、Enterで開く・標準プレイヤー属性・自動再生なし、Esc・閉じる・フォーカス復帰・PDF保持、390px縦と844px横の画面内表示、実動画の再生と閉じた際の一時停止。
+- 通常導線6群：現行税率と食品1％の中間納付、比較・利用指定・保存復元・手入力切替、資料不足時の表示、飲食店の4金額。
+- 税額概要3群：8％・10％混在、8％のみ、10％のみ。画面・コピー・CSV・印刷の式と合計を確認。
 
-記録は `/tmp/kazei-manual-video-tests.log`、`/tmp/kazei-manual-video-ui/report.json`、`/tmp/kazei-manual-video-basic/report.json`、`/tmp/kazei-manual-video-summary/report.json`。
+ローカルHTTP配信で `video/mp4`、Content-Length 8,126,620、Range要求への206応答と1,024 bytesの部分配信を確認した。公開時も対象mainへのPages反映、動画全体のSHA256・MIME・サイズ・Range、実画面での再生と停止を確認する。
+
+検証スクリプトは `scripts/manual-video-browser.cjs`、`scripts/lightweight-browser.cjs`、`scripts/return-summary-browser.cjs`。実行記録と画面はリポジトリ外の `manual-video-evidence` に保存した。

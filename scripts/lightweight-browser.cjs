@@ -59,6 +59,18 @@ const server=http.createServer((request,response)=>{
       assert.equal(both.auto.foodSpecial.settlements.A.special.annualTax,both.annual.base);assert.equal(both.auto.foodSpecial.settlements.B.special.annualTax,both.annual.changed);
       report.method={first,both};await page.screenshot({path:path.join(output,'method-selected.png'),fullPage:true});
     });
+    await check('自動→手入力への切替は税率比較・方式比較のA/B予定と月別資金・確定精算を保持',async()=>{
+      report.manualConversion={};
+      for(const mode of ['rateImpact','methodImpact']){
+        await seed('foodProposal',mode,{A:'special',B:mode==='rateImpact'?'special':'ordinary'});const before=await capture();
+        const button=page.locator('#cashflowAutoToManual');await button.evaluate(el=>{for(let p=el.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await button.click();const after=await capture();
+        assert.equal(await page.locator('#cashflowSameInterim').isChecked(),false);assert.deepEqual(totals(after),totals(before));assert.deepEqual(after.annual,before.annual);reconcile(after);
+        const events=r=>r.engine.rows.map(row=>({month:row.month,baseTax:row.baseTax,changedTax:row.changedTax,net:row.net,cumulative:row.cumulative}));
+        assert.deepEqual(events(after),events(before));assert.deepEqual(after.engine.settlement,before.engine.settlement);assert.equal(after.engine.finalCumulative,before.engine.finalCumulative);
+        assert.equal(after.auto,null);assert.equal(await page.locator('#cashflowInterimStatus').inputValue(),'scheduled');
+        report.manualConversion[mode]={before,after};
+      }
+    });
     await check('特例資料不足は通常納付を継続し選択入口・不足理由を保持',async()=>{
       await seed('foodProposal','rateImpact',{A:'special',B:'special'});await input('foodPriorSales','');const r=await capture();
       assert.equal(r.auto.foodSpecial.special.totals,null);assert.equal(r.auto.ready,true);assert.deepEqual(totals(r),{base:700000,changed:700000});assert.match(r.summary,/A・Bとも通常納付/);

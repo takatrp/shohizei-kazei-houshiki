@@ -55,3 +55,30 @@ test('別前期仮定・代理値の予定を特例自動額で上書きしな�
   const r=f.run('foodProposal','rateImpact',{separate:true,changed:separate});assert.equal(r.base.totals.total,700000);assert.equal(r.changed.totals.total,1200000);assert.match(JSON.stringify(f.sandbox.cashflowAutoExportRows(r)),/別々.*通常納付/);
   f.controls.cashflowAutoBasis.value='step3';const proxy=f.run();assert.equal(proxy.base.totals.total,700000);assert.equal(proxy.changed.totals.total,700000);assert.equal(proxy.foodSpecial.special.totals,null);
 });
+
+function manualConversion(auto){
+  const controls=Object.fromEntries(['cashflowAutoToManual','cashflowBaseInterim','cashflowChangedInterim','cashflowBaseNoInterim','cashflowChangedNoInterim','cashflowSameInterim','cashflowInterimStatus'].map(id=>[id,{value:'',checked:false}]));
+  let click,updates=0;controls.cashflowAutoToManual.addEventListener=(_event,handler)=>{click=handler;};
+  const sandbox={$:id=>controls[id],latestCashflow:{autoInterim:auto},cashflowManualFromAuto:false,update:()=>updates++};
+  const start=html.indexOf("$('cashflowAutoToManual').addEventListener('click', () => {"),end=html.indexOf('\n  });',start);assert.notEqual(start,-1);assert.notEqual(end,-1);
+  vm.runInNewContext(html.slice(start,end+'\n  });'.length),sandbox);click();return {controls,updates,fromAuto:sandbox.cashflowManualFromAuto};
+}
+const payment=(amount,date='2027-11-30')=>({count:amount===null?0:1,installments:amount===null?[]:[{adjustedDueDate:date,total:amount}]});
+test('自動→手入力は共通前期でも異なるA350000/B700000の予定を保持する',()=>{
+  const r=manualConversion({ready:true,separate:false,base:payment(350000),changed:payment(700000)});
+  assert.equal(r.controls.cashflowBaseInterim.value,'2027-11,350000');assert.equal(r.controls.cashflowChangedInterim.value,'2027-11,700000');assert.equal(r.controls.cashflowSameInterim.checked,false);assert.equal(r.controls.cashflowInterimStatus.value,'scheduled');assert.equal(r.fromAuto,true);assert.equal(r.updates,1);
+});
+test('自動→手入力は合計が同じでも納付月が違えば両案の予定を保持する',()=>{
+  const r=manualConversion({ready:true,separate:false,base:payment(700000,'2027-10-31'),changed:payment(700000)});
+  assert.equal(r.controls.cashflowSameInterim.checked,false);assert.equal(r.controls.cashflowBaseInterim.value,'2027-10,700000');assert.equal(r.controls.cashflowChangedInterim.value,'2027-11,700000');
+});
+test('自動→手入力は同じ予定の共用と別前期仮定の独立入力を維持する',()=>{
+  for(const separate of [false,true]){const r=manualConversion({ready:true,separate,base:payment(700000),changed:payment(700000)});assert.equal(r.controls.cashflowSameInterim.checked,!separate);assert.equal(r.controls.cashflowChangedInterim.value,separate?'2027-11,700000':'');}
+});
+test('自動→手入力は一方の0回確認を保持し、未算定なら切り替えない',()=>{
+  for(const side of ['base','changed']){
+    const r=manualConversion({ready:true,separate:false,base:payment(side==='base'?null:700000),changed:payment(side==='changed'?null:700000)});
+    assert.equal(r.controls.cashflowSameInterim.checked,false);assert.equal(r.controls.cashflowBaseNoInterim.checked,side==='base');assert.equal(r.controls.cashflowChangedNoInterim.checked,side==='changed');
+  }
+  const r=manualConversion({ready:false});assert.equal(r.updates,0);assert.equal(r.fromAuto,false);assert.equal(r.controls.cashflowInterimStatus.value,'');
+});

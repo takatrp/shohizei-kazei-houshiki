@@ -7881,11 +7881,13 @@ function bindEvents(){
     const auto = latestCashflow?.autoInterim;
     if(!auto?.ready) return;
     const lines = plan => plan.installments.map(item => `${item.adjustedDueDate.slice(0,7)},${item.total}`).join('\n');
-    $('cashflowBaseInterim').value = lines(auto.base);
-    $('cashflowChangedInterim').value = auto.separate ? lines(auto.changed) : '';
+    const baseLines=lines(auto.base),changedLines=lines(auto.changed);
+    const separatePlans=auto.separate||baseLines!==changedLines;
+    $('cashflowBaseInterim').value = baseLines;
+    $('cashflowChangedInterim').value = separatePlans ? changedLines : '';
     $('cashflowBaseNoInterim').checked = auto.base.count === 0;
     $('cashflowChangedNoInterim').checked = auto.changed.count === 0;
-    $('cashflowSameInterim').checked = !auto.separate;
+    $('cashflowSameInterim').checked = !separatePlans;
     cashflowManualFromAuto = true;
     $('cashflowInterimStatus').value = 'scheduled';
     update();

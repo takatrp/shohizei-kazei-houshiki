@@ -674,9 +674,13 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r36.0.1');
-  assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,false);
-  assert.match(release.RELEASE_HISTORY[0].title,/計算概要.*税率合計/);
+  assert.equal(release.APP_META.version, 'r36.0.2');
+  assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
+  assert.match(release.RELEASE_HISTORY[0].title,/中間納付.*入力案内/);
+  assert.doesNotMatch(release.RELEASE_HISTORY[0].title,/未公開/);
+  const summaryRelease=release.RELEASE_HISTORY.find(item=>item.version==='r36.0.1');
+  assert.equal(summaryRelease.recalcRecommended,false);
+  assert.match(summaryRelease.title,/計算概要.*税率合計/);
   const featureRelease=release.RELEASE_HISTORY.find(item=>item.version==='r36.0');
   assert.ok(release.RELEASE_HISTORY.some(item=>item.version==='r35.9'));
   assert.equal(featureRelease.recalcRecommended,true);

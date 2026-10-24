@@ -20,6 +20,12 @@
     'その他売上は10％課税売上、仕入・経費はインボイスあり・課税売上対応として仮定します。新聞8％・非課税・輸出・輸入・控除割合の異なる仕入・設備投資・返品は詳細入力で区分してください。',
     '業種型は事業区分の初期候補です。複数事業や法令上の事業区分、適用可否、届出・資料照合の確認を代替しません。'
   ]);
+  function presentation(input={}){
+    const policy=input.taxScenario==='foodProposal',restaurant=input.industry==='restaurant';
+    return {labels:{foodSales:'食品売上（軽減8％・税込）',otherSales:'その他売上（10％・税込）',foodPurchases:'食品仕入（軽減8％・税込）',otherPurchases:'その他の課税仕入・経費（税込）'},
+      intro:'税込金額を入力すると、同じ詳細行へ自動反映します。'+(restaurant?'飲食店の8％食品売上はテイクアウト・物販等、10％売上は店内飲食・酒類等です。':'')+(policy?'食品は軽減8％実績からの1％政策試算です。':'食品は軽減8％対象、その他売上は10％対象の金額です。'),
+      assumptions:[policy?ASSUMPTIONS[0]:'4金額はすべて税込です。食品欄は軽減8％対象の金額として、現行税率で試算します。',...ASSUMPTIONS.slice(1)]};
+  }
   const text = value => String(value ?? '').trim();
   const significant = row => ['amount','foodAmount','businessType','rate','creditRatio','importComponent'].some(key => text(row?.[key]) !== '')
     || !['','1','3'].includes(text(row?.code))
@@ -111,5 +117,5 @@
     return {amounts:Object.fromEntries(FIELDS.map(field => [field,present[field] ? totals[field] : null])),
       complete:reasons.length === 0,reasons:[...new Set(reasons)],readOnly:!editable({rows})};
   }
-  return {FIELDS,INDUSTRIES,ASSUMPTIONS,editable,build,draft,summarize};
+  return {FIELDS,INDUSTRIES,ASSUMPTIONS,presentation,editable,build,draft,summarize};
 });

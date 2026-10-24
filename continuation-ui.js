@@ -29,9 +29,9 @@
   }
   function init(){
     const panel=document.createElement('section');panel.className='panel no-print';panel.id='quickEntryPanel';
-    panel.innerHTML='<h3>業種型と4金額から入力</h3><p class="mini">税込金額を入力すると、同じ詳細行へ自動反映します。食品は軽減8％実績からの政策試算です。</p>'+
+    panel.innerHTML='<h3>業種型と4金額から入力</h3><p id="quickEntryIntro" class="mini"></p>'+
       select('quickIndustry','業種型（事業区分の初期候補）',[['','選択してください'],...ShohizeiFourAmountEntry.INDUSTRIES.map(x=>[x.key,x.label])])+
-      '<div class="grid two">'+field('quickFoodSales','食品売上（税込）')+field('quickOtherSales','その他売上（税込）')+field('quickFoodPurchases','食品仕入（税込）')+field('quickOtherPurchases','その他の課税仕入・経費（税込）')+'</div><p class="mini">'+ShohizeiFourAmountEntry.ASSUMPTIONS.map(esc).join(' ')+'</p><p id="quickEntryStatus" class="mini" role="status"></p>';
+      '<div class="grid two">'+field('quickFoodSales','食品売上（税込）')+field('quickOtherSales','その他売上（税込）')+field('quickFoodPurchases','食品仕入（税込）')+field('quickOtherPurchases','その他の課税仕入・経費（税込）')+'</div><p id="quickEntryAssumptions" class="mini"></p><p id="quickEntryStatus" class="mini" role="status"></p>';
     byId('workflowScreen2').prepend(panel);
     for(const [key,id] of Object.entries({industry:'quickIndustry',foodSales:'quickFoodSales',otherSales:'quickOtherSales',foodPurchases:'quickFoodPurchases',otherPurchases:'quickOtherPurchases'})){
       byId(id).addEventListener('input',e=>{e.stopPropagation();state.quick[key]=e.target.value;applyQuick();update();});
@@ -259,6 +259,9 @@
   }
   function render(calc){
     syncPriorScope();renderReturnEvidence();
+    const quickView=ShohizeiFourAmountEntry.presentation({industry:state.quick.industry,taxScenario:calc.ctx.taxScenario});
+    byId('quickEntryIntro').textContent=quickView.intro;byId('quickEntryAssumptions').textContent=quickView.assumptions.join(' ');
+    for(const [key,id]of Object.entries({foodSales:'quickFoodSales',otherSales:'quickOtherSales',foodPurchases:'quickFoodPurchases',otherPurchases:'quickOtherPurchases'}))document.querySelector(`label[for="${id}"]`).textContent=quickView.labels[key];
     const editable=entryMode==='rows'&&ShohizeiFourAmountEntry.editable(quickContext());
     for(const id of ['quickIndustry','quickFoodSales','quickOtherSales','quickFoodPurchases','quickOtherPurchases'])byId(id).disabled=!editable;
     const quickSummary=ShohizeiFourAmountEntry.summarize(taxEntryRows);
@@ -266,6 +269,12 @@
     if(!editable){const labels={foodSales:'食品売上',otherSales:'その他売上',foodPurchases:'食品仕入',otherPurchases:'その他の課税仕入・経費'};byId('quickEntryStatus').textContent=Object.entries(quickSummary.amounts).map(([k,v])=>`${labels[k]} ${v===null?'未確認':yen(v)}`).join('／')+'。詳細・CSVの内訳を保持しています。金額は下の詳細入力で修正できます。'+quickSummary.reasons.join(' ');}
     for(const d of document.querySelectorAll('.quick-details'))if(!editable)d.open=true;
     const active=calc.ctx.taxScenario==='foodProposal';byId('foodContinuationPanel').classList.toggle('is-hidden',!active);
+    byId('foodInterimDetails').classList.toggle('is-hidden',!active);
+    const bothPolicy=cashflowComparisonType()==='methodImpact';
+    byId('foodInterimA').disabled=!bothPolicy;byId('foodInterimA').value=bothPolicy&&state.prior.A==='special'?'special':'ordinary';
+    byId('foodInterimB').value=state.prior.B==='special'?'special':'ordinary';
+    document.querySelector('label[for="foodInterimA"]').textContent=bothPolicy?'A＝食品1％側の利用予定':'A＝現行税率側（通常納付に固定）';
+    document.querySelector('label[for="foodInterimB"]').textContent='B＝食品1％側の利用予定';
     const exempt=calc.ctx.currentReturnMethod==='exempt';
     for(const id of ['voluntaryRegistrationStatus','voluntaryRegistrationDate'])byId(id).closest('.field').classList.toggle('is-hidden',state.voluntary.route!=='invoice');
     for(const id of ['voluntaryExitStatus','voluntaryExitFilingDate'])byId(id).closest('.field').classList.toggle('is-hidden',!state.voluntary.exitDate);byId('voluntaryPanel').classList.toggle('is-hidden',!exempt);
@@ -373,18 +382,28 @@
     return {source:'actual',period:{...p.period},exactMethod:p.exactMethod,transactions:tx,nonTaxableSales:number(p.nonTaxableSales),creditMethod:p.creditMethod,adjustmentNational:number(p.adjustmentNational)};
   }
   function interimPlan(auto,calc,comparison){
-    const annualTax={A:comparison?.rows?.find(x=>x.key===byId('cashflowMethod').value)?.currentAmount??null,B:comparison?.rows?.find(x=>x.key===byId('cashflowMethod').value)?.proposalAmount??null};
+    if(calc.ctx.taxScenario!=='foodProposal')return auto;
+    const bothPolicy=auto.mode==='methodImpact';
+    const annualTax=bothPolicy?{A:calc.methods.find(x=>x.key===byId('cashflowBaseMethod').value)?.amount??null,B:calc.methods.find(x=>x.key===byId('cashflowChangedMethod').value)?.amount??null}
+      :{A:comparison?.rows?.find(x=>x.key===byId('cashflowMethod').value)?.currentAmount??null,B:comparison?.rows?.find(x=>x.key===byId('cashflowMethod').value)?.proposalAmount??null};
+    const selection={A:bothPolicy&&state.prior.A==='special'?'special':'ordinary',B:state.prior.B==='special'?'special':'ordinary'};
     const actual=byId('cashflowAutoBasis').value==='actual';
     const prior=actual?priorActual():{source:'proxy',reasons:['STEP3代理額は実際の前期資料へ変換しません。実前期に切り替えてください。']};
-    const result=ShohizeiFoodInterimComparison.compare({ordinaryInput:{...auto.options,priorNationalTax:auto.basis.national},priorActual:prior,annualTax,selection:{A:state.prior.A||'ordinary',B:state.prior.B||'ordinary'},manualPlanned:{A:false,B:false}});
+    const result=ShohizeiFoodInterimComparison.compare({ordinaryInput:{...auto.options,priorNationalTax:auto.basis.national},priorActual:prior,annualTax,selection,manualPlanned:{A:false,B:false}});
     if(result.status==='unavailable'&&prior.reasons?.length)result.reasons=[...new Set([...prior.reasons,...result.reasons])];
     const same=!auto.separate&&!auto.separateUnconfirmed;
-    if(actual&&same){return {...auto,base:result.selectedPlans.A,changed:result.selectedPlans.B,foodSpecial:result,ready:result.selectedPlans.A?.status==='ready'&&result.selectedPlans.B?.status==='ready'};}
-    return {...auto,foodSpecial:result};
+    const applied=Object.fromEntries(['A','B'].map(side=>[side,actual&&same&&result.special.status==='ready'&&result.selectedPlans[side]===result.special?'special':'ordinary']));
+    if(!same&&Object.values(selection).includes('special'))result.selectionReasons.push('前期額を別々に仮定した案には食品特例の自動額を反映せず、通常納付を保持しています。');
+    result.selection=selection;result.appliedSelection=applied;
+    const label=side=>`${side}：${applied[side]==='special'?'食品特例を利用予定':'通常納付'}`;
+    const extra={foodSpecial:result,interimSelection:applied,interimMethodLabel:Object.values(applied).includes('special')?`${label('A')}／${label('B')}（食品特例は政策試算）`:'通常の前期実績方式（A・Bとも通常納付）'};
+    if(actual&&same){return {...auto,...extra,base:result.selectedPlans.A,changed:result.selectedPlans.B,ready:result.selectedPlans.A?.status==='ready'&&result.selectedPlans.B?.status==='ready'};}
+    return {...auto,...extra};
   }
   function interimExport(auto){
     const c=auto?.foodSpecial;if(!c)return [];
-    return [['食品中間特例','改正案の政策試算・利用予定はA/B別'],['中間特例の状態',c.status],...(c.reasons||[]).map(x=>['中間特例の不足・前提',x]),...(c.differences||[]).map(x=>['中間特例比較',x.sequence,x.dueDate,x.ordinary,x.special??'未算定',x.retained??'未算定']),['当期中に残る額（年税額の減額ではありません）',c.retainedDuringPeriod??'未算定']];
+    const label=value=>value==='special'?'食品特例':'通常納付';
+    return [['食品中間特例の比較（利用予定とは別）','改正案の政策試算'],['中間納付の利用指定',`A：${label(c.selection?.A)}／B：${label(c.selection?.B)}`],['資金繰りへの反映',auto.interimMethodLabel],['中間特例の状態',c.status],...[...(c.reasons||[]),...(c.selectionReasons||[])].map(x=>['中間特例の不足・前提',x]),...(c.differences||[]).map(x=>['中間特例比較',x.sequence,x.dueDate,x.ordinary,x.special??'未算定',x.retained??'未算定']),['特例を使った場合に当期中に残る額（年税額差ではありません）',c.retainedDuringPeriod??'未算定']];
   }
   function interimHtml(auto){const rows=interimExport(auto);return rows.length?'<div class="notice warn"><strong>通常納付と食品特例の自動比較</strong>'+rows.map(r=>'<p>'+r.map(esc).join(' / ')+'</p>').join('')+'</div>':'';}
   function selectionEligibility(ctx,key,base){
@@ -396,7 +415,7 @@
   function methodCalculationReasons(ctx){return ctx.currentReturnMethod==='exempt'&&state.voluntary.route==='invoice'&&state.voluntary.registrationDate&&state.voluntary.registrationDate>ctx.start?['期中登録は登録後の取引だけで計算します。免税経路欄の対象取引期間・概算を確認してください。']:[];}
   function assumptions(calc){
     const rows=[];
-    if(taxEntryRows.sales.some(r=>r.source==='four-amount')) rows.push(['4金額入力の仮定',ShohizeiFourAmountEntry.ASSUMPTIONS.join(' ')]);
+    if(taxEntryRows.sales.some(r=>r.source==='four-amount')) rows.push(['4金額入力の仮定',ShohizeiFourAmountEntry.presentation({industry:state.quick.industry,taxScenario:calc.ctx.taxScenario}).assumptions.join(' ')]);
     if(calc.ctx.taxScenario==='foodProposal')for(const e of estimates)rows.push(['食品対象期間額',`${e.kind==='sales'?'売上':'仕入'} ${typeof e.amount==='number'&&Number.isFinite(e.amount)?Math.round(e.amount)+'円':'未算定'}／${e.label}。${e.reason||''} ${(e.notes||[]).join(' ')}`]);
     if(calc.ctx.currentReturnMethod==='exempt')rows.push(['課税選択した場合の概算','方式別の金額は全期間を課税とした参考値。免税維持・登録経由の納税義務と対象取引期間は別に判定。']);
     return rows;

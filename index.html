@@ -615,7 +615,7 @@
         </div>
       </div>
       <div id="cashflowAutoFields" class="is-hidden">
-        <p class="mini" id="cashflowAutoScopeGuide">通常方式と食品特例を比較します。特例の利用予定は下のA/B別操作で指定し、手入力予定は上書きしません。法定納期限に全額納付する仮定です。</p>
+        <p class="mini" id="cashflowAutoScopeGuide">前期実績から通常の中間納付を概算します。手入力予定は上書きしません。</p>
         <div class="cashflow-fields">
           <div class="field"><label for="cashflowAutoBasis">前期の国税額の出典</label><select id="cashflowAutoBasis"><option value="step3">STEP3の税額を前期額と仮定（概算）</option><option value="actual">前期確定国税額を入力</option></select></div>
           <div class="field is-hidden" id="cashflowPriorProxyMethodField"><label for="cashflowPriorProxyMethod">STEP3代理額に使う方式</label><select id="cashflowPriorProxyMethod"><option value="">方式を選択</option><option value="regular">一般課税</option><option value="simplified">簡易課税</option><option value="special2">2割特例</option><option value="special3">3割特例</option></select><small>両案で共通の前期仮定です。A・Bを入れ替えても変えません。</small><small id="cashflowPriorProxyScenarioNote"></small></div>
@@ -6586,7 +6586,7 @@ function cashflowAutoPlan(calc,comparison,methodKey){
   const changed = separateUnconfirmed ? unavailable('両案の前期額の設定が未確認です。')
     : !separate ? base : changedNational === null && !shortening ? unavailable('変更案の前期国税分が未入力・未算定です。')
     : ShohizeiInterimTax.plan({...options,priorNationalTax:changedNational ?? ''});
-  const result = {basis,base,changed,separate,separateUnconfirmed,changedNational,options,methodLabel:METHOD_LABELS[methodKey] || methodKey || '未選択',
+  const result = {mode:'rateImpact',basis,base,changed,separate,separateUnconfirmed,changedNational,options,methodLabel:METHOD_LABELS[methodKey] || methodKey || '未選択',
     ready:base.status === 'ready' && changed.status === 'ready'};
   return typeof ShohizeiContinuationUI === 'undefined' ? result : ShohizeiContinuationUI.interimPlan(result,calc,comparison);
 }
@@ -6599,18 +6599,20 @@ function cashflowAutoHtml(auto){
   if(!auto) return '';
   const extension = typeof ShohizeiContinuationUI === 'undefined' ? '' : ShohizeiContinuationUI.interimHtml(auto);
   const {basis,base,changed,separate,changedNational} = auto;
-  const reasons = [...basis.reasons,...base.reasons,...base.warnings,...(separate ? [...changed.reasons,...changed.warnings] : [])];
+  const showChanged=separate||Object.values(auto.interimSelection||{}).includes('special');
+  const reasons = [...basis.reasons,...base.reasons,...base.warnings,...(showChanged ? [...changed.reasons,...changed.warnings] : [])];
   const intro = `<p><strong>${escapeHtml(basis.source)}・${escapeHtml(basis.quality)}</strong>／前期 ${escapeHtml(basis.priorStart || '未設定')}〜${escapeHtml(basis.priorEnd || '未設定')}（${base.priorMonths ?? '月数未確認'}か月）／当期 ${escapeHtml(auto.options.currentStart)}〜${escapeHtml(auto.options.currentEnd)}。基準案の前期国税分 ${basis.national === null ? '未算定' : yen(basis.national)}${auto.separateUnconfirmed ? '／両案共通・別々は未確認' : separate ? `／変更案の別前期仮定 ${changedNational === null ? '未算定' : yen(changedNational)}` : '／両案共通'}。</p>`;
-  const summary = `<p>${auto.foodSpecial ? '明示した利用予定を反映した中間納付' : '通常の前期実績方式'}：基準案 ${base.status === 'ready' ? `${base.count}回・${yen(base.totals.total)}（異なる納付日 ${base.distinctDueDateCount}日）` : base.status === 'not_applicable' ? '課税期間短縮特例のため対象外' : '未算定'}${separate ? `／変更案 ${changed.status === 'ready' ? `${changed.count}回・${yen(changed.totals.total)}` : changed.status === 'not_applicable' ? '対象外' : '未算定'}` : ''}。納付は休日調整後の法定納期限、還付日は別途確認。${auto.mode === 'methodImpact' ? '仮決算による減額等は自動適用しません。' : '食品1％の中間申告特例・仮決算は自動適用しません。'}</p>`;
-  const table = base.status !== 'ready' ? '' : `<div class="cashflow-table-wrap"><table class="cashflow-table"><thead><tr><th>案</th><th>回次</th><th>中間申告対象期間</th><th>国税</th><th>地方税</th><th>納付合計</th><th>原則期限</th><th>休日調整後の納付日</th><th>注記</th></tr></thead><tbody>${[['基準案',base],...(separate && changed.status === 'ready' ? [['変更案',changed]] : [])].flatMap(([label,plan]) => plan.installments.map(item => `<tr><td>${label}</td><td>${item.sequence}</td><td>${escapeHtml(item.interimStart)}〜${escapeHtml(item.interimEnd)}</td><td>${yen(item.national)}</td><td>${yen(item.local)}</td><td>${yen(item.total)}</td><td>${escapeHtml(item.rawDueDate)}</td><td>${escapeHtml(item.adjustedDueDate)}</td><td>${escapeHtml(item.adjustmentReasons.join('・') || '—')}</td></tr>`)).join('')}</tbody></table></div>`;
+  const summary = `<p>${escapeHtml(auto.interimMethodLabel||'通常の前期実績方式')}：基準案 ${base.status === 'ready' ? `${base.count}回・${yen(base.totals.total)}（異なる納付日 ${base.distinctDueDateCount}日）` : base.status === 'not_applicable' ? '課税期間短縮特例のため対象外' : '未算定'}${showChanged ? `／変更案 ${changed.status === 'ready' ? `${changed.count}回・${yen(changed.totals.total)}` : changed.status === 'not_applicable' ? '対象外' : '未算定'}` : ''}。納付は休日調整後の法定納期限、還付日は別途確認。仮決算による減額等は自動適用しません。</p>`;
+  const table = base.status !== 'ready' ? '' : `<div class="cashflow-table-wrap"><table class="cashflow-table"><thead><tr><th>案</th><th>回次</th><th>中間申告対象期間</th><th>国税</th><th>地方税</th><th>納付合計</th><th>原則期限</th><th>休日調整後の納付日</th><th>注記</th></tr></thead><tbody>${[['基準案',base],...(showChanged && changed.status === 'ready' ? [['変更案',changed]] : [])].flatMap(([label,plan]) => plan.installments.map(item => `<tr><td>${label}</td><td>${item.sequence}</td><td>${escapeHtml(item.interimStart)}〜${escapeHtml(item.interimEnd)}</td><td>${yen(item.national)}</td><td>${yen(item.local)}</td><td>${yen(item.total)}</td><td>${escapeHtml(item.rawDueDate)}</td><td>${escapeHtml(item.adjustedDueDate)}</td><td>${escapeHtml(item.adjustmentReasons.join('・') || '—')}</td></tr>`)).join('')}</tbody></table></div>`;
   return extension + `<div class="notice ${auto.ready ? '' : 'warn'}">${intro}${summary}${reasons.length ? `<ul>${[...new Set(reasons)].map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : ''}${table}</div>`;
 }
 
 function cashflowAutoExportRows(auto){
   if(!auto) return [];
   const {basis,base,changed,separate,changedNational,options} = auto;
+  const showChanged=separate||Object.values(auto.interimSelection||{}).includes('special');
   const rows = [
-    ['中間納付方式',auto.foodSpecial ? 'A/B別の明示利用予定（食品特例は政策試算）' : auto.mode === 'methodImpact' ? '通常の前期実績方式（仮決算による減額等は自動適用しない）' : '通常の前期実績方式（食品1％中間申告特例・仮決算は自動適用しない）'],
+    ['中間納付方式',auto.interimMethodLabel||'通常の前期実績方式（仮決算による減額等は自動適用しない）'],
     ['前期国税の出典',`${basis.source}・${basis.quality}`],['使用した比較方式',auto.methodLabel],
     ['仮定または実際の前課税期間',`${basis.priorStart || '未設定'}〜${basis.priorEnd || '未設定'}`],
     ['対象課税期間',`${options.currentStart}〜${options.currentEnd}`],['前期月数',base.priorMonths ?? '未確認'],
@@ -6623,10 +6625,10 @@ function cashflowAutoExportRows(auto){
     ['基準案の中間納付合計',base.status === 'not_applicable' ? '対象外' : base.totals?.total ?? '未算定'],
     ['変更案の状態',changed.status],['変更案の申告回数',changed.status === 'not_applicable' ? '対象外' : changed.count ?? '未算定'],['変更案の中間納付合計',changed.status === 'not_applicable' ? '対象外' : changed.totals?.total ?? '未算定'],
     ['休日暦の確度',base.calendarConfidence || '未確認'],['休日暦の版',base.calendarVersion || '未確認'],
-    ...[...new Set([...basis.reasons,...base.reasons,...base.warnings,...(separate ? [...changed.reasons,...changed.warnings] : [])])].map(reason => ['中間納付の前提・未確認',reason]),
+    ...[...new Set([...basis.reasons,...base.reasons,...base.warnings,...(showChanged ? [...changed.reasons,...changed.warnings] : [])])].map(reason => ['中間納付の前提・未確認',reason]),
     [],['案','回次','中間申告対象期間','国税','地方税','納付合計','原則期限','休日調整後の納付日','注記']
   ];
-  for(const [label,plan] of [['基準案',base],...(separate ? [['変更案',changed]] : [])]){
+  for(const [label,plan] of [['基準案',base],...(showChanged ? [['変更案',changed]] : [])]){
     for(const item of plan.installments) rows.push([label,item.sequence,`${item.interimStart}〜${item.interimEnd}`,
       item.national,item.local,item.total,item.rawDueDate,item.adjustedDueDate,item.adjustmentReasons.join('・')]);
   }
@@ -6726,8 +6728,9 @@ function methodCashflowAutoPlan(calc, comparison){
     corporateExtension:$('cashflowCorporateExtension').value,specialCircumstances:$('cashflowSpecialCircumstances').value};
   const unavailable = {status:'unavailable',count:null,installments:[],totals:null,reasons:['前期国税額が未算定です。'],warnings:[]};
   const plan = basis.national === null ? unavailable : ShohizeiInterimTax.plan({...options,priorNationalTax:basis.national});
-  return {mode:'methodImpact',basis,base:plan,changed:plan,separate:false,separateUnconfirmed:false,changedNational:basis.national,
+  const result={mode:'methodImpact',basis,base:plan,changed:plan,separate:false,separateUnconfirmed:false,changedNational:basis.national,
     options,methodLabel:METHOD_LABELS[proxyKey] || '未選択',ready:plan.status === 'ready'};
+  return typeof ShohizeiContinuationUI==='undefined'?result:ShohizeiContinuationUI.interimPlan(result,calc,comparison);
 }
 function methodCashflowTableHtml(rows){
   if(!rows?.length) return '<p class="mini">月別資金差額は未算定です。</p>';
@@ -6936,7 +6939,9 @@ function renderMethodCashflow(calc, comparison){
   $('cashflowBaseInterim').disabled = scheduled && $('cashflowBaseNoInterim').checked;
   $('cashflowChangedInterim').disabled = scheduled && ($('cashflowSameInterim').checked || $('cashflowChangedNoInterim').checked);
   $('cashflowAutoFields').classList.toggle('is-hidden',!autoSelected);
-  $('cashflowAutoScopeGuide').textContent = '通常の前期実績方式で概算します。両案は同じ前期仮定を使い、仮決算による減額等は自動適用しません。';
+  $('cashflowAutoScopeGuide').textContent = calc.ctx.taxScenario==='foodProposal'
+    ? '両案とも食品1％の前提です。通常納付と特例を比較し、利用予定はA/B別に指定できます。手入力予定は上書きしません。'
+    : '通常の前期実績方式で概算します。両案は同じ前期仮定を使い、仮決算による減額等は自動適用しません。';
   $('cashflowActualPriorFields').classList.toggle('is-hidden',$('cashflowAutoBasis').value !== 'actual');
   $('cashflowPriorProxyMethodField').classList.toggle('is-hidden',!autoSelected || $('cashflowAutoBasis').value !== 'step3');
   $('cashflowPriorProxyScenarioNote').textContent = calc.ctx.taxScenario === 'foodProposal'
@@ -6964,7 +6969,7 @@ function renderMethodCashflow(calc, comparison){
       const meta = cashflowMonthSources[id];
       return meta?.needsReconfirmation ? [`${CASHFLOW_MONTH_LABELS[id]}は手入力月の再確認が必要です。`] : [];
     }),
-    ...(autoInterim ? [autoInterim.basis.source,...autoInterim.basis.reasons,...autoInterim.base.reasons,...autoInterim.base.warnings] : []),
+    ...(autoInterim ? [autoInterim.interimMethodLabel,autoInterim.basis.source,...autoInterim.basis.reasons,...autoInterim.base.reasons,...autoInterim.base.warnings].filter(Boolean) : []),
     ...(scheduled && !$('cashflowSameInterim').checked ? ['方式と中間納付条件を変更した比較です。'] : []),
     ...(selectedValue('entityType','individual') === 'corporation' && $('cashflowCorporateExtension').value === 'yes'
       ? ['申告期限延長と支払予定月は別です。確定納付は期末2か月後を初期仮定とし、実際の支払時期を確認してください。'] : []),
@@ -6978,7 +6983,7 @@ function renderMethodCashflow(calc, comparison){
       if(scheduled){
         base = parseCashflowInterim($('cashflowBaseInterim').value,'基準案の中間納付');
         changed = $('cashflowSameInterim').checked ? base : parseCashflowInterim($('cashflowChangedInterim').value,'変更案の中間納付');
-      }else if(autoInterim?.ready){ base = cashflowAutoEntries(autoInterim.base); changed = base; }
+      }else if(autoInterim?.ready){ base = cashflowAutoEntries(autoInterim.base); changed = cashflowAutoEntries(autoInterim.changed); }
       cashflowInput = {periodStart:adapter.periodStart,periodEnd:adapter.periodEnd,periodEndDate:adapter.periodEndDate,
         annualTax:{base:adapter.annualTax.base,changed:adapter.annualTax.changed},salesDeltas:[],purchaseDeltas:[],
         interim:{status:autoSelected ? autoInterim?.ready ? 'auto' : 'unknown' : $('cashflowInterimStatus').value,
@@ -7005,10 +7010,10 @@ function renderMethodCashflow(calc, comparison){
   $('cashflowResult').innerHTML = `${complete ? '<div class="notice">税額はSTEP3と同じ現在入力の結果です。中間納付を控除した確定差額だけを期後に計上しています。</div>' : `<div class="notice warn">税金込みの最終資金差額は未算定です。${escapeHtml(status + ' ' + reason)}</div>`}${complete && staleMonthIds.length ? '<div class="notice warn">予定月に再確認が必要な値があります。資金推移は参考仮定です。</div>' : ''}${taxRows}${methodComparisonTable}`;
   const panelData = engine ? buildStep4Panel(engine,adapter,calc,comparison,'methodImpact',
     {A:`基準案 A・${adapter.plans.base.label}`,B:`変更案 B・${adapter.plans.changed.label}`},
-    cashflowInput.interim,[],{sales:0,purchases:0}) : null;
+    cashflowInput.interim,autoInterim?.interimMethodLabel?[autoInterim.interimMethodLabel]:[],{sales:0,purchases:0}) : null;
   if(!engine) $('cashflowChart').innerHTML = '<p class="mini">税額・予定条件がそろうまで、月別資金推移は表示しません。</p>';
   $('cashflowMonthlyTable').innerHTML = '';
-  $('cashflowDetails').innerHTML = `${autoInterim ? `<h4>前期実績方式の中間納付</h4>${cashflowAutoHtml(autoInterim)}` : ''}<h4>前提・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
+  $('cashflowDetails').innerHTML = `${autoInterim ? `<h4>中間納付の設定</h4>${cashflowAutoHtml(autoInterim)}` : ''}<h4>前提・未確認事項</h4><ul>${[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))].map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
   latestCashflow = {mode:'methodImpact',adapter,engine:complete ? engine : null,panelData,methodLabel:`${adapter.plans.base.label} → ${adapter.plans.changed.label}`,
     notes:[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))],autoInterim,partial:!complete};
   const printNotes=[...new Set([...uniqueNotes,...(engine?.reasons || []),failure].filter(Boolean))];
@@ -7082,7 +7087,9 @@ function renderCashflow(calc, comparison){
   $('cashflowBaseInterim').disabled = scheduled && $('cashflowBaseNoInterim').checked;
   $('cashflowChangedInterim').disabled = scheduled && ($('cashflowSameInterim').checked || $('cashflowChangedNoInterim').checked);
   $('cashflowAutoFields').classList.toggle('is-hidden', !autoSelected);
-  $('cashflowAutoScopeGuide').textContent = '通常方式と食品特例を比較します。特例の利用予定は下のA/B別操作で指定し、手入力予定は上書きしません。法定納期限に全額納付する仮定です。';
+  $('cashflowAutoScopeGuide').textContent = calc.ctx.taxScenario==='foodProposal'
+    ? 'Aは現行税率・通常納付に固定します。Bの食品1％側では通常納付と特例を比較し、利用予定を指定できます。手入力予定は上書きしません。'
+    : '前期実績から通常の中間納付を概算します。手入力予定は上書きしません。';
   $('cashflowActualPriorFields').classList.toggle('is-hidden', $('cashflowAutoBasis').value !== 'actual');
   $('cashflowPriorChangedField').classList.toggle('is-hidden', !($('cashflowAutoSeparate').checked && $('cashflowAutoBasis').value === 'actual'));
   $('cashflowAutoSeparateMigration').classList.toggle('is-hidden', !cashflowAutoSeparateUnconfirmed);
@@ -7131,7 +7138,7 @@ function renderCashflow(calc, comparison){
     ...(cashflowAutoSeparateUnconfirmed ? ['旧保存データの両案の前期額設定は未確認です。画面で共通または別々を再確認してください。'] : [])];
   if(importedCsvRecovery) notes.push(csvRecoverySummaryText(importedCsvRecovery));
   if(importedUnsupportedEntries.length) notes.push('CSVに自動集計対象外の課税区分があります。元帳で除外・補正範囲を確認してください。');
-  const uniqueNotes = [...new Set(notes.filter(Boolean))];
+  const uniqueNotes = [...new Set([...notes,autoInterim?.interimMethodLabel].filter(Boolean))];
   $('cashflowDetails').innerHTML = `<ul>${uniqueNotes.map(note => `<li>${escapeHtml(note)}</li>`).join('') || '<li>追加の未確認事項はありません。</li>'}</ul>`;
   if(!adapter.ready || adapter.annualTax.status === 'unavailable'){
     $('cashflowResult').innerHTML = `<div class="notice warn">${escapeHtml(methodLabel)}の8％／1％資金差額は未算定です。${escapeHtml([...adapter.reasons,...adapter.annualTax.reasons].join(' / ') || 'STEP3で方式と入力を確認してください。')} <button type="button" class="btn secondary no-print" data-cashflow-step3>STEP3の税額比較へ戻る</button></div>`;
@@ -7179,7 +7186,7 @@ function renderCashflow(calc, comparison){
     $('cashflowResult').innerHTML = planHeading + state + cards;
     const panelData = buildStep4Panel(engine,adapter,calc,comparison,'rateImpact',
       {A:`基準案 A・現行税率・${methodLabel}`,B:`変更案 B・食品1％試算・${methodLabel}`},
-      cashflowInput.interim,[],
+      cashflowInput.interim,autoInterim?.interimMethodLabel?[autoInterim.interimMethodLabel]:[],
       {sales:cashflowInput.salesLag,purchases:cashflowInput.purchaseLag});
     const originalFood = calc.sales.rows.reduce((sum,row) => sum + Number(row.foodOneOriginalAmount || 0),0);
     const proposalFood = calc.sales.rows.reduce((sum,row) => sum + Number(row.forecastFood1 || 0),0);

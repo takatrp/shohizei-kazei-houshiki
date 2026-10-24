@@ -315,8 +315,17 @@
   .workflow-steps button{border:1px solid var(--line);border-radius:8px;background:#fff;padding:9px 13px;font:inherit;font-weight:800;cursor:pointer;color:#174156}
   .workflow-steps button:disabled,.workflow-nav .btn:disabled{opacity:.5;cursor:not-allowed}
   .workflow-steps button[aria-current="step"]{background:var(--brand);color:#fff}
-  .workflow-manual-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;white-space:nowrap;text-decoration:none}
-  .workflow-manual-link:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+  .workflow-manual-link{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:0 0 auto;white-space:nowrap;text-decoration:none;background:#0b6678;border-color:#0b6678;color:#fff;box-shadow:0 2px 5px #12394824}
+  .workflow-manual-link:hover{background:#084f5e;border-color:#084f5e;color:#fff}
+  .workflow-manual-link:focus-visible{outline:3px solid #995b00;outline-offset:3px}
+  .workflow-manual-link svg{width:18px;height:18px;flex:none}
+  .manual-video-dialog{width:min(960px,calc(100% - 24px));max-height:calc(100dvh - 24px);padding:16px;border:1px solid var(--line);border-radius:12px;color:var(--ink);background:#fff;box-shadow:0 18px 60px #102f4166;overflow:auto}
+  .manual-video-dialog::backdrop{background:#102f41b3}
+  .manual-video-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .manual-video-heading h2{font-size:18px;margin:0}
+  .manual-video-close{min-height:44px;min-width:64px}
+  .manual-video-dialog video{display:block;width:100%;max-height:calc(100dvh - 180px);aspect-ratio:16/9;object-fit:contain;background:#000;border-radius:6px}
+  .manual-video-dialog p{margin:12px 0 0}
   .workflow-screen{display:none}
   .workflow-screen.is-active{display:grid;gap:10px}
   .workflow-screen .panel{margin:0}
@@ -524,10 +533,15 @@
         <span class="workflow-step-item"><button type="button" data-workflow-step="4">3. 税額の比較</button><span class="workflow-step-arrow" aria-hidden="true">→</span></span>
         <span class="workflow-step-item"><button type="button" data-workflow-step="5">4. 資金繰りへの影響</button></span>
       </nav>
-      <a class="btn secondary workflow-manual-link" href="./manual/usage-manual.pdf" target="_blank" rel="noopener" type="application/pdf" aria-label="利用マニュアル（PDFを新しいタブで開く）">利用マニュアル</a>
+      <button type="button" id="manualVideoOpen" class="btn workflow-manual-link" aria-haspopup="dialog" aria-controls="manualVideoDialog"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 4.8v14.4L19.2 12z"/></svg><span>マニュアル動画</span></button>
     </div>
     <div class="screen-note" id="workflowStepSummary"></div>
   </div>
+  <dialog id="manualVideoDialog" class="manual-video-dialog no-print" aria-labelledby="manualVideoTitle" aria-describedby="manualVideoDescription">
+    <div class="manual-video-heading"><h2 id="manualVideoTitle">マニュアル動画</h2><button type="button" id="manualVideoClose" class="btn secondary manual-video-close" autofocus>閉じる</button></div>
+    <video id="manualVideo" controls playsinline preload="metadata" aria-label="CSV取込み操作ガイド（架空データ）"><source src="./manual/csv-import-guide.mp4" type="video/mp4">動画を再生できない場合は<a href="./manual/csv-import-guide.mp4">動画ファイルを開いてください</a>。</video>
+    <p id="manualVideoDescription" class="mini">架空データによるCSV取込みの操作ガイドです。<a href="./manual/usage-manual.pdf" target="_blank" rel="noopener" type="application/pdf">文章マニュアル（PDF・新しいタブ）</a></p>
+  </dialog>
   <div id="workflowScreen1" class="workflow-screen is-active no-print"></div>
   <div id="workflowScreen2" class="workflow-screen no-print">
     <div class="notice is-hidden row-entry-only" id="foodDefaultAssumptionNotice" role="status">
@@ -1444,6 +1458,7 @@
 <script src="sales-scenario.js"></script>
 <script src="prior-actual-evidence.js"></script>
 <script src="continuation-ui.js"></script>
+<script src="manual-video.js"></script>
 <script>
 'use strict';
 

@@ -51,7 +51,7 @@ const server = http.createServer((request,response) => {
     if(publicUrl){
       assert.equal(response.status(),200);
       report.release=await page.evaluate(()=>({version:ShohizeiRelease.APP_META.version,title:document.title,notice:ShohizeiRelease.APP_META.proposalBasisLabel}));
-      assert.equal(report.release.version,process.env.KAZEI_EXPECTED_VERSION || 'r36.0.2');
+      assert.equal(report.release.version,process.env.KAZEI_EXPECTED_VERSION || 'r36.0.3');
       assert.match(report.release.notice,/政策試算/);
     }
     const visible = () => page.evaluate(() => ({step:workflowStep,

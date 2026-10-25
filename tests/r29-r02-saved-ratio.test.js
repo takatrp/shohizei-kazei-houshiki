@@ -114,7 +114,7 @@ test('[R02 saved ratio] 70, "70", 0.7 and "0.7" take identical production paths 
 });
 
 test('[R02 saved amount] malformed explicit 1% purchase amounts cannot silently disappear from any regular method',()=>{
-  for(const bad of ['',null,'not-an-amount',-1]){
+  for(const bad of ['',null,'not-an-amount']){
     for(const method of ['individual','full','proportional']){
       const {h} = savedCsvCase(method,0.7,bad);
       const calc = h.context.calculate();
@@ -132,15 +132,17 @@ test('[R02 saved amount] malformed explicit 1% purchase amounts cannot silently 
   }
 });
 
-test('[R02 saved ratio] wrong 80%, missing and malformed percentages cannot become partial regular estimates',()=>{
+test('[R02 saved ratio] source ratio mismatches and missing ratios retain disclosed estimates',()=>{
   for(const bad of [80,'80','',null,'not-a-ratio',101,-1]){
     for(const method of ['individual','full','proportional']){
       const {h} = savedCsvCase(method,bad);
       const calc = h.context.calculate();
       const label = `${method}/${JSON.stringify(bad)}`;
-      assert.equal(calc.regular.amount,null,label);
-      assert.equal(regularMethod(calc).amount,null,label);
-      assert.equal(regularMethod(calc).include,false,label);
+      const expected={individual:950000,full:800000,proportional:900000}[method] - (bad===80 || bad==='80' ? (method==='proportional'?4000:8000) : 0);
+      assert.equal(calc.regular.amount,expected,label);
+      assert.equal(regularMethod(calc).amount,expected,label);
+      assert.equal(regularMethod(calc).include,true,label);
+      assert.equal(calc.comparisonProvisional,true,label);
       const reason = [calc.purchases.purchaseRatioConflicts,calc.regular.unavailableReasons,
         regularMethod(calc).reasons,calc.unconfirmedItems].flat(Infinity).join(' ');
       assert.match(reason,/控除割合/,`${label} must retain its reason`);
@@ -165,16 +167,17 @@ test('[R02 saved summary] restored entries reconcile stale 1% display summaries 
   assert.equal(h.context.calculate().regular.amount,793000);
 });
 
-test('[R02 usage only] unknown usage blocks individual allocation but not a known purchase total',()=>{
+test('[R02 usage only] unknown usage uses common allocation and discloses the assumption',()=>{
   const {h,getSaved} = savedCsvCase('individual',70);
   const altered = JSON.parse(getSaved());
   altered.importedActualOnePercent.entries.find(item => item.kind === 'exemptPurchase').usage = '';
   h.context.storageGet = () => JSON.stringify(altered);
   h.context.restoreState();
   let calc = h.context.calculate();
-  assert.equal(calc.regular.amount,null);
+  assert.equal(calc.regular.amount,946500);
   assert.equal(calc.purchases.purchaseCalculationErrors.length,0);
-  assert.ok(calc.purchases.purchaseUsageErrors.length);
+  assert.equal(calc.purchases.purchaseUsageErrors.length,0);
+  assert.match(calc.inputUnconfirmedItems.join(' '),/用途.*共通対応/);
   h.context.taxEntryRows.sales.find(row => row.code === '3').amount = '0';
   h.context.syncTaxEntryRows();
   h.element('regularDetailMethod').value = 'auto';

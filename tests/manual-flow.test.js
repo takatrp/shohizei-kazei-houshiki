@@ -210,7 +210,7 @@ test('[M11] 反映済み1％元行と金額は手入力画面への移動で破�
   assert.equal(h.element('type2Sale8').value, '1,080,000');
 });
 
-test('[M11] 反映済み返品の要確認と期間外通常取引のエラーは手入力移動で解除されない', () => {
+test('[M11] 反映済み返品と期間外通常取引の概算注意は手入力移動で解除されない', () => {
   const h = flowHarness(['clearJournalImport', 'enterManualAmountInput', 'validateImportedOnePercentEntries']);
   h.context.assessCsvOnePercentEntry = engine.assessCsvOnePercentEntry;
   h.context.importedActualOnePercent = { source:'csvActual', entries:[
@@ -220,15 +220,16 @@ test('[M11] 反映済み返品の要確認と期間外通常取引のエラー�
   h.context.pendingJournalImport = { applied:true, analysis:{} };
   const period = { taxScenario:'foodProposal', start:'2027-01-01', end:'2028-12-31' };
   const before = h.context.validateImportedOnePercentEntries(period);
-  assert.equal(before.reviewItems.length, 1);
+  assert.equal(before.reviewItems.length, 2);
   assert.equal(before.adjustmentCount, 1);
-  assert.equal(before.errors.length, 1);
+  assert.equal(before.errors.length, 0);
   h.context.enterManualAmountInput();
   const after = h.context.validateImportedOnePercentEntries(period);
-  assert.equal(after.reviewItems.length, 1);
-  assert.equal(after.errors.length, 1);
+  assert.equal(after.reviewItems.length, 2);
+  assert.equal(after.errors.length, 0);
   assert.match(after.reviewItems[0].source, /CSV 7行目/);
-  assert.match(after.errors[0], /CSV 8行目/);
+  assert.match(after.reviewItems[1].source, /CSV 8行目/);
+  assert.match(after.reviewItems[1].reason,/制度期間外/);
 });
 
 test('[M04][M08][M09] 手入力とCSV反映は同じ入力欄・計算関数で同額になり、CSV後も修正できる', () => {
@@ -632,7 +633,7 @@ test('[概算保存] 仮除外なしの仮定も保存復元し個別情報や�
   assert.equal(summary.assumedBusinessCount,2);
   assert.equal(summary.negativeBucketCount,1);
   assert.equal(summary.negativeBuckets[0].amount,-110);
-  assert.match(after.context.csvRecoverySummaryText(summary), /CSVに仮定あり.*税率10％.*40％.*-110円→0円/);
+  assert.match(after.context.csvRecoverySummaryText(summary), /CSVに仮定あり.*税率10％.*40％.*符号のまま.*-110円/);
 });
 
 test('[C17-C21] 同名CSVの新しい解析へ補正を流用せず遅れて完了した解析も採用しない', async () => {

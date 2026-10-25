@@ -192,6 +192,13 @@ test('明示1％の返還sidecarは元1％時期・課税状態・月額を確�
   const r=E.fromSharedCsv(d);assert.equal(r.available,true,r.reasons.join(' / '));
   const returned=r.priorActual.transactions.at(-1);assert.equal(returned.amount,-1010000);assert.equal(returned.amountDirection,'signed');
   assert.equal(F.recalculatePrior(r.priorActual,'reduction').nationalSalesReturnTax,7800);
+  for(const rate of [8,10]){
+    const differentRate=clone(d);differentRate.actualOnePercentEntries[0].originalRatePercent=rate;
+    const evidence=E.fromSharedCsv(differentRate);
+    assert.equal(evidence.available,false,'既知元税率が違う返品を確認済み1％実前期へ変換しない');
+    assert.equal(evidence.priorActual,null);assert.match(evidence.reasons.join(' '),/元税率/);
+    assert.equal(differentRate.actualOnePercentEntries[0].originalRatePercent,rate);
+  }
   delete d.actualOnePercentEntries[0].originalTaxableState;
   assert.equal(E.fromSharedCsv(d).available,false);
 });

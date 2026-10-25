@@ -158,12 +158,13 @@ test('T04: 将来期の70・50・30・0％は元の免税仕入税額から用�
   }
 });
 
-test('明示1％実績は予測8％行へ混ぜず、用途へ一度だけ加え、用途不明は未算定', () => {
+test('明示1％実績は予測8％行へ混ぜず、用途へ一度だけ加え、用途不明は共通対応の仮定', () => {
   const purchases = [purchase('5','108000','8','','108000')];
   const entries = [
     {kind:'invoicePurchase',usage:'common',amount:10100},
     {kind:'exemptPurchase',usage:'nonTaxableOnly',amount:10100,creditRatio:.7}
   ];
+  const before=structuredClone({purchases,entries});
   const result = aggregateScenarioPurchases({purchases,actualOnePercentEntries:entries}, {
     taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1,foodPurchasePriceBasis:'netFixed'
   });
@@ -177,12 +178,20 @@ test('明示1％実績は予測8％行へ混ぜず、用途へ一度だけ加え
   const unknown = aggregateScenarioPurchases({purchases,actualOnePercentEntries:[{kind:'invoicePurchase',amount:10100}]}, {
     taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1
   });
-  assert.equal(unknown.complete,false);
-  assert.equal(unknown.usageUnknown,true);
-  assert.match(unknown.errors.join(' '),/用途区分/);
+  assert.equal(unknown.complete,true);
+  assert.equal(unknown.usageUnknown,false);
+  assert.deepEqual(unknown.errors,[]);
+  closeTo(unknown.purchaseTaxByUse.common,100);
+  closeTo(unknown.usageTotal,1100);
+  assert.match(unknown.assumptions.join(' '),/用途.*未確認.*共通対応/);
   const current = aggregateScenarioPurchases({purchases,actualOnePercentEntries:entries}, {taxScenario:'current'});
-  assert.equal(current.complete,false);
-  closeTo(current.invoiceTax,8000);
+  assert.equal(current.complete,true);
+  assert.deepEqual(current.errors,[]);
+  closeTo(current.invoiceTax,8100,'読める1％実績を現行8％へ換算したり0円へ捨てない');
+  closeTo(current.exemptCreditableTax,70);
+  closeTo(current.totalCreditableTax,8170);
+  assert.ok(current.assumptions.length>0,'入力1％を維持する代理仮定を明示する');
+  assert.deepEqual({purchases,entries},before);
 });
 
 test('旧8％仕入返品は元税率を維持し、通常食品取引だけを1％予測する', () => {
@@ -287,7 +296,7 @@ test('J-K: 重複行は集計時だけ合算し、明示0円は空欄と区別',
   assert.equal(result.fields.taxableOnlyPurchaseTax.entered,true);
 });
 
-test('L: 正負が相殺する0円は既知0円、負の最終バケットだけエラー', () => {
+test('L: 正負相殺0円と負の最終バケットを区別し、元の負額を注意付きで保持する', () => {
   const balanced = aggregateTaxRows({ sales:[sale('1','100000','10','type2'),sale('1','-100000','10','type2')],
     purchases:[purchase('5','50000'),purchase('5','-50000')] });
   assert.equal(balanced.ready,true);
@@ -295,9 +304,16 @@ test('L: 正負が相殺する0円は既知0円、負の最終バケットだけ
   assert.equal(balanced.fields.type2Sale10.entered,true);
   assert.equal(value(balanced,'purchase10'),0);
   assert.equal(balanced.fields.purchase10.entered,true);
-  const negative = aggregateTaxRows({ purchases:[purchase('5','10000'),purchase('5','-20000')] });
-  assert.equal(negative.ready,false);
-  assert.match(negative.errors.map(error => error.message).join(' '), /マイナス/);
+  const rows={purchases:[purchase('5','10000'),purchase('5','-20000')]};
+  const before=structuredClone(rows);
+  const negative = aggregateTaxRows(rows);
+  assert.equal(negative.ready,true);
+  assert.deepEqual(negative.errors,[]);
+  assert.ok(negative.warnings.length>0);
+  assert.equal(value(negative,'purchase10'),-10000);
+  assert.equal(value(negative,'taxableOnlyPurchaseTax'),-909,'表示欄は従来どおり整数円へ丸める');
+  assert.equal(negative.invoiceByUse.taxableOnly['10'],-10000);
+  assert.deepEqual(rows,before,'元税率・符号・金額を0円に補正しない');
 });
 
 test('食品対象は空欄・0・全額を区別し、過大入力と符号違いを検出', () => {

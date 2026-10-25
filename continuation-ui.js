@@ -161,7 +161,11 @@
     const sliced=index===0&&window?csvWindow(period,window):null;
     const sourceRows=sliced?.ready?sliced.rows:taxEntryRows;
     const fraction=sliced?.ready?1:windowFraction;
-    const rows={sales:sourceRows.sales.map(r=>scaleRow(r,(1+sg/100)*fraction)),purchases:sourceRows.purchases.map(r=>scaleRow(r,(1+pg/100)*fraction))};
+    const sourceGroups=typeof importedCsvDailyGroups!=='undefined'&&importedCsvDailyGroups?.length?importedCsvDailyGroups:typeof importedCsvMonthlyGroups!=='undefined'?importedCsvMonthlyGroups:[];
+    const rows=Object.fromEntries(['sales','purchases'].map(side=>[side,sourceRows[side].flatMap(row=>{
+      const parts=ShohizeiTaxEngine.estimateCsvRowParts(row,{side,groups:sourceGroups});
+      return parts.rows.map(part=>scaleRow({...part,forecastAssumption:[part.forecastAssumption,...parts.assumptions].filter(Boolean).join(' ')},(1+(side==='sales'?sg:pg)/100)*fraction));
+    })]));
     if(investment)rows.purchases.push({code:'5',rate:'10',amount:String(investment),foodAmount:'',source:'forecast'});
     const actuals=index===0?(sliced?.ready?sliced.actualOnePercentEntries:(importedActualOnePercent?.entries||[]).filter(e=>!window||e.date>=window.start&&e.date<=window.end)):[];
     // Only future forecasts re-express ordinary actual 1% transactions at the
@@ -169,14 +173,28 @@
     if(index>0)for(const e of importedActualOnePercent?.entries||[]){
       const side=e.kind==='sale'?'sales':'purchases';
       const basis=ShohizeiSalesScenario.forecastActualOneBasis(e,side==='sales'?calc.ctx.foodSalesPriceBasis:calc.ctx.foodPurchasePriceBasis);
-      if(!basis.available)return {error:basis.reason};
       const usageCodes={taxableOnly:['5','52'],nonTaxableOnly:['6','62'],common:['7','72']};
-      const use=usageCodes[e.usage];if(side==='purchases'&&!use)return {error:'明示1％仕入の用途が未確認です。'};
+      const use=usageCodes[e.usage]||usageCodes.common;
+      const sourceRatio=ShohizeiTaxEngine.normalizeExemptPurchaseRatio(e.creditRatio);
+      const creditRatio=e.kind==='exemptPurchase'?String((sourceRatio??0)*100):'';
+      const forecastNotes=[];
+      if(side==='purchases'&&!usageCodes[e.usage])forecastNotes.push('元CSV仕入の用途は未確認のため共通対応と仮定しています。');
+      if(e.kind==='exemptPurchase'&&sourceRatio===null)forecastNotes.push('元CSV仕入の控除割合は未確認です。当期は控除なし（0％）、将来期はその期の控除割合で発生すると仮定する概算です。');
+      if(!basis.available){
+        const gross=number(e.amount);
+        if(gross===null||!Number.isFinite(gross))return {error:'明示1％調整の金額を読み取れません。'};
+        const amount=gross*(side==='sales'?1+sg/100:1+pg/100)*fraction;
+        const original=Number(e.originalRatePercent);
+        const forecastAssumption=[...forecastNotes,'将来期の返品・調整はCSVの元税率（未確認なら入力1％）と符号を維持して同額構成が続くと仮定した概算です。元取引の課税時点・食品区分による差額は未確定です。'].join(' ');
+        if([8,10].includes(original))rows[side].push({code:side==='sales'?'1':use[e.kind==='exemptPurchase'?1:0],rate:String(original),businessType:e.businessType||'',creditRatio,amount:String(amount),foodAmount:'',transactionKind:'adjustment',originalTaxableState:e.originalTaxableState,source:'forecast',forecastAssumption});
+        else actuals.push({...e,amount,date:window?.start||period.start,usage:e.usage||'common',forecastAssumption});
+        continue;
+      }
       const amount=Math.round(basis.amount*(side==='sales'?1+sg/100:1+pg/100)*fraction);
-      rows[side].push({code:side==='sales'?'1':use[e.kind==='exemptPurchase'?1:0],rate:'8',businessType:e.businessType||'',creditRatio:e.creditRatio===undefined?'':String(e.creditRatio*100),amount:String(amount),foodAmount:String(amount),source:'forecast'});
+      rows[side].push({code:side==='sales'?'1':use[e.kind==='exemptPurchase'?1:0],rate:'8',businessType:e.businessType||'',creditRatio,amount:String(amount),foodAmount:String(amount),source:'forecast',forecastAssumption:forecastNotes.join(' ')});
     }
     const ctx={...calc.ctx,start:window?.start||period.start,end:window?.end||period.end,foodForecastMethod:'uniform',entryRows:rows,projection:true};
-    const options={businessTypes:BUSINESS_TYPES,taxScenario:calc.ctx.taxScenario,foodForecastMethod:'uniform',proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),amountMode:'included',periodStart:ctx.start,periodEnd:ctx.end,foodSalesPriceBasis:ctx.foodSalesPriceBasis,foodPurchasePriceBasis:ctx.foodPurchasePriceBasis,importFoodFraction:ctx.importFoodFraction,estimateFromBase:ctx.importEstimateBase===true,
+    const options={businessTypes:BUSINESS_TYPES,sourceGroups:(typeof importedCsvDailyGroups!=='undefined'&&importedCsvDailyGroups?.length?importedCsvDailyGroups:typeof importedCsvMonthlyGroups!=='undefined'?importedCsvMonthlyGroups:[]),taxScenario:calc.ctx.taxScenario,foodForecastMethod:'uniform',proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),amountMode:'included',periodStart:ctx.start,periodEnd:ctx.end,foodSalesPriceBasis:ctx.foodSalesPriceBasis,foodPurchasePriceBasis:ctx.foodPurchasePriceBasis,importFoodFraction:ctx.importFoodFraction,estimateFromBase:ctx.importEstimateBase===true,
       foodPeriodAmount:(row,value)=>sliced?.ready&&Object.hasOwn(sliced.foodPeriodAmountsById,row.id)?sliced.foodPeriodAmountsById[row.id]*(row.code==='1'?1+sg/100:1+pg/100):foodAmount(value,ctx,{kind:['1','11'].includes(String(row.code))?'sales':'purchases',row})};
     const sales=ShohizeiSalesScenario.collectSalesScenario({sales:rows.sales,actualOnePercentEntries:actuals},options);
     const raw=ShohizeiTaxEntryRows.aggregateScenarioPurchases({purchases:rows.purchases,actualOnePercentEntries:actuals}, {...options,exemptRatioOverride:weightedExemptPurchaseRatio(ctx.start,ctx.end).ratio});
@@ -206,7 +224,7 @@
         else if(!snapshot.error){
           if(key==='regular')amount=snapshot.regular.amount;
           else if(key==='simplified')amount=snapshot.sales.simplified.amount;
-          else amount=calculateSpecialMethodAmount({totalSalesTax:snapshot.sales.totalTax,foodOnePercentTax:snapshot.sales.simplified.foodOnePercentTax,burdenRatio:key==='special2'?.2:.3}).amount;
+          else amount=calculateSpecialMethodAmount({totalSalesTax:snapshot.sales.totalTax,foodOnePercentTax:snapshot.sales.simplified.foodOnePercentTax,burdenRatio:key==='special2'?.2:.3,estimateSignedReturns:true}).amount;
           if(snapshot.errors.length){amount=null;reasons.push(...snapshot.errors.map(x=>x.message||x));}
           if(key==='regular'&&amount===null)reasons.push(...snapshot.regular.unavailableReasons||[]);
           if(key==='simplified'){
@@ -216,6 +234,7 @@
           }
           if(key!=='regular'&&((calc.ctx.highAssetState==='yes'&&calc.highAssetRegular.status==='unknown')||assetFacts[index].assetReasons.length)){eligibility='unknown';reasons.push(...(calc.highAssetRegular.status==='unknown'?calc.highAssetRegular.reasons||[]:[]),...assetFacts[index].assetReasons,'資産取得による適用制限の対象期・取得方式が未確認です。');}
           if(key==='special2'||key==='special3'){const ctx={...snapshot.ctx,baseTaxableSales:reference.value,baseSalesEntered:reference.entered,specificTaxableSales:resolved.specifiedFact.value,specificSalesEntered:resolved.specifiedFact.entered,specificPayrollEntered:false,specificInputEntered:resolved.specifiedFact.entered,specificUnder10m:resolved.specifiedFact.entered&&resolved.specifiedFact.value<=10000000};const e=getEligibility(ctx)[key];eligibility=eligibility==='unknown'&&reasons.length?'unknown':e.eligibility;reasons.push(...e.reasons);}
+          reasons.push(...snapshot.sales.assumptions||[],...snapshot.purchases.assumptions||[],...snapshot.regular.assumptions||[]);
         }else reasons.push(snapshot.error);
         return {key,amount,eligibility,reasons,include:amount!==null&&eligibility==='eligible'};
       });
@@ -424,7 +443,7 @@
     const chosen=kind=>estimates.filter(e=>e.kind===kind);
     const sales=ShohizeiFoodPeriodEstimator.transactionDeltas({estimates:chosen('sales'),priceBasis:calc.ctx.foodSalesPriceBasis,annualDelta:adapter.annualSalesDelta});
     const purchases=ShohizeiFoodPeriodEstimator.transactionDeltas({estimates:chosen('purchases'),priceBasis:calc.ctx.foodPurchasePriceBasis,annualDelta:adapter.annualPurchaseDelta});
-    const notes=[...adapter.distribution.notes];
+    const notes=[...(calc.inputUnconfirmedItems||[]),...adapter.distribution.notes];
     let result={...adapter,distribution:{...adapter.distribution,bySide:{...adapter.distribution.bySide}}};
     for(const [kind,part] of [['sales',sales],['purchases',purchases]]){
       if(part.ready){result[kind==='sales'?'salesDeltas':'purchaseDeltas']=part.monthly;result.distribution.bySide[kind]='shared-period';notes.push(...part.notes);}

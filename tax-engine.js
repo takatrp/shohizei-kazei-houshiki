@@ -196,13 +196,7 @@
     const annualizedTaxableSales = periodAssessment.annualizedTaxableSales;
     const fullCreditEligible = periodAssessment.fullCreditEligible;
 
-    // Full-credit net purchases retain signed original-rate returns. Partial
-    // credit needs the original use/ratio of a return; do not clamp it to zero.
-    if(!fullCreditEligible && (purchaseTax < 0 || Number(input.taxableOnlyTax) < 0 || Number(input.commonTax) < 0)) return {
-      amount:null,regularCredit:null,taxableSalesRatio,periodMonths,annualizedTaxableSales,
-      periodReasons:periodAssessment.reasons,fullCreditEligible:false,appliedMethod:'unresolved',purchaseTax,taxableSales,totalSales,creditBeforeCap:null,
-      unavailableReasons:['負の仕入税額・仕入返還の元の用途と控除割合が必要です。0円に切り上げず、この一般課税だけ未算定にします。']
-    };
+    const signedPurchases = purchaseTax < 0 || Number(input.taxableOnlyTax) < 0 || Number(input.commonTax) < 0 || Number(input.nonTaxableOnlyTax) < 0;
     let regularCredit;
     let appliedMethod;
     let creditBeforeCap;
@@ -211,19 +205,21 @@
       regularCredit = creditBeforeCap;
       appliedMethod = 'full';
     }else if(input.method === 'individual'){
-      creditBeforeCap = nonNegativeNumber(input.taxableOnlyTax)
-        + nonNegativeNumber(input.commonTax) * taxableSalesRatio;
-      regularCredit = Math.min(purchaseTax, creditBeforeCap);
+      creditBeforeCap = finiteNumber(input.taxableOnlyTax)
+        + finiteNumber(input.commonTax) * taxableSalesRatio;
+      regularCredit = signedPurchases ? creditBeforeCap : Math.min(purchaseTax, creditBeforeCap);
       appliedMethod = 'individual';
     }else{
       creditBeforeCap = purchaseTax * taxableSalesRatio;
-      regularCredit = Math.min(purchaseTax, creditBeforeCap);
+      regularCredit = signedPurchases ? creditBeforeCap : Math.min(purchaseTax, creditBeforeCap);
       appliedMethod = 'proportional';
     }
 
     return {
       amount:salesTax - regularCredit + adjustment,
       regularCredit,
+      assumptions:signedPurchases ? ['仕入返還等の負額は、入力された元税率・用途・控除割合のまま符号付きで差し引く概算です。元取引の控除方法・課税時点は未照合です。'] : [],
+      signedPurchases,
       taxableSalesRatio,
       periodMonths,
       annualizedTaxableSales,
@@ -361,12 +357,14 @@
     // Food's signed net tax is an equal deduction. Pure food returns therefore
     // cancel too. A negative non-food basis needs a separate statutory return
     // calculation; do not invent a zero or a negative deemed deduction here.
-    const valid = otherSalesTax >= -1e-8;
+    const signedEstimate = otherSalesTax < -1e-8 && input.estimateSignedReturns === true;
+    const valid = otherSalesTax >= -1e-8 || signedEstimate;
     return {
       totalSalesTax,
       foodOnePercentTax,
       otherSalesTax,
       valid,
+      assumptions:signedEstimate ? ['売上返還等が通常売上を超える部分も、元税率の符号付き税額に特例の負担割合を適用した参考概算です。実際の返還控除は元取引の申告方法を別途確認してください。'] : [],
       reasons:valid ? [] : ['食品以外の売上返還等が売上税額を超えるため、特例の申告書計算を個別確認してください。'],
       amount:valid ? otherSalesTax * burdenRatio : null
     };
@@ -974,7 +972,7 @@
     return `${(share * 100).toFixed(1)}％`;
   }
 
-  function calculateSimplifiedTax(rows){
+  function calculateSimplifiedTax(rows,options={}){
     const allocationErrors = rows.flatMap(row => {
       const errors = [];
       if(!row.hasReturns && finiteNumber(row.rowTax) >= 0 && finiteNumber(row.foodOnePercentTax) > finiteNumber(row.rowTax) + 1e-8){
@@ -998,7 +996,9 @@
       rowTax:finiteNumber(row.rowTax) - finiteNumber(row.foodOnePercentTax),
       rowTaxableBase:finiteNumber(row.rowTaxableBase) - finiteNumber(row.foodOnePercentTaxableBase)
     }));
+    const signedEstimate = options.estimateSignedReturns === true && otherRows.some(row=>row.rowTax < -1e-8 || row.rowTaxableBase < -1e-8);
     otherRows.forEach(row => {
+      if(signedEstimate) return;
       if(row.rowTax < -1e-8 || row.rowTaxableBase < -1e-8)
         allocationErrors.push(`${row.name || row.key || '事業区分'}の食品以外の売上返還等が売上を超えるため、簡易課税・75％判定を個別確認してください。`);
     });
@@ -1015,7 +1015,7 @@
     }];
     const activeRows = otherRows.filter(row => row.rowTaxableBase > 0);
 
-    if(otherTaxableBase > 0 && activeRows.length >= 2){
+    if(!signedEstimate && otherTaxableBase > 0 && activeRows.length >= 2){
       activeRows.forEach(row => {
         const share = row.rowTaxableBase / otherTaxableBase;
         if(share + Number.EPSILON >= 0.75){
@@ -1032,7 +1032,7 @@
       });
     }
 
-    if(otherTaxableBase > 0 && activeRows.length >= 3){
+    if(!signedEstimate && otherTaxableBase > 0 && activeRows.length >= 3){
       for(let i = 0; i < activeRows.length - 1; i++){
         for(let j = i + 1; j < activeRows.length; j++){
           const first = activeRows[i];
@@ -1072,6 +1072,7 @@
       selectedCandidate:selected,
       otherRows,
       allocationErrors,
+      assumptions:signedEstimate ? ['売上返還等が通常売上を超える区分は、入力された事業区分のみなし仕入率で符号付きの通常計算を行う概算です。75％特例は使用せず、元取引の申告方法・事業区分は未照合です。'] : [],
       valid:allocationErrors.length === 0,
       candidates
     };
@@ -1312,6 +1313,34 @@
     };
   }
 
+  function estimateCsvRowParts(row,{side='sales',groups=[]}={}){
+    const unchanged={rows:[row],assumptions:[]};
+    if(!row || row.estimatePart || !['csv','csv-edited'].includes(row.source) || String(row.rate)!=='8' || String(row.code)==='11') return unchanged;
+    const amount=parseAmountInput(row.amount,{allowNegative:true}),food=parseAmountInput(row.foodAmount,{allowNegative:true});
+    if(!amount.valid || !amount.entered || !food.valid || food.entered && (Math.abs(food.value)>Math.abs(amount.value)+1e-8 || food.value && Math.sign(food.value)!==Math.sign(amount.value))) return unchanged;
+    const usage={'5':'taxableOnly','52':'taxableOnly','6':'nonTaxableOnly','62':'nonTaxableOnly','7':'common','72':'common'}[String(row.code)];
+    const matches=(Array.isArray(groups)?groups:[]).filter(g=>g&&typeof g==='object'&&(g.kind||g.side)===side && String(g.code)===String(row.code) && String(g.rate)===String(row.rate)
+      && (side==='sales'?String(g.businessType||'')===String(row.businessType||''):String(g.usage||'')===usage && (!['52','62','72'].includes(String(row.code)) || String(g.creditRatio).replace(/%$/,'')===String(row.creditRatio).replace(/%$/,''))));
+    const uncertain=Number(row.sourceAdjustmentCount)>0 || matches.some(g=>g.transactionKind==='adjustment'||Number(g.amount)<0);
+    if(!uncertain) return unchanged;
+    const label=side==='sales'?'売上':'仕入';
+    const parsed=matches.map(g=>({...g,value:parseAmountInput(g.amount,{allowNegative:true})}));
+    const usable=parsed.length && parsed.every(g=>g.value.valid&&g.value.entered);
+    const ordinary=parsed.filter(g=>g.transactionKind!=='adjustment'&&g.value.value>=0).reduce((s,g)=>s+g.value.value,0);
+    const adjustment=parsed.filter(g=>g.transactionKind==='adjustment'||g.value.value<0).reduce((s,g)=>s+g.value.value,0);
+    const tolerance=1e-7+Math.max(Math.abs(amount.value),Math.abs(ordinary+adjustment))*Number.EPSILON*16;
+    if(usable && Math.abs(ordinary+adjustment-amount.value)<=tolerance){
+      // An explicit zero food subset differs from the automatic whole-group
+      // assumption when ordinary sales and corrections cancel to zero.
+      const share=!food.entered?null:amount.value!==0?food.value/amount.value:row.foodAmountSource==='manual'?0:1;
+      const rows=[];
+      if(ordinary!==0 || adjustment===0) rows.push({...row,amount:String(ordinary),foodAmount:share===null?'':String(ordinary*share),transactionKind:'ordinary',sourceAdjustmentCount:0,estimatePart:'ordinary'});
+      if(adjustment!==0) rows.push({...row,amount:String(adjustment),foodAmount:'',transactionKind:'adjustment',sourceAdjustmentCount:0,estimatePart:'adjustment'});
+      return {rows,assumptions:[`${label}の8％集約行はCSVの符号付き内訳で通常取引と返品・調整を分離し、調整を元8％のまま一度だけ計上しています。食品1％は通常取引部分だけの概算です。${share!==null&&share!==0&&share!==1?'食品内数は通常・調整に同じ比率で含まれると仮定しています。':''}元取引の食品区分・課税時点は未照合です。`]};
+    }
+    return {rows:[{...row,sourceAdjustmentCount:0,transactionKind:amount.value<0?'adjustment':row.transactionKind||'ordinary',estimatePart:'proxy'}],assumptions:[`${label}の8％集約行は通常取引と調整の内訳を対応付けられないため、差引純額を通常取引の代理とする概算です。負の純額は元8％の調整として保持します。影響範囲はこの行の食品1％推計で、内訳による税額差は未確定です。`]};
+  }
+
   function sanitizeCsvCell(value){
     const text = String(value ?? '');
     return typeof value === 'string' && /^[=+\-@]/.test(text) ? `'${text}` : text;
@@ -1329,6 +1358,7 @@
     FOOD_PROPOSAL,
     normalizeNumberString,
     parseAmountInput,
+    estimateCsvRowParts,
     taxFromAmount,
     taxableBaseFromAmount,
     calculateRegularAmount,

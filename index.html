@@ -2453,7 +2453,8 @@ function syncTaxEntryRows(){
     purchases:purchaseRowsForScenario('current')
   };
   latestTaxRowAggregate = aggregateTaxRows(activeRows, {
-    amountMode:'included', actualOnePercentEntries:importedActualOnePercent?.entries || [], estimateFromBase:$('importEstimateBase')?.checked===true
+    amountMode:'included', actualOnePercentEntries:importedActualOnePercent?.entries || [], estimateFromBase:$('importEstimateBase')?.checked===true,
+    sourceGroups:(typeof importedCsvDailyGroups!=='undefined'&&importedCsvDailyGroups?.length?importedCsvDailyGroups:typeof importedCsvMonthlyGroups!=='undefined'?importedCsvMonthlyGroups:[])
   });
   for(const id of ['nonTaxableSales','purchase10','purchase8']){
     if(rowCsvKnownZeros[id] && !latestTaxRowAggregate.fields[id]?.entered){
@@ -3009,8 +3010,8 @@ function csvRecoverySummaryText(summary){
       const label = `${{sales:'売上',invoicePurchase:'通常仕入',exemptPurchase:'免税事業者等仕入',nonTaxableSales:'非課税売上等'}[item.kind]}${item.rate ? `・${item.rate}％` : ''}`;
       grouped.set(label, (grouped.get(label) || 0) + item.amount);
     });
-    const buckets = [...grouped].map(([label,amount]) => `${label} ${yen(amount)}→0円`).join('、');
-    assumptions.push(`差引後マイナスの${summary.negativeBucketCount}集計区分（絶対額${yen(summary.negativeAbsAmount || 0)}）を0円に仮置き${buckets ? `：${buckets}` : ''}。返品と元取引の期間・税率を確認`);
+    const buckets = [...grouped].map(([label,amount]) => `${label} ${yen(amount)}`).join('、');
+    assumptions.push(`差引後マイナスの${summary.negativeBucketCount}集計区分（絶対額${yen(summary.negativeAbsAmount || 0)}）を元税率・符号のまま概算に保持${buckets ? `：${buckets}` : ''}。返品と元取引の期間・税率は未照合`);
   }
   return `${estimated && summary.temporaryExcludedCount ? '参考試算（CSVに仮定・仮除外あり）。' : estimated ? '参考試算（CSVに仮定あり）。' : summary.temporaryExcludedCount ? '参考試算（一部明細を仮除外）。' : 'CSV補正・対象外確認の集計前提。'}補正${summary.correctedCount}明細、仮除外${summary.temporaryExcludedCount}明細、試算対象外確認済み${summary.confirmedExcludedCount}明細。${excluded ? `除外明細の読取可能な取引金額合計（絶対値）${yen(summary.excludedAbsAmount)}、金額不明${summary.unknownAmountCount}明細。貸借の重複を含み得る金額であり、売上減少や税額影響ではありません。${directions ? `判別できる部分：${directions}。` : ''}除外部分の税額影響は未算定。` : ''}${assumptions.length ? `仮定：${assumptions.join('。')}。仮定によって方式の優劣が変わり得ます。実際の条件による税額差は未確定です。` : ''}`;
 }
@@ -3553,9 +3554,10 @@ function getContext(){
     : ['regular','simplified','special2','special3'];
   const checksSimplified = comparisonMethods.includes('simplified');
   const checksSpecial = comparisonMethods.includes('special2') || comparisonMethods.includes('special3');
-  const nonTaxableSalesState = amountState('nonTaxableSales');
-  const taxableOnlyPurchaseTaxState = amountState('taxableOnlyPurchaseTax');
-  const commonPurchaseTaxState = amountState('commonPurchaseTax');
+  const rowSignedAmounts={allowNegative:true};
+  const nonTaxableSalesState = amountState('nonTaxableSales',rowSignedAmounts);
+  const taxableOnlyPurchaseTaxState = amountState('taxableOnlyPurchaseTax',rowSignedAmounts);
+  const commonPurchaseTaxState = amountState('commonPurchaseTax',rowSignedAmounts);
   const highAssetAmountState = amountState('highAssetAmount');
   const baseTaxableSales = baseState.value;
   const specificTaxableSales = specificSalesState.value;
@@ -3766,13 +3768,13 @@ function projectProposalPurchases(purchases, ctx, index){
   }
   if(ctx.taxScenario !== 'foodProposal'){
     if(index > 0 && typeof entryMode !== 'undefined' && entryMode === 'rows'){
-      const projected = aggregateScenarioPurchases({purchases:purchaseRowsForScenario('current')}, {
+      const projected = aggregateScenarioPurchases({purchases:purchaseRowsForScenario('current'),actualOnePercentEntries:importedActualOnePercent?.entries || []}, {
         taxScenario:'current', exemptRatioOverride:projectionRatio.ratio
       });
       return { ...purchases, invoiceTax:projected.invoiceTax, exemptTax:projected.exemptTax,
         exemptCreditableTax:projected.exemptCreditableTax,
         purchaseTaxByUse:projected.purchaseTaxByUse, purchaseUsageErrors:projected.errors,
-        totalTax:projected.totalTax };
+        totalTax:projected.totalTax,assumptions:projected.assumptions };
     }
     const exemptCreditableTax = index === 0 ? purchases.exemptCreditableTax : purchases.exemptTax * projectionRatio.ratio;
     return { ...purchases, exemptCreditableTax,
@@ -3854,6 +3856,7 @@ function calculateProjectionRegular(calc, ctx, index, snapshot){
         if(result.referenceCalculable) amount = result.mainReturn.totalBeforeInterim;
       }catch(error){ returnReasons = [error.message || String(error)]; }
     }
+    if(amount===null && regular.amount!==null) amount=regular.amount;
   }else amount = declarationRoundedAmount({ ctx, sales:snapshot.sales, purchases:snapshot.purchases }, 'regular', regular.regularCredit, regular.amount);
   return {
     amount,
@@ -3866,6 +3869,8 @@ function calculateProjectionRegular(calc, ctx, index, snapshot){
 }
 
 function returnInputForProjection(ctx,index){
+  if(importedActualOnePercent?.entries?.length)
+    return {input:null,reasons:['CSV明示1％実績は入力税率・符号を維持する参考概算です。現行申告書の端数計算は再現していません。']};
   if(typeof entryMode === 'undefined' || entryMode !== 'rows')
     return {input:null,reasons:['旧形式の集計入力は申告書計算の用途別行を復元できません。']};
   const purchases = taxEntryRows.purchases.map(row => ({...row}));
@@ -3903,16 +3908,17 @@ function getEligibility(ctx, regularCalculationAvailability){
 }
 
 function collectSales(ctx){
-  if(ctx.taxScenario === 'foodProposal' && typeof ShohizeiSalesScenario !== 'undefined' && typeof entryMode !== 'undefined' && entryMode === 'rows') return ShohizeiSalesScenario.collectSalesScenario({sales:taxEntryRows.sales,actualOnePercentEntries:importedActualOnePercent?.entries||[]},{businessTypes:BUSINESS_TYPES,taxScenario:ctx.taxScenario,foodForecastMethod:ctx.foodForecastMethod,proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),foodSalesPriceBasis:ctx.foodSalesPriceBasis,amountMode:ctx.amountMode,periodStart:ctx.start,periodEnd:ctx.end,foodPeriodAmount:typeof ShohizeiContinuationUI === 'undefined' ? undefined : (row,value) => ShohizeiContinuationUI.foodAmount(value,ctx,{kind:'sales',row})});
+  if(typeof ShohizeiSalesScenario !== 'undefined' && typeof entryMode !== 'undefined' && entryMode === 'rows') return ShohizeiSalesScenario.collectSalesScenario({sales:ctx.taxScenario==='foodProposal'?taxEntryRows.sales:taxEntryRows.sales.map(row=>({...row,foodAmount:''})),actualOnePercentEntries:importedActualOnePercent?.entries||[]},{businessTypes:BUSINESS_TYPES,taxScenario:ctx.taxScenario,foodForecastMethod:ctx.foodForecastMethod,proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),foodSalesPriceBasis:ctx.foodSalesPriceBasis,amountMode:ctx.amountMode,periodStart:ctx.start,periodEnd:ctx.end,sourceGroups:(typeof importedCsvDailyGroups!=='undefined'&&importedCsvDailyGroups?.length?importedCsvDailyGroups:typeof importedCsvMonthlyGroups!=='undefined'?importedCsvMonthlyGroups:[]),
+    foodPeriodAmount:typeof ShohizeiContinuationUI === 'undefined' ? undefined : (row,value) => ShohizeiContinuationUI.foodAmount(value,ctx,{kind:'sales',row})});
   let totalAmount = 0;
   let totalTaxableBase = 0;
   let totalTax = 0;
   let anyEntered = false;
   const errors = [];
   const rows = BUSINESS_TYPES.map(type => {
-    const state10 = amountState(type.key + 'Sale10');
-    const state8 = amountState(type.key + 'Sale8');
-    const stateFood1 = amountState(type.key + 'SaleFood1');
+    const state10 = amountState(type.key + 'Sale10',{allowNegative:true});
+    const state8 = amountState(type.key + 'Sale8',{allowNegative:true});
+    const stateFood1 = amountState(type.key + 'SaleFood1',{allowNegative:true});
     if(!state10.valid) errors.push(`${type.name} 10%売上: ${state10.error}`);
     if(!state8.valid) errors.push(`${type.name} 軽8％対象売上: ${state8.error}`);
     if(ctx.taxScenario === 'foodProposal' && !stateFood1.valid) errors.push(`${type.name} 1％対象食品売上: ${stateFood1.error}`);
@@ -3921,17 +3927,17 @@ function collectSales(ctx){
     const amount10 = state10.valid ? state10.value : 0;
     const amount8 = state8.valid ? state8.value : 0;
     const foodInputAmount = ctx.taxScenario === 'foodProposal' && stateFood1.valid ? stateFood1.value : 0;
-    if(ctx.taxScenario === 'foodProposal' && foodInputAmount > amount8 + 1e-8){
+    if(ctx.taxScenario === 'foodProposal' && foodInputAmount !== 0 && (Math.abs(foodInputAmount)>Math.abs(amount8)+1e-8 || Math.sign(foodInputAmount)!==Math.sign(amount8))){
       errors.push(`${type.name}の1％対象食品売上が軽8％対象売上を超えています。`);
     }
-    const foodOneOriginalAmount = Math.min(amount8, proposalFoodOriginalAmount(foodInputAmount, ctx, {kind:'sales',businessType:type.key}));
+    const foodOneOriginalAmount = amount8>0 ? Math.min(amount8, proposalFoodOriginalAmount(foodInputAmount, ctx, {kind:'sales',businessType:type.key})) : 0;
     if(ctx.taxScenario === 'foodProposal' && foodOneOriginalAmount > 0 && proposalOverlapFraction(ctx.start, ctx.end) === 0){
       errors.push(`${type.name}の1％対象食品売上がありますが、課税期間は1％対象期間と重なりません。`);
     }
     const forecastFood1 = repriceFoodAmount(foodOneOriginalAmount, ctx, ctx.foodSalesPriceBasis);
     const actualFood1 = actualOneAmount(actualGross, ctx);
     const amountFood1 = forecastFood1 + actualFood1;
-    const amount8Other = Math.max(0, amount8 - foodOneOriginalAmount);
+    const amount8Other = amount8 - foodOneOriginalAmount;
     const tax10 = taxFromAmount(amount10, 10);
     const tax8 = taxFromAmount(amount8Other, 8);
     const forecastFood1Tax = taxFromAmount(forecastFood1, 1);
@@ -4042,9 +4048,10 @@ function collectExemptPurchases(ctx){
     const input10 = exemptPurchaseInputId(bucket.key, '10');
     const input8 = exemptPurchaseInputId(bucket.key, '8');
     const inputFood1 = exemptPurchaseInputId(bucket.key, '1');
-    const state10 = amountState(input10);
-    const state8 = amountState(input8);
-    const stateFood1 = amountState(inputFood1);
+    const rowSignedAmounts={allowNegative:true};
+    const state10 = amountState(input10,rowSignedAmounts);
+    const state8 = amountState(input8,rowSignedAmounts);
+    const stateFood1 = amountState(inputFood1,rowSignedAmounts);
     if(!state10.valid) errors.push(`${bucket.label} 10%免税事業者仕入: ${state10.error}`);
     if(!state8.valid) errors.push(`${bucket.label} 軽8％免税事業者仕入: ${state8.error}`);
     if(ctx.taxScenario === 'foodProposal' && !stateFood1.valid) errors.push(`${bucket.label} 1％食品仕入: ${stateFood1.error}`);
@@ -4053,14 +4060,14 @@ function collectExemptPurchases(ctx){
     const amount10 = state10.valid ? state10.value : 0;
     const amount8 = state8.valid ? state8.value : 0;
     const foodInputAmount = ctx.taxScenario === 'foodProposal' && stateFood1.valid ? stateFood1.value : 0;
-    if(ctx.taxScenario === 'foodProposal' && foodInputAmount > amount8 + 1e-8){
+    if(ctx.taxScenario === 'foodProposal' && foodInputAmount !== 0 && (Math.abs(foodInputAmount)>Math.abs(amount8)+1e-8 || Math.sign(foodInputAmount)!==Math.sign(amount8))){
       errors.push(`${bucket.label}の1％対象食品仕入が軽8％対象仕入を超えています。`);
     }
-    const foodOneOriginalAmount = Math.min(amount8, proposalFoodOriginalAmount(foodInputAmount, ctx, {kind:'exemptPurchase',creditRatio:bucket.key}));
+    const foodOneOriginalAmount = amount8>0 ? Math.min(amount8, proposalFoodOriginalAmount(foodInputAmount, ctx, {kind:'exemptPurchase',creditRatio:bucket.key})) : 0;
     const forecastFood1 = repriceFoodAmount(foodOneOriginalAmount, ctx, ctx.foodPurchasePriceBasis);
     const actualFood1 = actualOneAmount(actualGross, ctx);
     const amountFood1 = forecastFood1 + actualFood1;
-    const amount8Other = Math.max(0, amount8 - foodOneOriginalAmount);
+    const amount8Other = amount8 - foodOneOriginalAmount;
     const tax10 = taxFromAmount(amount10, 10);
     const tax8 = taxFromAmount(amount8Other, 8);
     const forecastFood1Tax = taxFromAmount(forecastFood1, 1);
@@ -4088,9 +4095,10 @@ function calcExemptCreditLabel(purchases){
 }
 
 function collectPurchases(ctx){
-  const state10 = amountState('purchase10');
-  const state8 = amountState('purchase8');
-  const stateFood1 = amountState('purchaseFood1');
+  const rowSignedAmounts={allowNegative:true};
+  const state10 = amountState('purchase10',rowSignedAmounts);
+  const state8 = amountState('purchase8',rowSignedAmounts);
+  const stateFood1 = amountState('purchaseFood1',rowSignedAmounts);
   const adjustmentState = amountState('regularAdjustment', { allowNegative:true });
   const errors = [];
   if(!state10.valid) errors.push(`10%課税仕入・経費: ${state10.error}`);
@@ -4100,15 +4108,15 @@ function collectPurchases(ctx){
   const amount10 = state10.valid ? state10.value : 0;
   const amount8 = state8.valid ? state8.value : 0;
   const foodInputAmount = ctx.taxScenario === 'foodProposal' && stateFood1.valid ? stateFood1.value : 0;
-  if(ctx.taxScenario === 'foodProposal' && foodInputAmount > amount8 + 1e-8){
+  if(ctx.taxScenario === 'foodProposal' && foodInputAmount !== 0 && (Math.abs(foodInputAmount)>Math.abs(amount8)+1e-8 || Math.sign(foodInputAmount)!==Math.sign(amount8))){
     errors.push('1％対象食品仕入が軽8％対象課税仕入を超えています。');
   }
-  const foodOneOriginalAmount = Math.min(amount8, proposalFoodOriginalAmount(foodInputAmount, ctx, {kind:'invoicePurchase'}));
+  const foodOneOriginalAmount = amount8>0 ? Math.min(amount8, proposalFoodOriginalAmount(foodInputAmount, ctx, {kind:'invoicePurchase'})) : 0;
   const forecastFood1 = repriceFoodAmount(foodOneOriginalAmount, ctx, ctx.foodPurchasePriceBasis);
   const actualGross = ctx.taxScenario === 'foodProposal' ? Number(importedActualOnePercent?.invoicePurchase || 0) : 0;
   const actualFood1 = actualOneAmount(actualGross, ctx);
   const amountFood1 = forecastFood1 + actualFood1;
-  const amount8Other = Math.max(0, amount8 - foodOneOriginalAmount);
+  const amount8Other = amount8 - foodOneOriginalAmount;
   const exemptPurchases = collectExemptPurchases(ctx);
   const tax10 = taxFromAmount(amount10, 10);
   const tax8 = taxFromAmount(amount8Other, 8);
@@ -4129,6 +4137,7 @@ function collectPurchases(ctx){
     estimateFromBase:ctx.importEstimateBase===true,importFoodFraction:ctx.importFoodFraction??1,
     foodForecastMethod:ctx.foodForecastMethod,
     proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),
+    sourceGroups:(typeof importedCsvDailyGroups!=='undefined'&&importedCsvDailyGroups?.length?importedCsvDailyGroups:typeof importedCsvMonthlyGroups!=='undefined'?importedCsvMonthlyGroups:[]),
     foodPeriodAmount:typeof ShohizeiContinuationUI === 'undefined' ? undefined : (row,value) => ShohizeiContinuationUI.foodAmount(value,ctx,{kind:'purchases',row}),
     foodPurchasePriceBasis:ctx.foodPurchasePriceBasis,
     exemptRatioOverride:null
@@ -4143,7 +4152,8 @@ function collectPurchases(ctx){
     const scenarioOptions = {taxScenario:ctx.taxScenario,estimateFromBase:ctx.importEstimateBase===true,importFoodFraction:ctx.importFoodFraction??1,
       foodForecastMethod:ctx.foodForecastMethod,
       proposalFraction:proposalOverlapFraction(ctx.start,ctx.end),
-      foodPeriodAmount:typeof ShohizeiContinuationUI === 'undefined' ? undefined : (row,value) => ShohizeiContinuationUI.foodAmount(value,ctx,{kind:'purchases',row}),
+      sourceGroups:(typeof importedCsvDailyGroups!=='undefined'&&importedCsvDailyGroups?.length?importedCsvDailyGroups:typeof importedCsvMonthlyGroups!=='undefined'?importedCsvMonthlyGroups:[]),
+    foodPeriodAmount:typeof ShohizeiContinuationUI === 'undefined' ? undefined : (row,value) => ShohizeiContinuationUI.foodAmount(value,ctx,{kind:'purchases',row}),
       foodPurchasePriceBasis:ctx.foodPurchasePriceBasis};
     const currentRows = aggregateScenarioPurchases({
       purchases:purchaseRowsForScenario(ctx.taxScenario).filter(row => !historicalIds.has(row.id)),
@@ -4160,7 +4170,7 @@ function collectPurchases(ctx){
       purchaseTaxByUse:Object.fromEntries(['taxableOnly','nonTaxableOnly','common'].map(use =>
         [use,currentRows.purchaseTaxByUse[use] + historical.purchaseTaxByUse[use]])),
       errors:[...currentRows.errors,...historical.errors],
-      calculationErrors:[...currentRows.calculationErrors,...historical.calculationErrors], historicalRatioAdjustment,
+      calculationErrors:[...currentRows.calculationErrors,...historical.calculationErrors], assumptions:[...new Set([...(currentRows.assumptions||[]),...(historical.assumptions||[])])], historicalRatioAdjustment,
       historicalForecastRatio:weightedExemptPurchaseRatio(ctx.start,ctx.end).ratio
     };
   }
@@ -4205,6 +4215,7 @@ function collectPurchases(ctx){
     historicalForecastRatio:rowScenario?.historicalForecastRatio ?? null,
     purchaseUsageErrors:rowScenario?.errors || (legacyFoodUsageUnknown ? ['旧形式の用途別仕入税額は食品1％へ再計算できません。課税区分5・6・7、52・62・72の行で元の仕入額と食品内数を確認してください。'] : []),
     purchaseCalculationErrors:rowScenario?.calculationErrors || [],
+    assumptions:rowScenario?.assumptions || [],
     purchaseRatioConflicts:purchaseRatioConflictsForContext(ctx),
     creditRatio,
     adjustment,
@@ -4230,7 +4241,8 @@ function calculateRegularForContext(ctx, sales, purchases, exemptCreditableTax =
     periodEnd:ctx.end,
     periodMonths:periodMonthsForAnnualization(ctx.start, ctx.end),
     taxableOnlyTax:usage?.taxableOnly ?? ctx.taxableOnlyPurchaseTax,
-    commonTax:usage?.common ?? ctx.commonPurchaseTax
+    commonTax:usage?.common ?? ctx.commonPurchaseTax,
+    nonTaxableOnlyTax:usage?.nonTaxableOnly ?? 0
   }), purchaseTaxByUse:usage, purchaseUsageErrors:purchases.purchaseUsageErrors || [], purchaseCalculationErrors:purchases.purchaseCalculationErrors || [], purchaseRatioConflicts:purchases.purchaseRatioConflicts || [], purchaseAmountEntered:purchases.purchaseAmountEntered };
   const check = detailedRegularEligibility(ctx, regular, purchaseTax);
   if(check.eligibility !== ELIGIBILITY.ELIGIBLE){
@@ -4242,7 +4254,8 @@ function calculateRegularForContext(ctx, sales, purchases, exemptCreditableTax =
 function detailedRegularEligibility(ctx, regular, purchaseTax){
   if(regular.unavailableReasons) return { eligibility:ELIGIBILITY.UNKNOWN, reasons:regular.unavailableReasons };
   if(regular.periodReasons?.length && ctx.regularDetailMethod === 'auto') return { eligibility:ELIGIBILITY.UNKNOWN, reasons:regular.periodReasons };
-  if(regular.purchaseRatioConflicts?.length) return { eligibility:ELIGIBILITY.UNKNOWN, reasons:regular.purchaseRatioConflicts };
+  const manualRatioConflicts=(regular.purchaseRatioConflicts || []).filter(reason=>!reason.includes('CSV'));
+  if(manualRatioConflicts.length) return { eligibility:ELIGIBILITY.UNKNOWN, reasons:manualRatioConflicts };
   if(regular.purchaseCalculationErrors?.length) return { eligibility:ELIGIBILITY.UNKNOWN, reasons:regular.purchaseCalculationErrors };
   if(regular.purchaseAmountEntered === false) return { eligibility:ELIGIBILITY.UNKNOWN, reasons:['課税仕入れの金額が未入力です。仕入行または元帳で確認し、該当なしは0円を明示してください。'] };
   if(!ctx.nonTaxableSalesEntered || ctx.nonTaxableSalesValid === false){
@@ -4266,7 +4279,7 @@ function detailedRegularEligibility(ctx, regular, purchaseTax){
       const tolerance = 1e-7 + Math.abs(purchaseTax) * Number.EPSILON * 16;
       if(Math.abs(total - purchaseTax) > tolerance) return {eligibility:ELIGIBILITY.UNKNOWN,reasons:['仕入税額の用途別3区分合計と控除対象仕入税額総額が一致しません。']};
     }
-    if(taxableOnlyTax + commonTax > purchaseTax + 1e-7){
+    if(!regular.signedPurchases && taxableOnlyTax + commonTax > purchaseTax + 1e-7){
       return { eligibility:ELIGIBILITY.UNKNOWN, reasons:['用途区分した仕入税額が入力済みの控除対象仕入税額を超えています'] };
     }
   }
@@ -4363,7 +4376,7 @@ function currentReturnOptions(){
   const assumptions = [];
   if(recovery?.assumedDetailCount) assumptions.push(`CSV明細${recovery.assumedDetailCount}件に税率・控除割合等の仮定があります。`);
   if(recovery?.assumedBusinessCount) assumptions.push(`CSVの事業区分${recovery.assumedBusinessCount}科目は仮置きです。`);
-  if(recovery?.negativeBucketCount) assumptions.push(`差引後マイナスの${recovery.negativeBucketCount}集計区分を0円に仮置きしています。`);
+  if(recovery?.negativeBucketCount) assumptions.push(`差引後マイナスの${recovery.negativeBucketCount}集計区分は元税率・符号を保持した概算です。`);
   if(recovery?.nettedExemptAdjustmentCount) assumptions.push(`免税事業者等仕入の返品・値引き等${recovery.nettedExemptAdjustmentCount}明細は元取引未照合です。`);
   return {allowTemporaryExcluded:Boolean(recovery?.temporaryExcludedCount),provisionalReasons:assumptions};
 }
@@ -4409,19 +4422,19 @@ function validateImportedOnePercentEntries(ctx){
   const result = { errors:[], reviewItems:[], adjustmentCount:0, kindUnknownCount:0 };
   if(!importedActualOnePercent?.entries?.length) return result;
   const errors = [];
-  if(ctx.taxScenario !== 'foodProposal') errors.push('CSVに明示1％実績があります。現行税率の試算には含めず、1％シナリオへ切り替えて確認してください。');
+  if(ctx.taxScenario !== 'foodProposal') result.reviewItems.push({source:'CSV明示1％実績',reason:'入力税率と符号をそのまま使う参考概算です。8％・10％へ換算していません。',kind:'sourceRate'});
   importedActualOnePercent.entries.forEach(entry => {
     const source = `CSV ${entry.row || '?'}行目 ${entry.side || ''} 課税区分${entry.taxCode || '不明'} 取引日${entry.date || '不明'}・明示1％`;
     if(!entry.date || entry.date < ctx.start || entry.date > ctx.end){
-      errors.push(`${source}: 対象課税期間外または日付不明です。期間を確認してください。`);
+      result.reviewItems.push({source,reason:'対象期との日付対応は未確認で、入力額を対象期の代理とする概算です。',kind:'sourcePeriod'});
     }
     const assessment = assessCsvOnePercentEntry(entry);
-    if(assessment.status === 'invalid' || assessment.reasonCode === 'dateUnknown'){
-      errors.push(`${source}: ${assessment.reason}`);
-    }else if(assessment.status === 'unknown'){
+    if(assessment.status !== 'confirmed'){
       result.reviewItems.push({ source, reason:assessment.reason, kind:assessment.reasonCode, amount:entry.amount, ratePercent:entry.ratePercent });
       if(assessment.reasonCode === 'adjustment') result.adjustmentCount++;
-      else result.kindUnknownCount++;
+      else if(assessment.reasonCode === 'kindUnknown') result.kindUnknownCount++;
+    }else if(assessment.reasonCode==='originalRate'){
+      result.reviewItems.push({source,reason:assessment.reason+' CSV入力1％との相違を元資料で確認してください。',kind:'originalRate'});
     }
   });
   result.errors = errors;
@@ -4431,7 +4444,8 @@ function validateImportedOnePercentEntries(ctx){
 function csvReviewNotice(review){
   if(!review?.reviewItems?.length) return '';
   const kinds = [review.adjustmentCount ? `返品・調整${review.adjustmentCount}件` : '', review.kindUnknownCount ? `取引種別不明${review.kindUnknownCount}件` : ''].filter(Boolean).join('、');
-  return `CSVの明示1％仕訳に${kinds}があります。元取引の税率は未確認で、入力された1％を仮定した参考値です。`;
+  const detail=review.reviewItems.map(item=>`${item.source}：${item.reason}`).join(' / ');
+  return `CSVの明示1％仕訳に${kinds || '取引日・元税率等の未確認事項'}があります。既知の元税率を優先し、それ以外は入力税率・符号を仮定した参考概算です。${detail}`;
 }
 
 function csvOriginPremise(ctx){
@@ -4588,23 +4602,27 @@ function calculate(contextOverride){
   const returnCalculation = currentReturnCalculation(ctx);
   const salesMethodCalculations = Object.fromEntries(['simplified','special2','special3'].map(key => [key,currentSalesMethodCalculation(ctx,key)]));
   const regularAmount = exactCurrent
-    ? (returnCalculation?.referenceCalculable && regular.amount !== null ? returnCalculation.mainReturn.totalBeforeInterim : null)
+    ? (returnCalculation?.referenceCalculable && regular.amount !== null ? returnCalculation.mainReturn.totalBeforeInterim : regular.amount)
     : declarationRoundedAmount(calcLike, 'regular', regularCredit, regular.amount, roundingDetails);
   const simplifiedAmount = exactCurrent
-    ? (salesMethodCalculations.simplified?.referenceCalculable ? salesMethodCalculations.simplified.totalBeforeInterim : null)
+    ? (salesMethodCalculations.simplified?.referenceCalculable ? salesMethodCalculations.simplified.totalBeforeInterim : sales.simplified.amount)
     : declarationRoundedAmount(calcLike, 'simplified', 0, sales.simplified.amount, roundingDetails);
-  const special2Base = calculateSpecialMethodAmount({ totalSalesTax:sales.totalTax, foodOnePercentTax:sales.simplified.foodOnePercentTax, burdenRatio:0.20 });
-  const special3Base = calculateSpecialMethodAmount({ totalSalesTax:sales.totalTax, foodOnePercentTax:sales.simplified.foodOnePercentTax, burdenRatio:0.30 });
+  const special2Base = calculateSpecialMethodAmount({ totalSalesTax:sales.totalTax, foodOnePercentTax:sales.simplified.foodOnePercentTax, burdenRatio:0.20, estimateSignedReturns:true });
+  const special3Base = calculateSpecialMethodAmount({ totalSalesTax:sales.totalTax, foodOnePercentTax:sales.simplified.foodOnePercentTax, burdenRatio:0.30, estimateSignedReturns:true });
   const special2Amount = exactCurrent
-    ? (salesMethodCalculations.special2?.referenceCalculable ? salesMethodCalculations.special2.totalBeforeInterim : null)
+    ? (salesMethodCalculations.special2?.referenceCalculable ? salesMethodCalculations.special2.totalBeforeInterim : special2Base.amount)
     : declarationRoundedAmount(calcLike, 'special2', 0, special2Base.amount, roundingDetails);
   const special3Amount = exactCurrent
-    ? (salesMethodCalculations.special3?.referenceCalculable ? salesMethodCalculations.special3.totalBeforeInterim : null)
+    ? (salesMethodCalculations.special3?.referenceCalculable ? salesMethodCalculations.special3.totalBeforeInterim : special3Base.amount)
     : declarationRoundedAmount(calcLike, 'special3', 0, special3Base.amount, roundingDetails);
   const hasComparisonInput = sales.anyEntered || purchases.anyEntered;
   const salesEntryRequired = !sales.anyEntered && purchases.anyEntered;
   const comparisonReady = (!ctx.comparisonMethods || ctx.comparisonMethods.length > 0) && sales.anyEntered && inputErrors.length === 0;
   const inputUnconfirmedItems = [
+    ...(sales.assumptions || []),
+    ...(purchases.assumptions || []),
+    ...(regular.assumptions || []),...(special2Base.assumptions || []),...(special3Base.assumptions || []),
+    ...(typeof latestTaxRowAggregate==='undefined'?[]:latestTaxRowAggregate?.warnings || []).map(item=>item.message).filter(message=>ctx.comparisonMethods?.includes('simplified')!==false || !message.startsWith('事業区分が未確認です。')),
     ...(purchases.imported?.assumptions || []),
     ...(returnCalculation && !returnCalculation.referenceCalculable ? [`申告書計算：未算定。${returnCalculation.reasons.join(' / ')}`]
       : returnCalculation && !returnCalculation.exactComplete ? [`申告書再現：未完了。確認できた行の端数処理後の参考額です。${returnCalculation.reasons.join(' / ')}`] : []),
@@ -4614,7 +4632,7 @@ function calculate(contextOverride){
       .map(([key,value]) => `${METHOD_LABELS[key]}：未算定。${value.reasons.join(' / ')}`),
     ...(purchases.exemptConfirmationState === 'unknown' ? ['免税事業者等からの課税仕入は未確認です。入力済み金額のみで試算しています。'] : []),
     ...(ctx.comparisonMethods?.includes('simplified') !== false && sales.simplifiedBusinessUnknown ? ['課税売上の事業区分が未確認です。本則・特例は入力済み売上額で参考試算し、簡易課税は区分確認後に算定します。'] : []),
-    ...(purchases.purchaseRatioConflicts || [])
+    ...(purchases.purchaseRatioConflicts || []).map(reason=>reason+' CSV記載の割合を優先する参考概算です。割合不明は控除なし（0％）と仮定し、元金額・符号は保持します。')
   ];
   const comparisonProvisional = Boolean(csvPartial || csvReview.reviewItems.length || inputUnconfirmedItems.length || csvOriginReference);
   const statusLabel = (state, reference, selection) => state === ELIGIBILITY.ELIGIBLE
@@ -4766,19 +4784,20 @@ function calculateProjectionMethods(calc, period, index){
     if(eligibility[key]?.eligibility === ELIGIBILITY.ELIGIBLE) eligibility[key] = {eligibility:ELIGIBILITY.UNKNOWN,reasons:periodCheck.errors};
   });
   const projectionLike = { ctx, sales:snapshot.sales, purchases:snapshot.purchases };
-  const special2 = calculateSpecialMethodAmount({ totalSalesTax:snapshot.sales.totalTax, foodOnePercentTax:snapshot.sales.simplified.foodOnePercentTax, burdenRatio:0.20 });
-  const special3 = calculateSpecialMethodAmount({ totalSalesTax:snapshot.sales.totalTax, foodOnePercentTax:snapshot.sales.simplified.foodOnePercentTax, burdenRatio:0.30 });
+  const special2 = calculateSpecialMethodAmount({ totalSalesTax:snapshot.sales.totalTax, foodOnePercentTax:snapshot.sales.simplified.foodOnePercentTax, burdenRatio:0.20, estimateSignedReturns:true });
+  const special3 = calculateSpecialMethodAmount({ totalSalesTax:snapshot.sales.totalTax, foodOnePercentTax:snapshot.sales.simplified.foodOnePercentTax, burdenRatio:0.30, estimateSignedReturns:true });
   const projectionInput = ctx.taxScenario === 'current' && index > 0 ? returnInputForProjection(ctx,index) : null;
   const projectedSalesMethod = key => {
     if(index === 0) return calc.methods.find(method => method.key === key)?.amount ?? null;
     if(ctx.taxScenario !== 'current') return declarationRoundedAmount(projectionLike,key,0,
       key === 'simplified' ? snapshot.sales.simplified.amount : key === 'special2' ? special2.amount : special3.amount);
-    if(projectionInput.reasons.length) return null;
+    const estimate=key === 'simplified' ? snapshot.sales.simplified.amount : key === 'special2' ? special2.amount : special3.amount;
+    if(projectionInput.reasons.length) return estimate;
     try{
       const result = calculateCurrentLawSalesMethod(projectionInput.input,key,
         Object.fromEntries(BUSINESS_TYPES.map(type => [type.key,type.deemed])),currentReturnOptions());
-      return result.referenceCalculable ? result.totalBeforeInterim : null;
-    }catch{ return null; }
+      return result.referenceCalculable ? result.totalBeforeInterim : estimate;
+    }catch{ return estimate; }
   };
   const amounts = {
     regular:projectedRegular.amount,
@@ -4802,6 +4821,7 @@ function calculateProjectionMethods(calc, period, index){
   ].filter(Boolean).join('・') || 'なし';
   const best = sorted[0] || null;
   const warnings = [];
+  if(projectedRegular.returnReasons?.length)warnings.push('申告書段階の再現条件が不足するため、入力済み金額の参考概算です。'+projectedRegular.returnReasons.join(' / '));
   if(methods.some(method => method.eligibility === ELIGIBILITY.UNKNOWN)) warnings.push('要確認方式は順位から除外しています。');
   if(best?.key === 'simplified') warnings.push('簡易課税を選択した場合、原則として2年間の継続適用が必要です。翌期の本則課税への変更可否は別途確認してください。');
   const warning = warnings.join(' ');
@@ -4814,7 +4834,7 @@ function calculateProjectionPlan(calc){
   if(!calc.comparisonReady || !validateTaxPeriod(calc.ctx.start, calc.ctx.end).valid){
     return { periods, projections:[], optimized:{ok:false,reason:'課税期間または必須入力が未確認のため、4期累計を算定できません。'} };
   }
-  if((!calc.methods || calc.methods.some(method => method.key === 'regular')) && calc.purchases?.purchaseRatioConflicts?.length){
+  if((!calc.methods || calc.methods.some(method => method.key === 'regular')) && calc.purchases?.purchaseRatioConflicts?.some(reason=>!reason.includes('CSV'))){
     return { periods, projections:[], optimized:{ok:false,reason:`免税事業者等仕入の控除割合・取引時期を確認するまで4期累計を算定できません。${calc.purchases.purchaseRatioConflicts.join(' / ')}`} };
   }
   if(calc.ctx.taxScenario === 'foodProposal'){
@@ -4934,9 +4954,13 @@ function renderTaxScenarioNotice(calc){
   }
   const actual = importedActualOnePercent;
   if(actual?.entries?.length){
-    const saleGross = Object.values(actual.salesByType).reduce((sum, value) => sum + Number(value || 0), 0);
+    const grossFor=kind=>{
+      const amounts=actual.entries.filter(entry=>entry.kind===kind).map(entry=>parseAmountInput(entry.amount,{allowNegative:true}));
+      return amounts.every(amount=>amount.valid&&amount.entered)?amounts.reduce((sum,amount)=>sum+amount.value,0):null;
+    };
+    const saleGross=grossFor('sale'),purchaseGross=grossFor('invoicePurchase');
     notice.style.display = '';
-    notice.textContent += ` CSV明示1％実績${actual.entries.length}件（売上税込${yen(saleGross)}、通常仕入税込${yen(actual.invoicePurchase)}）。8％実績からの予測内数とは別計算です。${isSimulation ? '' : '現行税率の計算には含めず、比較を停止しています。'}`;
+    notice.textContent += ` CSV明示1％実績${actual.entries.length}件（売上税込${saleGross===null?'金額未確認':yen(saleGross)}、通常仕入税込${purchaseGross===null?'金額未確認':yen(purchaseGross)}）。8％実績からの予測内数とは別計算です。${isSimulation ? '' : '現行税率の参考概算でも入力税率・符号を維持し、元税率が既知の返還はその税率を優先しています。'}`;
   }
   notice.style.display = notice.textContent ? '' : 'none';
   renderSalesRowVisibility();
@@ -5059,7 +5083,7 @@ function renderSummary(calc){
     ['本則計算', regularMethodLabel(calc.ctx, calc.regular)],
     ['課税売上割合', filed ? `${filed.schedule23.ratioDisplayPercent}%` : !calc.regular.unavailableReasons && calc.regular.taxableSalesRatio !== null ? (calc.regular.taxableSalesRatio * 100).toFixed(2) + '%' : '未確認'],
     ['端数処理', calc.ctx.taxScenario === 'current'
-      ? '現行制度の各方式は申告書段階の端数処理後。必要情報不足の方式は未算定'
+      ? '再現可能な方式は申告書段階の端数処理後。再現条件が不足する方式は入力済み金額による参考概算（円表示時に丸め）'
       : calc.ctx.declarationRounding ? '食品1％試算の申告書段階を反映' : '食品1％試算は概算（円表示時に丸め）'],
     ['簡易課税計算', calc.sales.simplified.methodLabel],
     ['売上税額率', taxableSalesRatio ? (taxableSalesRatio * 100).toFixed(2) + '%' : '-']
@@ -5810,7 +5834,7 @@ function buildAssumptionRows(calc){
       ['5億円判定用の課税売上高', Number.isFinite(calc.regular.annualizedTaxableSales) ? yen(calc.regular.annualizedTaxableSales) : '未算定'],
       ['高額特定資産等', calc.highAssetRegular.reason]] : []),
     ['端数処理', calc.ctx.taxScenario === 'current'
-      ? '現行制度の各方式は申告書段階の端数処理後。必要情報不足の方式は未算定'
+      ? '再現可能な方式は申告書段階の端数処理後。再現条件が不足する方式は入力済み金額による参考概算（円表示時に丸め）'
       : calc.ctx.declarationRounding ? '食品1％試算の申告書段階を反映' : '食品1％試算は概算'],
     ...(calc.comparisonReady && calc.returnCalculation?.referenceCalculable && Number(parseAmountInput($('returnPurchaseAdjustment10').value,{allowNegative:true}).value)
       ? [['申告調整・10％課税売上対応仕入', `${$('returnPurchaseAdjustment10').value}円（元帳・付表を照合済み）`]] : []),
@@ -6974,7 +6998,7 @@ function renderMethodCashflow(calc, comparison){
   $('cashflowAutoSummary').innerHTML = cashflowAutoHtml(autoInterim);
   $('cashflowAutoToManual').disabled = !autoInterim?.ready;
   $('cashflowInherited').innerHTML = `<div class="notice">STEP3から引継ぎ：${escapeHtml(calc.ctx.start || '未設定')}〜${escapeHtml(calc.ctx.end || '未設定')}／${escapeHtml(calc.ctx.taxScenario === 'foodProposal' ? '食品1％政策試算' : '現行制度')}。A・Bの税額と適用状態は現在のSTEP3結果です。</div>`;
-  const notes = [...adapter.assumptions,...adapter.reasons,
+  const notes = [...(calc.inputUnconfirmedItems||[]),...adapter.assumptions,...adapter.reasons,
     `中間納付：${$('cashflowInterimStatus').selectedOptions[0]?.textContent || '未確認'}。${autoInterim ? autoInterim.basis.source : ''}`,
     ...activeMonthIds.map(id => {
       const meta = cashflowMonthSources[id];
@@ -7141,7 +7165,7 @@ function renderCashflow(calc, comparison){
     cashActualMode()==='csv'
       ? `確認済み資金科目のCSV実績には給与・借入返済・設備投資・法人税等の入出金も含み得ます。期首資金残高や将来の新規取引は含めず、資金不足を判定するものではありません。`
       : `給与・借入返済・設備投資・法人税等の二次的影響と期首資金残高は含みません。会社全体の資金繰りや資金不足を判定するものではありません。`,
-    ...adapter.assumptions,...adapter.distribution.notes,...adapter.annualTax.reasons,
+    ...(calc.inputUnconfirmedItems||[]),...adapter.assumptions,...adapter.distribution.notes,...adapter.annualTax.reasons,
     ...adapter.reasons,...(comparison?.notes || []).filter(note => /CSV|未確認|概算|1％/.test(note)),
     ...(autoInterim ? [autoInterim.basis.source, ...autoInterim.basis.reasons,...autoInterim.base.reasons,...autoInterim.base.warnings,
       ...(autoInterim.separate ? [...autoInterim.changed.reasons,...autoInterim.changed.warnings] : [])] : []),

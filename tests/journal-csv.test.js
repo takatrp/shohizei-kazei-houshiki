@@ -695,7 +695,7 @@ test('[E06] 1％は明示実績だけを保持し不明税率から新たに作�
   assert.equal(result.recoverySummary.assumedRate10Count,1);
 });
 
-test('[E07] 負の用途別仕入をゼロ仮定し全体額と用途別控除税額を整合させる', () => {
+test('[E07] 負の用途別仕入を保持し全体額と用途別控除税額を整合させる', () => {
   const text = buildCsv([
     entry('借方',{code:'5',rate:10,amount:1100}),
     entry('貸方',{code:'71',rate:10,amount:110}),
@@ -706,12 +706,12 @@ test('[E07] 負の用途別仕入をゼロ仮定し全体額と用途別控除�
   const before = JSON.stringify(strict);
   const result = prepareEstimatedImport(text);
   assert.equal(result.resolved.ready,true);
-  assert.equal(result.resolved.values.invoicePurchases['10'],1100);
-  assert.equal(result.resolved.values.exemptPurchases['80']['8'],1080);
+  assert.equal(result.resolved.values.invoicePurchases['10'],990);
+  assert.equal(result.resolved.values.exemptPurchases['80']['8'],972);
   assert.equal(result.resolved.values.taxableOnlyPurchaseTax,164);
-  assert.equal(result.resolved.values.commonPurchaseTax,0);
-  assert.equal(result.analysis.purchaseAmountsByUse.common.invoice['10'],0);
-  assert.equal(result.analysis.purchaseAmountsByUse.common.exempt['80']['8'],0);
+  assert.equal(result.resolved.values.commonPurchaseTax,-16);
+  assert.equal(result.analysis.purchaseAmountsByUse.common.invoice['10'],-110);
+  assert.equal(result.analysis.purchaseAmountsByUse.common.exempt['80']['8'],-108);
   assert.equal(result.recoverySummary.negativeBucketCount,2);
   assert.equal(result.recoverySummary.negativeAbsAmount,218);
   assert.deepEqual(result.recoverySummary.negativeBuckets,[{kind:'invoicePurchase',rate:'10',amount:-110},{kind:'exemptPurchase',rate:'8',amount:-108}]);
@@ -719,7 +719,7 @@ test('[E07] 負の用途別仕入をゼロ仮定し全体額と用途別控除�
   assert.equal(resolveImportValues(strict).ready,false);
 });
 
-test('[E08] 負の事業別・未分類売上と非課税売上を明示的なゼロ仮定として記録する', () => {
+test('[E08] 負の事業別・未分類売上と非課税売上を符号付きで記録する', () => {
   const text = buildCsv([
     entry('借方',{code:'11',business:'2',rate:10,amount:110}),
     entry('借方',{account:'未分類返品',code:'11',rate:8,reduced:1,amount:108}),
@@ -727,9 +727,9 @@ test('[E08] 負の事業別・未分類売上と非課税売上を明示的な�
   ]);
   const result = prepareEstimatedImport(text);
   assert.equal(result.resolved.ready,true);
-  assert.equal(result.resolved.values.salesByType.type2['10'],0);
-  assert.equal(result.resolved.values.salesByType.type6['8'],0);
-  assert.equal(result.resolved.values.nonTaxableSales,0);
+  assert.equal(result.resolved.values.salesByType.type2['10'],-110);
+  assert.equal(result.resolved.values.salesByType.type6['8'],-108);
+  assert.equal(result.resolved.values.nonTaxableSales,-500);
   assert.equal(result.recoverySummary.negativeBucketCount,3);
   assert.equal(result.recoverySummary.negativeAbsAmount,718);
   assert.equal(result.recoverySummary.assumedBusinessAmount,108);
@@ -750,19 +750,19 @@ test('[E10] 取消済みの1％・分類・金額補正を概算準備で復活�
   }
 });
 
-test('[E09] 負の明示1％実績を消さず未解決のままにし構造不良も停止する', () => {
+test('[E09] 負の明示1％実績を符号付きで概算に残し構造不良は停止する', () => {
   const text = buildCsv([
     entry('貸方',{code:'51',rate:1,reduced:1,amount:101}),
     entry('貸方',{code:'71',rate:10,amount:110}),
     entry('借方',{code:'5',rate:1,reduced:1,amount:50})
   ]);
   const result = prepareEstimatedImport(text);
-  assert.equal(result.resolved.ready,false);
+  assert.equal(result.resolved.ready,true);
   assert.equal(result.resolved.values.invoicePurchases['1'],-51);
   assert.equal(result.resolved.actualOnePercentEntries.length,2);
   assert.equal(result.resolved.actualOnePercentEntries[0].amount,-101);
-  assert.equal(result.recoverySummary.negativeBucketCount,1);
-  assert.match(result.resolved.errors.join(' '),/明示1％/);
+  assert.equal(result.recoverySummary.negativeBucketCount,2);
+  assert.deepEqual(result.resolved.errors,[]);
   assert.throws(()=>prepareEstimatedImport('月日,借方科目名\n2026/01/01,現金'),/必須列/);
   assert.throws(()=>prepareEstimatedImport(text+',extra'),/列数/);
 });

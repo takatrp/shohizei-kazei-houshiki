@@ -4323,6 +4323,8 @@ function declarationRoundedAmount(calcLike, methodKey, regularCredit, unroundedA
 
 function currentReturnCalculation(ctx){
   if(ctx.taxScenario !== 'current' || ctx.returnCalculationEnabled === false || ctx.comparisonMethods?.includes('regular') === false) return null;
+  if(importedActualOnePercent?.entries?.length) return {complete:false,referenceCalculable:false,
+    reasons:['CSV明示1％実績は入力税率・符号を維持する参考概算です。現行申告書の端数計算は再現していません。']};
   const reasons = [];
   if(typeof entryMode === 'undefined' || entryMode !== 'rows') reasons.push('旧形式の集計入力はTKC用途別の税込行を復元できません。行入力で確認してください。');
   const legacyAdjustment = amountState('regularAdjustment');
@@ -4356,6 +4358,8 @@ function currentReturnCalculation(ctx){
 
 function currentSalesMethodCalculation(ctx, method){
   if(ctx.taxScenario !== 'current' || ctx.returnCalculationEnabled === false || ctx.comparisonMethods?.includes(method) === false) return null;
+  if(importedActualOnePercent?.entries?.length) return {complete:false,referenceCalculable:false,
+    reasons:['CSV明示1％実績は入力税率・符号を維持する参考概算です。現行申告書の端数計算は再現していません。']};
   if(typeof entryMode === 'undefined' || entryMode !== 'rows') return {complete:false,reasons:['旧形式の集計入力は税込行を復元できません。行入力で確認してください。']};
   const currentRows = aggregateReturnRows(taxEntryRows,{
     knownNonTaxableZero:rowCsvKnownZeros.nonTaxableSales,estimateFromBase:ctx.importEstimateBase===true,

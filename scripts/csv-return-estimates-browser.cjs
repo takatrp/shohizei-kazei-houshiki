@@ -153,6 +153,31 @@ const server=http.createServer((request,response)=>{
       assert.equal(p.projections.length,4);
       for(const row of p.projections.slice(1)){assert.ok(row.snapshot.purchases.exemptCreditableTax>0);assert.ok(Number.isFinite(row.projectedRegular.amount));assert.match(row.warning,/CSV明示1％実績.*参考概算/);}
     });
+    await check('現行概算の明示1％実績を申告再現額で上書きせず保存・出力する',async()=>{
+      await seed();
+      const rows=[entry('貸方','1',10,1100000,'2028/01/15'),
+        {...entry('貸方','1',1,101000,'2028/01/15'),'貸方軽減税率か否か':'1'},
+        entry('借方','5',10,110000,'2028/01/15')];
+      const text=[REQUIRED_HEADERS.join(','),...rows.map(row=>REQUIRED_HEADERS.map(key=>row[key]??'').join(','))].join('\r\n');
+      await page.locator('#journalCsvFile').setInputFiles({name:'anonymous-current-one-percent.csv',mimeType:'text/csv',buffer:Buffer.from(text)});
+      await page.waitForFunction(()=>!$('applyJournalImportBtn').disabled);
+      await page.evaluate(()=>{
+        applyJournalImport();$('periodStart').value='2028-01-01';$('periodEnd').value='2028-12-31';
+        $('taxScenarioCurrent').checked=true;$('taxScenarioFood1').checked=false;workflowStep=4;update();
+      });
+      const r=await capture();assert.equal(r.ready,true,JSON.stringify(r.errors));close(r.sales,101000);close(r.purchases,10000);close(r.amount,91000);
+      const exact=await page.evaluate(()=>{const c=calculate();return {regular:c.returnCalculation.referenceCalculable,sales:Object.values(c.salesMethodCalculations).filter(Boolean).map(value=>value.referenceCalculable),print:$('comparisonPrintContent').textContent};});
+      assert.equal(exact.regular,false);assert.ok(exact.sales.every(value=>value===false));
+      for(const text of [r.cards,r.copy,r.csv,exact.print])assert.match(text,/91,?000/);
+      for(const text of [r.copy,r.csv,r.print])assert.match(text,/CSV明示1％実績.*参考概算/);
+      await page.evaluate(()=>{$('saveToDevice').checked=true;saveState();});
+      await page.reload({waitUntil:'domcontentloaded'});close((await capture()).amount,91000);
+      await page.evaluate(()=>{$('taxScenarioFood1').checked=true;$('taxScenarioCurrent').checked=false;update();});
+      await page.evaluate(()=>{$('taxScenarioCurrent').checked=true;$('taxScenarioFood1').checked=false;update();});
+      close((await capture()).amount,91000);
+      await page.screenshot({path:path.join(output,'current-one-percent-retained.png'),fullPage:true});
+      report.currentOnePercent={salesTax:r.sales,purchaseTax:r.purchases,regular:r.amount,exactDeclaration:false};
+    });
     assert.deepEqual(report.pageErrors,[]);await context.close();
   }finally{
     fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2));await browser.close();await new Promise(resolve=>server.close(resolve));

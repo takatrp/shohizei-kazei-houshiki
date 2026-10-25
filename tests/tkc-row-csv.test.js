@@ -36,23 +36,34 @@ function converted(entries){
   return rowsFromJournalAnalysis(analysis, resolved);
 }
 
-test('CSV区分1に含まれた負額調整の出所を行へ残し、食品だけを要確認にする',()=>{
-  const rows=converted([
+test('CSV区分1の負額調整を元8％で保持し、匿名内訳から通常食品だけを1％へ推計する',()=>{
+  const analysis=journal.analyzeTkcJournalText(csv([
     entry('貸方',{code:'1',business:'2',rate:'8',amount:216000,date:'2028/01/15'}),
     entry('借方',{code:'1',business:'2',rate:'8',amount:108000,date:'2028/02/15'})
-  ]);
+  ]));
+  const resolved=journal.resolveImportValues(analysis);
+  assert.equal(resolved.ready,true);
+  const rows=rowsFromJournalAnalysis(analysis,resolved),before=structuredClone(rows);
   const sale=rows.sales.find(row=>row.code==='1'&&row.rate==='8');
   assert.equal(sale.amount,'108000');
   assert.ok(sale.sourceAdjustmentCount>0);
   assert.deepEqual([sale.sourceDateStart,sale.sourceDateEnd],['2028-01-15','2028-02-15']);
   const {collectSalesScenario}=require('../sales-scenario');
-  const withFood={sales:[{...sale,foodAmount:sale.amount}]};
+  const withFood={sales:[{...sale,foodAmount:sale.amount,foodAmountSource:'auto'}]};
+  const inputBefore=structuredClone(withFood);
   const current=collectSalesScenario(withFood,{taxScenario:'current'});
   assert.equal(current.totalTax,8000); // preserve 216000 - 108000 at 8%
   assert.equal(current.errors.length,0);
-  const proposal=collectSalesScenario(withFood,{taxScenario:'foodProposal',foodForecastMethod:'manual',foodSalesPriceBasis:'netFixed'});
-  assert.match(proposal.errors.join(' '),/通常取引と返品・調整/);
+  const proposal=collectSalesScenario(withFood,{taxScenario:'foodProposal',foodForecastMethod:'manual',
+    foodSalesPriceBasis:'netFixed',sourceGroups:analysis.dailyGroups});
+  assert.deepEqual(proposal.errors,[]);
+  assert.equal(proposal.totalAmount,94000);
+  assert.equal(proposal.totalTax,-6000); // 216000 -> 202000 at 1%, less old8% adjustment108000.
+  assert.equal(proposal.rows[1].forecastFood1,202000);
+  assert.equal(proposal.rows[1].amount8,-108000);
+  assert.ok(proposal.assumptions.length>0);
   assert.equal(aggregateTaxRows(rows).fields.type2Sale8.value,108000);
+  assert.deepEqual(rows,before);assert.deepEqual(withFood,inputBefore);
 });
 
 test('科目から事業区分へ補完したCSVも匿名の調整根拠を落とさない',()=>{
@@ -111,7 +122,7 @@ test('CSVの売上と返還を別行に保持し、純額0円と明示1％実績
   assert.ok(rows.sales.every(row => row.rate !== '1'));
 });
 
-test('概算時は補正・仮除外・負数下限を反映した後の用途別集計だけを行へ変換する', () => {
+test('概算時は補正・仮除外を反映し、負の用途別集計を0円にせず注意付きで行へ変換する', () => {
   const text = csv([
     entry('貸方',{code:'5',rate:'10',amount:1100}),
     entry('借方',{code:'6',rate:'10',amount:2200}),
@@ -120,9 +131,14 @@ test('概算時は補正・仮除外・負数下限を反映した後の用途�
   const estimate = journal.prepareEstimatedImport(text);
   assert.equal(estimate.resolved.ready, true, estimate.resolved.errors.join(' / '));
   const rows = rowsFromJournalAnalysis(estimate.analysis, estimate.resolved);
-  assert.deepEqual(rows.purchases.map(({code,amount}) => ({code,amount})), [{code:'6',amount:'2200'}]);
+  assert.deepEqual(rows.purchases.map(({code,amount,rate}) => ({code,amount,rate})),
+    [{code:'5',amount:'-1100',rate:'10'},{code:'6',amount:'2200',rate:'10'}]);
   assert.equal(estimate.recoverySummary.negativeBucketCount, 1);
   assert.equal(estimate.recoverySummary.temporaryExcludedCount, 1);
+  const aggregate=aggregateTaxRows(rows);
+  assert.deepEqual(aggregate.errors,[]);
+  assert.ok(aggregate.warnings.length>0);
+  assert.equal(aggregate.fields.taxableOnlyPurchaseTax.value,-100);
 });
 
 test('CSV集計に件数のない0円仕入用途は区分を推測して作らず、限界を明示する', () => {
@@ -313,7 +329,18 @@ test('日付不明で日別集計が空でも月別調整根拠を失わない',
   analysis.dailyGroups=[]; // Old summary without anonymous daily aggregates.
   const rows=rowsFromJournalAnalysis(analysis,resolved),sale=rows.sales.find(r=>r.code==='1');
   assert.equal(sale.amount,'108000');assert.ok(sale.sourceAdjustmentCount>0);assert.ok(sale.sourceDateUnknownCount>0);
-  const result=require('../sales-scenario.js').collectSalesScenario({sales:[{...sale,foodAmount:'108000'}]},
+  const input={sales:[{...sale,foodAmount:'108000',foodAmountSource:'auto'}]},before=structuredClone(input);
+  const result=require('../sales-scenario.js').collectSalesScenario(input,
     {taxScenario:'foodProposal',foodForecastMethod:'uniform',proposalFraction:1});
-  assert.match(result.errors.join(' '),/通常取引と返品・調整/);
+  assert.deepEqual(result.errors,[]);
+  assert.equal(result.totalTax,1000,'旧保存で内訳がない場合も、純額代理を0円へ落とさない');
+  assert.equal(result.totalAmount,101000);
+  assert.ok(result.assumptions.length>0);
+  const withMonthly=require('../sales-scenario.js').collectSalesScenario(input,
+    {taxScenario:'foodProposal',foodForecastMethod:'uniform',proposalFraction:1,sourceGroups:analysis.monthlyGroups});
+  assert.deepEqual(withMonthly.errors,[]);
+  assert.equal(withMonthly.totalTax,-6000);
+  assert.equal(withMonthly.totalAmount,94000);
+  assert.ok(withMonthly.assumptions.length>0);
+  assert.deepEqual(input,before,'日付不明の出所・符号・金額を保持する');
 });

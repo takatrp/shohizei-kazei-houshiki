@@ -7,6 +7,16 @@
 
   const RELEASE_HISTORY = Object.freeze([
     Object.freeze({
+      version:'r36.0.5',date:'2026-10-25',
+      title:'確定CSVの返品・未確認事項を注意付き概算へ接続',
+      category:'calculation',recalcRecommended:true,
+      changes:Object.freeze([
+        'CSVの通常取引と返品・調整を符号付き内訳から分離し、通常の食品部分だけを1％へ予測。既知の元税率・用途・控除割合と負額を保持し、二重計上や0円化を防止',
+        '内訳・元課税状態・日付・控除割合等の未確認は、採用した仮定と影響範囲を示して参考概算を継続。読めない金額や食品内数の超過は検出し、未確認を照合済みにはしない',
+        '注意を画面・コピー・CSV・印刷・資金繰りへ共用し、保存復元・手入力0円・将来期の増減でも保持。通常の必須入力は追加しない。過去の案件は再試算してください'
+      ])
+    }),
+    Object.freeze({
       version:'r36.0.4',date:'2026-10-24',
       title:'食品対象期間額の微小誤差による計算停止を修正',
       category:'calculation',recalcRecommended:true,

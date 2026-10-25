@@ -64,16 +64,16 @@ function rejectionText(calc){
     regularMethod(calc).reasons,calc.unconfirmedItems].flat(Infinity).join(' ');
 }
 
-test('[R02-A] CSV explicit 1% TKC 52 at 2027-05-01 rejects 80%, and corrected 70% yields 943,000 yen',()=>{
+test('[R02-A] CSV explicit 1% TKC 52 at 2027-05-01 retains 80% with a caution, and corrected 70% yields 943,000 yen',()=>{
   const h = importedCase();
   const entry = h.context.importedActualOnePercent.entries.find(item => item.kind === 'exemptPurchase');
   assert.equal(entry.taxCode,'52');
   assert.equal(entry.date,'2027-05-01');
   assert.equal(entry.creditRatio,0.8);
   const wrong = h.context.calculate();
-  assert.equal(wrong.regular.amount,null,'Wrong source ratio must not remain a 942,000-yen estimate');
-  assert.equal(regularMethod(wrong).amount,null);
-  assert.equal(regularMethod(wrong).include,false);
+  assert.equal(wrong.regular.amount,942000,'CSV ratio is retained as a disclosed estimate');
+  assert.equal(regularMethod(wrong).amount,942000);
+  assert.equal(regularMethod(wrong).include,true);
   assert.match(rejectionText(wrong),/元取引日|CSV.*取引日/);
   assert.match(rejectionText(wrong),/控除割合/);
   assert.ok(wrong.methods.some(method => method.key !== 'regular' && method.amount !== null),
@@ -83,8 +83,8 @@ test('[R02-A] CSV explicit 1% TKC 52 at 2027-05-01 rejects 80%, and corrected 70
     h.element('printAssumptions').innerHTML]){
     assert.match(output,/CSV.*控除割合.*元取引日/,
       'Copy, CSV and ordinary print assumptions must preserve the source-date mismatch');
-    assert.doesNotMatch(output,/本則課税[^\n]*942,000円/,
-      'An invalid 80% ratio must not be exported as a regular-tax estimate');
+    assert.match(output,/参考|概算/,
+      'Source mismatch must remain visibly provisional in every output');
   }
 
   const corrected = reflect(h,withExempt(originalCsv,{ratio:'70'}));
@@ -101,7 +101,7 @@ test('[R02-B] TKC 62 and 72 wrong ratios are checked even when individual credit
   for(const [code,expected] of [['62',950000],['72',946500]]){
     const h = importedCase(withExempt(originalCsv,{code}));
     const wrong = h.context.calculate();
-    assert.equal(wrong.regular.amount,null,`TKC ${code} mismatch`);
+    assert.equal(wrong.regular.amount,code==='62'?950000:946000,`TKC ${code} disclosed CSV ratio`);
     assert.match(rejectionText(wrong),/控除割合/);
     const corrected = reflect(h,withExempt(originalCsv,{code,ratio:'70'}));
     assert.equal(corrected.regular.amount,expected,`TKC ${code} corrected amount`);
@@ -120,7 +120,8 @@ test('[R02-C] source-date boundary 2028-09-30 is 70%, 2028-10-01 is 50%',()=>{
   ]){
     const originalAtDate = originalCsv.replaceAll('2027/05/01',date);
     const wrong = importedCase(withExempt(originalAtDate,{code:'52',ratio:wrongRatio,date}),period);
-    assert.equal(wrong.context.calculate().regular.amount,null,`${date} wrong ${wrongRatio}%`);
+    assert.equal(wrong.context.calculate().regular.amount,wrongRatio==='50'?945000:943000,`${date} disclosed ${wrongRatio}%`);
+    assert.match(rejectionText(wrong.context.calculate()),/控除割合/);
     const right = reflect(wrong,withExempt(originalAtDate,{code:'52',ratio,date}));
     assert.equal(right.regular.amount,amount,`${date} correct ${ratio}%`);
   }
@@ -135,7 +136,7 @@ test('[R02-D] a zero-net ordinary/return pair retains the wrong ordinary source 
   assert.equal(entries.reduce((sum,entry) => sum + entry.amount,0),0);
   assert.equal(entries[1].transactionKind,'adjustment');
   const calc = h.context.calculate();
-  assert.equal(calc.regular.amount,null);
+  assert.equal(calc.regular.amount,950000);
   assert.match(rejectionText(calc),/控除割合/);
   assert.ok(calc.csvReview.reviewItems.length > 0,'The return still needs its original transaction checked');
 });
@@ -166,7 +167,7 @@ test('[R02-E] saving/restoring preserves the wrong source ratio; corrected re-im
     return h.context.calculate();
   };
   const wrong = restore();
-  assert.equal(wrong.regular.amount,null);
+  assert.equal(wrong.regular.amount,942000);
   assert.match(rejectionText(wrong),/控除割合/);
   reflect(h,withExempt(originalCsv,{ratio:'70'}));
   const corrected = restore();
@@ -179,13 +180,14 @@ test('[R02-F] saved percentage notation and invalid source date cannot bypass so
   const entry = h.context.importedActualOnePercent.entries.find(item => item.kind === 'exemptPurchase');
   entry.creditRatio = 80; // An older save may retain percentage units, not 0..1 units.
   const mismatch = h.context.calculate();
-  assert.equal(mismatch.regular.amount,null);
+  assert.equal(mismatch.regular.amount,942000);
   assert.match(rejectionText(mismatch),/80[％%].*70[％%]/);
   assert.doesNotMatch(rejectionText(mismatch),/8000[％%]/);
   entry.creditRatio = 0.7;
   entry.date = '2027-02-30';
   const invalidDate = h.context.calculate();
-  assert.ok(invalidDate.csvReview.errors.length > 0);
-  assert.equal(regularMethod(invalidDate).include,false);
-  assert.match(invalidDate.csvReview.errors.join(' '),/日付/);
+  assert.equal(invalidDate.csvReview.errors.length,0);
+  assert.equal(regularMethod(invalidDate).include,true);
+  assert.equal(invalidDate.regular.amount,943000);
+  assert.match(invalidDate.csvReview.reviewItems.map(item=>item.reason).join(' '),/日付/);
 });

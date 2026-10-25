@@ -189,6 +189,7 @@
     function addError(side, index, message){
       errors.push({ side, index, message });
     }
+    function addWarning(side,index,message){warnings.push({side,index,message:message+' 負の純額を元税率の調整として概算に保持します。'});}
     function parseRowAmount(raw, side, index, label, required){
       const parsed = engine.parseAmountInput(raw, { allowNegative:true });
       if(!parsed.valid) addError(side, index, `${label}: ${parsed.error}`);
@@ -196,7 +197,8 @@
       return parsed;
     }
     function processRows(rows, side){
-      rows.forEach((row, index) => {
+      const parts=rows.flatMap((row,index)=>{const result=engine.estimateCsvRowParts(row,{side,groups:options.sourceGroups});warnings.push(...result.assumptions.map(message=>({side,index,message})));return result.rows.map(row=>({row,index}));});
+      parts.forEach(({row,index}) => {
         if(!row || typeof row !== 'object') return;
         const code = String(row.code ?? '').trim();
         const rawAmount = String(row.amount ?? '').trim();
@@ -235,8 +237,7 @@
           return;
         }
         if(side==='sales'&&code==='11'&&row.originalTaxableState!==undefined&&row.originalTaxableState!=='taxable'){
-          addError(side,index,'売上返還の元取引時の課税・免税状態が未確認です。');
-          return;
+          warnings.push({side,index,message:'売上返還の元課税状態は未確認のため、CSVの元税率・課税区分を使う概算です。'});
         }
         const signedAmount = side === 'sales' && code === '11' ? -amount.value : amount.value;
         const signedFood = side === 'sales' && code === '11' ? -food.value : food.value;
@@ -269,10 +270,14 @@
         }
         purchaseEntered = true;
         if(detail.exempt){
-          const ratio = String(row.creditRatio || row.bucket || '').trim().replace(/%$/, '');
+          let ratio = String(row.creditRatio ?? row.bucket ?? '').trim().replace(/%$/, '');
           if(!EXEMPT_RATIOS.includes(ratio)){
-            addError(side, index, '免税事業者等仕入の控除割合・期間区分を確認してください。');
-            return;
+            if(!['csv','csv-edited'].includes(row.source)){
+              addError(side, index, '免税事業者等仕入の控除割合・期間区分を確認してください。');
+              return;
+            }
+            warnings.push({side,index,message:'CSV仕入の控除割合が不明のため、控除なし（0％）の概算です。元金額・符号は保持しています。'});
+            ratio='0';
           }
           exemptByUse[detail.usage][ratio][rate] += legacyValue;
           exemptPresence[detail.usage][ratio][rate] = true;
@@ -297,19 +302,19 @@
     processRows(purchases, 'purchases');
     purchaseEntered ||= actualOnePercentEntries.some(entry => ['invoicePurchase','exemptPurchase'].includes(entry.kind));
     RATES.forEach(rate => {
-      if(unclassifiedSalesTotals[rate] < 0) addError('sales', -1, `事業区分未確認・${rate}％売上の返品等差引後金額がマイナスです。`);
+      if(unclassifiedSalesTotals[rate] < 0) addWarning('sales', -1, `事業区分未確認・${rate}％売上の返品等差引後金額がマイナスです。`);
     });
 
     BUSINESS_TYPES.forEach(type => {
       RATES.forEach(rate => {
         fields[`${type}Sale${rate}`] = field(salesByType[type][rate], salesPresence[type][rate]);
-        if(salesByType[type][rate] < 0) addError('sales', -1, `${type}・${rate}％の返品等差引後金額がマイナスです。`);
+        if(salesByType[type][rate] < 0) addWarning('sales', -1, `${type}・${rate}％の返品等差引後金額がマイナスです。`);
       });
       fields[`${type}SaleFood1`] = field(salesFoodByType[type], salesFoodPresence[type]);
-      if(salesFoodByType[type] < 0) addError('sales', -1, `${type}の食品1％対象額がマイナスです。`);
+      if(salesFoodByType[type] < 0) addWarning('sales', -1, `${type}の食品1％対象額がマイナスです。`);
     });
     fields.nonTaxableSales = field(nonTaxableSales, nonTaxableSalesEntered);
-    if(nonTaxableSales < 0) addError('sales', -1, '非課税売上の返品等差引後金額がマイナスです。');
+    if(nonTaxableSales < 0) addWarning('sales', -1, '非課税売上の返品等差引後金額がマイナスです。');
 
     const invoiceTotals = emptyRateTotals();
     const invoiceTotalPresence = emptyRatePresence();
@@ -325,14 +330,14 @@
         invoiceTotals[rate] += amount;
         invoiceTotalPresence[rate] ||= invoicePresence[usage][rate];
         rawTax += engine.taxFromAmount(amount, Number(rate), amountMode);
-        if(amount < 0) addError('purchases', -1, `${usage}・${rate}％の返品等差引後金額がマイナスです。`);
+        if(amount < 0) addWarning('purchases', -1, `${usage}・${rate}％の返品等差引後金額がマイナスです。`);
       });
       EXEMPT_RATIOS.forEach(ratio => RATES.forEach(rate => {
         const amount = exemptByUse[usage][ratio][rate];
         exemptTotals[ratio][rate] += amount;
         exemptTotalPresence[ratio][rate] ||= exemptPresence[usage][ratio][rate];
         rawTax += engine.taxFromAmount(amount, Number(rate), amountMode) * Number(ratio) / 100;
-        if(amount < 0) addError('purchases', -1, `${usage}・${ratio}％控除・${rate}％の返品等差引後金額がマイナスです。`);
+        if(amount < 0) addWarning('purchases', -1, `${usage}・${ratio}％控除・${rate}％の返品等差引後金額がマイナスです。`);
       }));
       // CSV明示1％実績は既存の実績サイドカーが総額を計算する。
       // ここでは個別対応方式の用途別仕入税額にだけ同じ実績税額を加える。
@@ -349,13 +354,13 @@
     });
     RATES.forEach(rate => {
       fields[`purchase${rate}`] = field(invoiceTotals[rate], invoiceTotalPresence[rate]);
-      if(invoiceTotals[rate] < 0) addError('purchases', -1, `${rate}％課税仕入の返品等差引後金額がマイナスです。`);
+      if(invoiceTotals[rate] < 0) addWarning('purchases', -1, `${rate}％課税仕入の返品等差引後金額がマイナスです。`);
     });
     fields.purchaseFood1 = field(invoiceFood, invoiceFoodEntered);
     EXEMPT_RATIOS.forEach(ratio => {
       RATES.forEach(rate => {
         fields[`exemptPurchase${ratio}_${rate}`] = field(exemptTotals[ratio][rate], exemptTotalPresence[ratio][rate]);
-        if(exemptTotals[ratio][rate] < 0) addError('purchases', -1, `${ratio}％控除・${rate}％仕入の返品等差引後金額がマイナスです。`);
+        if(exemptTotals[ratio][rate] < 0) addWarning('purchases', -1, `${ratio}％控除・${rate}％仕入の返品等差引後金額がマイナスです。`);
       });
       fields[`exemptPurchase${ratio}_1`] = field(exemptFoodByRatio[ratio], exemptFoodPresence[ratio]);
     });
@@ -382,7 +387,11 @@
     const fraction = options.foodForecastMethod === 'uniform' ? Number(options.proposalFraction) : 1;
     const override = options.exemptRatioOverride;
     const useOverride = override !== null && override !== undefined;
-    const errors = aggregateTaxRows({purchases},{estimateFromBase:options.estimateFromBase}).errors.map(error => error.message);
+    const assumptions=[];
+    const scenarioRows=purchases.flatMap(row=>{const part=engine.estimateCsvRowParts(row,{side:'purchases',groups:options.sourceGroups});assumptions.push(...part.assumptions);return part.rows;});
+    const rowCheck=aggregateTaxRows({purchases:scenarioRows},{estimateFromBase:options.estimateFromBase});
+    assumptions.push(...rowCheck.warnings.map(item=>item.message));
+    const errors = rowCheck.errors.map(error => error.message);
     const calculationErrors = [...errors];
     errors.push(...imported.errors);calculationErrors.push(...imported.errors);
     const addCalculationError = message => { errors.push(message); calculationErrors.push(message); };
@@ -413,7 +422,8 @@
         priceBasis
       }).grossAmount;
     };
-    purchases.forEach(row => {
+    scenarioRows.forEach(row => {
+      if(row.forecastAssumption)assumptions.push(row.forecastAssumption);
       const detail = CODE_DETAILS[String(row?.code ?? '').trim()];
       if(detail?.import) return;
       if(!detail || detail.side !== 'purchases') return;
@@ -424,11 +434,7 @@
       if(!food.valid) return;
       if(food.entered && (rate !== '8' || Math.abs(food.value) > Math.abs(amount.value) + 1e-8
         || (food.value !== 0 && Math.sign(food.value) !== Math.sign(amount.value)))) return;
-      const forecastEligible = amount.value >= 0 && row.transactionKind !== 'adjustment'
-        && !(Number(row.sourceAdjustmentCount) > 0);
-      if(taxScenario === 'foodProposal' && rate === '8' && food.entered && food.value !== 0
-        && amount.value >= 0 && row.transactionKind !== 'adjustment' && !forecastEligible)
-        addCalculationError('通常取引と返品・調整の仕入集計内訳が未確認のため、食品1％対象額を確定できません。元税率別の行内訳を確認してください。');
+      const forecastEligible = amount.value >= 0 && row.transactionKind !== 'adjustment';
       let foodOriginal = taxScenario === 'foodProposal' && rate === '8' && food.entered && forecastEligible
         ? (typeof options.foodPeriodAmount === 'function' ? options.foodPeriodAmount(row,food.value)
           : food.value * (Number.isFinite(fraction) ? fraction : 0)) : 0;
@@ -444,8 +450,11 @@
       const rowAmount = originalRemainder + foodGross;
       let ratio = 1;
       if(detail.exempt){
-        const enteredRatio = String(row.creditRatio || row.bucket || '').trim().replace(/%$/, '');
-        if(!EXEMPT_RATIOS.includes(enteredRatio)) return;
+        let enteredRatio = String(row.creditRatio ?? row.bucket ?? '').trim().replace(/%$/, '');
+        if(!EXEMPT_RATIOS.includes(enteredRatio)){
+          if(!['csv','csv-edited'].includes(row.source)) return;
+          enteredRatio='0';
+        }
         ratio = useOverride ? override : Number(enteredRatio) / 100;
         exemptTotalAmount += rowAmount;
         exemptTax += rowTax;
@@ -462,40 +471,43 @@
     });
     actualEntries.forEach((entry, index) => {
       if(!['invoicePurchase','exemptPurchase'].includes(entry?.kind)) return;
+      if(entry.forecastAssumption)assumptions.push(entry.forecastAssumption);
       if(taxScenario !== 'foodProposal'){
-        addCalculationError(`CSV明示1％仕入${index + 1}件目は現行税率へ換算できません。`);
-        return;
+        assumptions.push(`CSV明示1％仕入${index+1}件目は、入力税率1％と符号をそのまま使う参考概算です。現行8％・10％へ推定換算していません。`);
       }
       const parsedGross = engine.parseAmountInput(entry.amount, {allowNegative:true});
-      if(!parsedGross.valid || !parsedGross.entered || (entry.transactionKind === 'ordinary' && parsedGross.value < 0)){
+      if(!parsedGross.valid || !parsedGross.entered || entry.ratePercent!==undefined&&Number(entry.ratePercent)!==1){
         addCalculationError(`CSV明示1％仕入${index + 1}件目の金額を確認してください。`);
         return;
       }
       const gross = parsedGross.value;
-      const tax = engine.taxFromAmount(gross, 1, 'included');
+      const originalRate=Number(entry.originalRatePercent);
+      const rate=(entry.transactionKind==='adjustment' || gross<0) && [1,8,10].includes(originalRate) ? String(originalRate) : '1';
+      if(rate!=='1') assumptions.push(`CSV明示1％仕入${index+1}件目の返品・調整は、既知の元税率${rate}％と符号を優先して計算しています。入力1％との相違を元資料で確認してください。`);
+      if(gross<0 && entry.transactionKind!=='adjustment') assumptions.push(`CSV明示1％仕入${index+1}件目の負額は、取引種別が未確認の符号付き調整として概算に保持しています。`);
+      const tax = engine.taxFromAmount(gross, Number(rate), 'included');
       let ratio = 1;
       if(entry.kind === 'exemptPurchase'){
         ratio = engine.normalizeExemptPurchaseRatio(entry.creditRatio);
         if(ratio === null){
-          addCalculationError(`CSV明示1％仕入${index + 1}件目の控除割合を確認してください。`);
-          return;
+          assumptions.push(`CSV明示1％仕入${index+1}件目の控除割合は未確認のため、控除なし（0％）の保守的な概算です。元金額・税率は保持し、控除を認める場合の差額は未確定です。`);
+          ratio=0;
         }
         if(useOverride) ratio = override;
         exemptTotalAmount += gross;
         exemptTax += tax;
         exemptCreditableTax += tax * ratio;
-        exemptByRate['1'] += gross;
+        exemptByRate[rate] += gross;
       }else{
         invoiceTotalAmount += gross;
         invoiceTax += tax;
-        invoiceByRate['1'] += gross;
+        invoiceByRate[rate] += gross;
       }
       if(!PURCHASE_USAGES.includes(entry.usage)){
-        usageUnknown = true;
-        errors.push(`CSV明示1％仕入${index + 1}件目の用途区分を確認してください。`);
-        return;
+        assumptions.push(`CSV明示1％仕入${index+1}件目の用途は未確認のため、共通対応の仮定で概算しています。`);
       }
-      purchaseTaxByUse[entry.usage] += tax * ratio;
+      const usage=PURCHASE_USAGES.includes(entry.usage)?entry.usage:'common';
+      purchaseTaxByUse[usage] += tax * ratio;
     });
     PURCHASE_USAGES.forEach(usage=>purchaseTaxByUse[usage]+=imported.comparisonCreditByUse[usage]);
     const totalCreditableTax = invoiceTax + exemptCreditableTax + imported.comparisonCredit;
@@ -511,7 +523,7 @@
       imported,
       totalCreditableTax, purchaseTaxByUse, usageTotal,
       invoiceByRate, exemptByRate,
-      usageUnknown, complete:errors.length === 0, errors, calculationErrors
+      usageUnknown, complete:errors.length === 0, errors, calculationErrors, assumptions:[...new Set(assumptions)]
     };
   }
 

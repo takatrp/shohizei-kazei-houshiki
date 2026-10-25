@@ -26,10 +26,16 @@ test('現行法の返還控除も元免税・明示未確認・旧未指定を�
   // 216000 / 1.08 * 6.24%=12480 => national12400 + local3400.
   assert.equal(current.mainReturn.totalBeforeInterim,15800);
   const unknown={...original,sales:original.sales.map(row=>row.code==='11'?{...row,originalTaxableState:'unknown'}:row)};
+  const unknownBefore=structuredClone(unknown);
   const uncertain=rowsApi.aggregateTaxRows(unknown);
-  assert.equal(uncertain.ready,false);
-  assert.equal(uncertain.fields.type2Sale8.value,216000,'他の売上行は消さない');
+  assert.equal(uncertain.ready,true);
+  assert.deepEqual(uncertain.errors,[]);
+  assert.equal(uncertain.fields.type2Sale8.value,108000,'元8％の返還を一度だけ差し引く');
+  assert.ok(uncertain.warnings.length>0,'課税状態未確認の代理仮定を明示する');
   assert.equal(uncertain.fields.purchase10.entered,true,'関係しない仕入の入力状態を維持する');
+  assert.deepEqual(unknown,unknownBefore,'元課税状態unknownを確認済みにしない');
+  // Exact return reconstruction still requires the original taxable state;
+  // keeping a raw estimate does not certify a filing reproduction.
   const unresolved=R.aggregateReturnRows(unknown);
   assert.match(unresolved.reasons.join(' '),/課税・免税/);
   assert.equal(R.calculateCurrentLawReturn(unresolved.input).referenceCalculable,false);
@@ -40,10 +46,16 @@ test('現行法の返還控除も元免税・明示未確認・旧未指定を�
   assert.deepEqual(original,before);
 });
 
-test('⑤ 再現: 一般行UIは純負額を停止し、内部の食品負額は同額控除を符号付きで保持する', () => {
-  const entered = rowsApi.aggregateTaxRows({sales:[{code:'11',amount:'108000',rate:'8',businessType:'type2',foodAmount:'108000'}]});
-  assert.equal(entered.ready,false);
-  assert.match(entered.errors.map(item => item.message).join(' '),/マイナス/);
+test('⑤ 再現: 一般行UIの純負額も注意付きで保持し、食品負額の同額控除へ符号を渡す', () => {
+  const rows={sales:[{code:'11',amount:'108000',rate:'8',businessType:'type2',foodAmount:'108000'}]};
+  const before=structuredClone(rows);
+  const entered = rowsApi.aggregateTaxRows(rows);
+  assert.equal(entered.ready,true);
+  assert.deepEqual(entered.errors,[]);
+  assert.ok(entered.warnings.length>0);
+  assert.equal(entered.fields.type2Sale8.value,-108000);
+  assert.equal(entered.fields.type2SaleFood1.value,-108000);
+  assert.deepEqual(rows,before);
   const calculated = engine.calculateSimplifiedTax([{key:'type2',name:'小売',deemed:.8,
     rowTax:-10000,rowTaxableBase:-1000000,foodOnePercentTax:-10000,foodOnePercentTaxableBase:-1000000}]);
   assert.equal(calculated.foodOnePercentTax,-10000);
@@ -150,5 +162,5 @@ test('税込純額が正でも元8％仕入返品で負になる全額控除を0
   const full=E.calculateDetailedRegular({salesTax:10000,purchaseTax:-6000,taxableSales:100000,totalSales:100000,periodMonths:12,method:'auto'});
   assert.equal(full.regularCredit,-6000);assert.equal(full.amount,16000);
   const partial=E.calculateDetailedRegular({salesTax:10000,purchaseTax:-6000,taxableSales:100000,totalSales:200000,periodMonths:12,method:'individual',taxableOnlyTax:-6000,commonTax:0});
-  assert.equal(partial.amount,null);assert.match(partial.unavailableReasons.join(''),/元の用途.*控除割合/);
+  assert.equal(partial.amount,16000);assert.equal(partial.regularCredit,-6000);assert.match(partial.assumptions.join(''),/符号付き/);
 });

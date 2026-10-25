@@ -162,7 +162,7 @@
     }
     const rowFood=[...rowGroups.values()].reduce((total,group)=>total+group.food,0);
     if(!close(rowFood,amount)) return fallback('食品内数と現在行の合計が一致しません。');
-    const rawGroups=Array.isArray(input.monthlyGroups) ? input.monthlyGroups : [];
+    const rawGroups=(Array.isArray(input.monthlyGroups) ? input.monthlyGroups : []).filter(group=>input.row?.estimatePart!=='ordinary' || group.transactionKind!=='adjustment' && Number(group.amount)>=0);
     const detailGroups=Array.isArray(input.foodMonthlyGroups) ? input.foodMonthlyGroups : null;
     const sourceByKey=new Map(),foodByKey=new Map();
     for(const [sourceGroups,destination] of [[rawGroups,sourceByKey],[detailGroups || [],foodByKey]]){

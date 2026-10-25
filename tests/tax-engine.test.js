@@ -674,9 +674,11 @@ test('CSVインジェクション文字列を無害化する', () => {
 test('リリースメタデータを最新版から一元生成する', () => {
   assert.equal(release.APP_META.version, release.RELEASE_HISTORY[0].version);
   assert.equal(release.APP_META.updatedAt, release.RELEASE_HISTORY[0].date);
-  assert.equal(release.APP_META.version, 'r36.0.4');
+  assert.equal(release.APP_META.version, 'r36.0.5');
   assert.equal(release.RELEASE_HISTORY[0].recalcRecommended,true);
-  assert.match(release.RELEASE_HISTORY[0].title,/食品対象期間額.*計算停止/);
+  assert.match(release.RELEASE_HISTORY[0].title,/確定CSV.*注意付き概算/);
+  const precisionRelease=release.RELEASE_HISTORY.find(item=>item.version==='r36.0.4');
+  assert.match(precisionRelease.title,/食品対象期間額.*計算停止/);
   assert.doesNotMatch(release.RELEASE_HISTORY[0].title,/未公開/);
   const videoRelease=release.RELEASE_HISTORY.find(item=>item.version==='r36.0.3');
   assert.equal(videoRelease.recalcRecommended,false);

@@ -801,37 +801,35 @@
       assumptions.assumedBusinessCount += 1;
       assumptions.assumedBusinessAmount += SUPPORTED_RATES.reduce((sum, rate) => sum + Math.abs(group.amounts[rate]), 0);
     });
-    const floorEstimate = (amounts, rate, kind) => {
-      if(rate === '1' || !(amounts[rate] < 0)) return;
+    const recordNegativeEstimate = (amounts, rate, kind) => {
+      if(!(amounts[rate] < 0)) return;
       const amount = amounts[rate];
       assumptions.negativeBuckets.push({kind, rate, amount});
       assumptions.negativeBucketCount += 1;
       assumptions.negativeAbsAmount += Math.abs(amount);
-      amounts[rate] = 0;
     };
     const returnCovered = rate => allowReturnOnlySales && rate !== '1'
       && Number(analysis.returnSales.returnGross[rate] || 0) <= Number(analysis.returnSales.taxableGross[rate] || 0);
     BUSINESS_TYPE_KEYS.forEach(key => SUPPORTED_RATES.forEach(rate => {
       if(!returnCovered(rate) || analysis.salesByType[key][rate] + analysis.returnGrossByType[key][rate] < 0)
-        floorEstimate(analysis.salesByType[key], rate, 'sales');
+        recordNegativeEstimate(analysis.salesByType[key], rate, 'sales');
     }));
     analysis.unclassifiedSales.forEach(group => SUPPORTED_RATES.forEach(rate => {
       if(!returnCovered(rate) || group.amounts[rate] + group.returnGross[rate] < 0)
-        floorEstimate(group.amounts, rate, 'sales');
+        recordNegativeEstimate(group.amounts, rate, 'sales');
     }));
     Object.values(analysis.purchaseAmountsByUse).forEach(groups => {
-      SUPPORTED_RATES.forEach(rate => floorEstimate(groups.invoice, rate, 'invoicePurchase'));
-      EXEMPT_RATIOS.forEach(ratio => SUPPORTED_RATES.forEach(rate => floorEstimate(groups.exempt[ratio], rate, 'exemptPurchase')));
+      SUPPORTED_RATES.forEach(rate => recordNegativeEstimate(groups.invoice, rate, 'invoicePurchase'));
+      EXEMPT_RATIOS.forEach(ratio => SUPPORTED_RATES.forEach(rate => recordNegativeEstimate(groups.exempt[ratio], rate, 'exemptPurchase')));
     });
     if(analysis.nonTaxableSales < 0){
       // The non-taxable aggregate has no tax rate to assume or display.
       assumptions.negativeBuckets.push({kind:'nonTaxableSales', rate:'', amount:analysis.nonTaxableSales});
       assumptions.negativeBucketCount += 1;
       assumptions.negativeAbsAmount += Math.abs(analysis.nonTaxableSales);
-      analysis.nonTaxableSales = 0;
     }
     if(assumptions.negativeBucketCount){
-      // Rebuild totals from usage leaves, never floor both totals and leaves.
+      // Rebuild signed totals from the same usage leaves.
       analysis.invoicePurchases = emptyRateAmounts();
       analysis.exemptPurchases = emptyExemptPurchases();
       Object.values(analysis.purchaseAmountsByUse).forEach(groups => {
@@ -840,16 +838,12 @@
       });
       analysis.purchaseTaxByUse = calculatePurchaseTaxByUse(analysis.purchaseAmountsByUse);
     }
-    const negativeOnePercent = BUSINESS_TYPE_KEYS.some(key => analysis.salesByType[key]['1'] < 0)
-      || analysis.unclassifiedSales.some(group => group.amounts['1'] < 0)
-      || Object.values(analysis.purchaseAmountsByUse).some(groups => groups.invoice['1'] < 0 || EXEMPT_RATIOS.some(ratio => groups.exempt[ratio]['1'] < 0));
-    if(analysis.negativeAggregateError && !negativeOnePercent){
+    if(analysis.negativeAggregateError){
       // Only the explicitly handled aggregate guard can be removed. Individual
       // errors, unsupported categories and fatal CSV structure are never hidden.
       analysis.errors = analysis.errors.filter(error => error !== analysis.negativeAggregateError);
       analysis.negativeAggregateError = '';
     }
-    if(negativeOnePercent) analysis.errors.push('明示1％取引の差引後金額がマイナスです。1％実績・返品の扱いは自動補完せず、元明細を確認して補正してください。');
     assumptions.assumedDetailCount = analysis.problemEntries.filter(problem => problem.status === 'corrected' && assumedIds.has(problem.id)).length;
     const recoverySummary = {...analysis.recoverySummary, ...assumptions, correctedCount:analysis.recoverySummary.correctedCount - assumptions.assumedDetailCount};
     analysis.recoverySummary = recoverySummary;

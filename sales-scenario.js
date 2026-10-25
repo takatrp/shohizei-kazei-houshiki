@@ -50,7 +50,9 @@
         if(actual){row.actualFood1 += amount; row.actualFood1Tax += tax; row.actualOneGross += gross;}
       }
     }
-    sales.forEach((source,index) => {
+    const scenarioRows=sales.flatMap((source,index)=>{const part=engine.estimateCsvRowParts(source,{side:'sales',groups:options.sourceGroups});assumptions.push(...part.assumptions);return part.rows.map(source=>({source,index}));});
+    scenarioRows.forEach(({source,index}) => {
+      if(source.forecastAssumption)assumptions.push(source.forecastAssumption);
       const code = String(source?.code || '');
       if(code === '3') return;
       if(!code && !String(source?.amount ?? '').trim()) return;
@@ -67,13 +69,12 @@
       const key = types.some(type => type.key === source.businessType) ? source.businessType : 'unclassified';
       const row = rowFor(key);
       const returned = code === '11' || parsed.value < 0 || source.transactionKind === 'adjustment';
-      if(code==='11'&&source.originalTaxableState==='exempt'){
+      if(returned&&source.originalTaxableState==='exempt'){
         assumptions.push('免税事業者であった期間の元売上に係る返品は、返還等対価に係る税額控除へ含めていません。元の返金額・符号は入力行に保持しています。');
         return;
       }
-      if(code==='11'&&source.originalTaxableState!==undefined&&source.originalTaxableState!=='taxable'){
-        errors.push(`売上行${index+1}の元取引時の課税・免税状態が未確認のため、返還控除を確定できません。`);
-        return;
+      if(returned&&source.originalTaxableState!==undefined&&source.originalTaxableState!=='taxable'){
+        assumptions.push(`売上行${index+1}の返還は元課税状態が未確認のため、CSVの課税区分・元税率に従う課税売上の調整と仮定しています。免税期間の元取引なら控除額が変わります。`);
       }
       // Code 11 stores return-direction input: invert once, including a
       // negative cancellation of a return. CSV actual entries below already
@@ -81,9 +82,7 @@
       const gross = code === '11' ? -parsed.value : parsed.value;
       row.entered = true; row.hasReturns ||= returned;
       if(rate === 8) row.originalAmount8 += amountFor(gross,8);
-      const eligible = !returned && !(Number(source.sourceAdjustmentCount) > 0);
-      if(foodScenario && rate === 8 && food.entered && food.value !== 0 && !returned && !eligible)
-        errors.push(`売上行${index+1}は通常取引と返品・調整の集計内訳が未確認のため、食品1％対象額を確定できません。元税率別の行内訳を確認してください。`);
+      const eligible = !returned;
       let foodOriginal = 0;
       if(foodScenario && rate === 8 && food.entered && eligible){
         row.foodInputAmount += amountFor(food.value,8);
@@ -104,15 +103,20 @@
       }
     });
     actualEntries.filter(entry => entry?.kind === 'sale').forEach((entry,index) => {
+      if(entry.forecastAssumption)assumptions.push(entry.forecastAssumption);
       const parsed = parse(entry.amount);
       const assessment = engine.assessCsvOnePercentEntry(entry);
       if((options.periodStart && (!entry.date || entry.date < options.periodStart))
         || (options.periodEnd && (!entry.date || entry.date > options.periodEnd))){
-        errors.push(`CSV明示1％売上${index+1}件目の取引日は対象課税期間外です。将来期の実績へ流用しません。`);return;
+        assumptions.push(`CSV明示1％売上${index+1}件目は対象期との日付対応が未確認のため、入力額を対象期の代理とする概算です。対象期の実績とは確定していません。`);
       }
-      if(!foodScenario || !parsed.valid || !parsed.entered || assessment.status !== 'confirmed'){
+      if(!parsed.valid || !parsed.entered || entry.ratePercent!==undefined&&Number(entry.ratePercent)!==1){
         errors.push(`CSV明示1％売上${index+1}件目: ${assessment.reason || '食品1％シナリオと元取引を確認してください。'}`);return;
       }
+      const originalRate=Number(entry.originalRatePercent);
+      const effectiveRate=(entry.transactionKind==='adjustment' || parsed.value<0) && [1,8,10].includes(originalRate) ? originalRate : 1;
+      if(effectiveRate!==1) assumptions.push(`CSV明示1％売上${index+1}件目の返品・調整は、既知の元税率${effectiveRate}％と符号を優先して計算しています。入力1％との相違を元資料で確認してください。`);
+      else if(assessment.status !== 'confirmed' || !foodScenario) assumptions.push(`CSV明示1％売上${index+1}件目は元取引の詳細が未確認のため、入力税率1％と符号を使う概算です。元税率が異なる場合の差額は未確定です。`);
       const row = rowFor(types.some(type => type.key === entry.businessType) ? entry.businessType : 'unclassified');
       row.entered = true;
       row.hasReturns ||= entry.transactionKind === 'adjustment';
@@ -123,14 +127,16 @@
         assumptions.push('免税期間の元売上に係る明示1％返還実績は、返還控除へ含めていません。');return;
       }
       if(entry.transactionKind==='adjustment'&&entry.originalTaxableState!==undefined&&entry.originalTaxableState!=='taxable'){
-        errors.push(`CSV明示1％売上${index+1}件目の元取引時の課税・免税状態が未確認のため、返還控除を確定できません。`);return;
+        assumptions.push(`CSV明示1％売上${index+1}件目の返還は元課税状態が未確認のため、入力税率の課税売上調整と仮定しています。`);
       }
-      if(entry.transactionKind !== 'adjustment' && gross < 0){errors.push(`CSV明示1％売上${index+1}件目の符号を確認してください。`);return;}
-      add(row,gross,1,{actual:true});
+      if(entry.transactionKind !== 'adjustment' && gross < 0) assumptions.push(`CSV明示1％売上${index+1}件目の負額は、取引種別が未確認の符号付き調整として概算に保持しています。`);
+      if(effectiveRate===8) row.originalAmount8 += amountFor(gross,8);
+      add(row,gross,effectiveRate,{actual:true});
     });
     const rows = [...rowMap.values()];
     const simplifiedBusinessUnknown = rows.some(row => row.businessTypeUnknown && row.entered);
-    const base = engine.calculateSimplifiedTax(rows.filter(row => !row.businessTypeUnknown));
+    const base = engine.calculateSimplifiedTax(rows.filter(row => !row.businessTypeUnknown),{estimateSignedReturns:true});
+    assumptions.push(...base.assumptions || []);
     const simplified = simplifiedBusinessUnknown ? {...base,amount:null,deemedCredit:null,methodLabel:'事業区分未確認',
       foodOnePercentTax:rows.reduce((sum,row) => sum + row.foodOnePercentTax,0)} : base;
     // Keep method-specific limitations apart from transaction calculation:

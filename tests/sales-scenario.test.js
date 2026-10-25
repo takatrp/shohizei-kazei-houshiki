@@ -6,7 +6,7 @@ const sale = (amount,foodAmount = amount,extra = {}) => ({code:'1',rate:'8',amou
 const options = {taxScenario:'foodProposal',foodForecastMethod:'manual',proposalFraction:1,foodSalesPriceBasis:'netFixed'};
 const close = (a,b) => assert.ok(Math.abs(a-b)<1e-7,`${a} != ${b}`);
 
-test('⑤ 食品売上と旧8%返品を集計前に分け、本則を計算し簡易の不足だけを返す', () => {
+test('⑤ 食品売上と旧8%返品を分け、簡易も符号付き通常計算の概算を返す', () => {
   const sales = [sale(216000),sale(108000,108000,{code:'11'})];
   const before = structuredClone(sales);
   const result = collectSalesScenario({sales},options);
@@ -15,9 +15,10 @@ test('⑤ 食品売上と旧8%返品を集計前に分け、本則を計算し�
   assert.equal(result.totalTaxableBase,100000);
   assert.equal(result.rows[1].amountFood1,202000);
   assert.equal(result.rows[1].amount8,-108000);
-  assert.equal(result.simplified.amount,null);
+  assert.equal(result.simplified.amount,-1600);
   assert.equal(result.errors.length,0);
-  assert.match(result.methodErrors.join(' '),/個別確認/);
+  assert.deepEqual(result.methodErrors,[]);
+  assert.match(result.assumptions.join(' '),/75％特例は使用せず/);
   assert.deepEqual(sales,before);
 });
 
@@ -58,8 +59,15 @@ test('⑤ 元1%取引が判明した終了直後返品は食品同額控除を�
   assert.equal(result.simplified.foodOnePercentTax,-100);
   assert.equal(result.simplified.deemedCredit,-100);
   assert.equal(result.simplified.amount,0);
-  const unknown = collectSalesScenario({actualOnePercentEntries:[{...known,originalRatePercent:undefined}]},options);
-  assert.match(unknown.errors.join(' '),/元取引/);
+  const unconfirmed={...known,originalRatePercent:undefined};
+  const before=structuredClone(unconfirmed);
+  const unknown = collectSalesScenario({actualOnePercentEntries:[unconfirmed]},options);
+  assert.deepEqual(unknown.errors,[]);
+  assert.equal(unknown.totalAmount,-10100);
+  assert.equal(unknown.totalTax,-100,'元情報未確認でも読める1％返還を0円にしない');
+  assert.equal(unknown.simplified.foodOnePercentTax,-100);
+  assert.ok(unknown.assumptions.length>0,'入力1％を代理仮定した注意を返す');
+  assert.deepEqual(unconfirmed,before);
 });
 
 test('⑤ 現行シナリオの返品符号と税込→税抜の換算は一度だけ', () => {
@@ -113,8 +121,14 @@ test('明示1％の返品取消は元帳の正符号を保持し、再び負の�
   assert.equal(result.simplified.deemedCredit,100);
   assert.equal(result.simplified.amount,0);
   assert.deepEqual(known,before);
-  const unresolved=collectSalesScenario({actualOnePercentEntries:[{...known,originalDate:''}]},options);
-  assert.match(unresolved.errors.join(' '),/元取引/);
+  const unconfirmed={...known,originalDate:''};
+  const unconfirmedBefore=structuredClone(unconfirmed);
+  const unresolved=collectSalesScenario({actualOnePercentEntries:[unconfirmed]},options);
+  assert.deepEqual(unresolved.errors,[]);
+  assert.equal(unresolved.totalAmount,10100);
+  assert.equal(unresolved.totalTax,100,'未確認の返品取消を負の返品や0円にしない');
+  assert.ok(unresolved.assumptions.length>0);
+  assert.deepEqual(unconfirmed,unconfirmedBefore);
 });
 
 test('売上返還11の元取引が免税なら控除せず、明示未確認と旧未指定を区別',()=>{
@@ -126,9 +140,15 @@ test('売上返還11の元取引が免税なら控除せず、明示未確認と
   assert.match(proposal.assumptions.join(' '),/免税.*返還/);
   const current=collectSalesScenario({sales},{...options,taxScenario:'current'});
   assert.equal(current.totalTax,16000); // net 200000 * 8%
-  const unknown=collectSalesScenario({sales:[sales[0],{...sales[1],originalTaxableState:'unknown'}]},options);
-  assert.match(unknown.errors.join(' '),/課税・免税状態/);
+  const unconfirmedSales=[sales[0],{...sales[1],originalTaxableState:'unknown'}];
+  const unconfirmedBefore=structuredClone(unconfirmedSales);
+  const unknown=collectSalesScenario({sales:unconfirmedSales},options);
+  assert.deepEqual(unknown.errors,[]);
+  assert.equal(unknown.totalTax,-6000,'未確認の返還は元8％を仮定し、明示免税とは分ける');
+  assert.equal(unknown.totalAmount,94000);
+  assert.ok(unknown.assumptions.length>0);
   assert.equal(unknown.rows[1].forecastFood1,202000,'関係する返品不足で他の食品売上を消さない');
+  assert.deepEqual(unconfirmedSales,unconfirmedBefore,'未確認を課税確認済みへ変更しない');
   const legacy=collectSalesScenario({sales:[sales[0],sale(108000,108000,{code:'11'})]},options);
   assert.equal(legacy.totalTax,-6000,'旧未指定の分類意味を変更しない');
   assert.deepEqual(sales,before,'返金額・符号と資料の分類状態を変更しない');
@@ -140,7 +160,36 @@ test('明示1％返還の元課税状態も免税・未確認・旧未指定を�
   const exempt=collectSalesScenario({actualOnePercentEntries:[{...entry,originalTaxableState:'exempt'}]},options);
   assert.equal(exempt.totalTax,0);
   assert.equal(exempt.errors.length,0);
-  const unknown=collectSalesScenario({actualOnePercentEntries:[{...entry,originalTaxableState:'unknown'}]},options);
-  assert.match(unknown.errors.join(' '),/課税・免税状態/);
+  const unconfirmed={...entry,originalTaxableState:'unknown'};
+  const before=structuredClone(unconfirmed);
+  const unknown=collectSalesScenario({actualOnePercentEntries:[unconfirmed]},options);
+  assert.deepEqual(unknown.errors,[]);
+  assert.equal(unknown.totalTax,-100);
+  assert.equal(unknown.totalAmount,-10100);
+  assert.ok(unknown.assumptions.length>0);
+  assert.deepEqual(unconfirmed,before);
   assert.equal(collectSalesScenario({actualOnePercentEntries:[entry]},options).totalTax,-100);
+});
+
+test('読める明示1％実績の期間不一致は入力税率の代理仮定とし、元日付を保持する',()=>{
+  const entry={kind:'sale',date:'2026-01-15',transactionKind:'ordinary',amount:10100,
+    ratePercent:1,businessType:'type2',source:'csvActual'};
+  const before=structuredClone(entry);
+  const result=collectSalesScenario({actualOnePercentEntries:[entry]},
+    {...options,periodStart:'2028-01-01',periodEnd:'2028-12-31'});
+  assert.deepEqual(result.errors,[]);
+  assert.equal(result.totalAmount,10100);assert.equal(result.totalTax,100);
+  assert.ok(result.assumptions.length>0);
+  assert.deepEqual(entry,before,'対象期の日付や別の税率へ元データを書き換えない');
+});
+
+test('明示1％実績の読めない金額・矛盾する税率は注意だけで通さない',()=>{
+  const entry={kind:'sale',date:'2028-04-01',transactionKind:'ordinary',amount:10100,
+    ratePercent:1,businessType:'type2',source:'csvActual'};
+  for(const change of [{amount:'not-an-amount'},{amount:''},{ratePercent:8}]){
+    const source={...entry,...change},before=structuredClone(source);
+    const result=collectSalesScenario({actualOnePercentEntries:[source]},options);
+    assert.ok(result.errors.length>0,JSON.stringify(change));
+    assert.deepEqual(source,before);
+  }
 });

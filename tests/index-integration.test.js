@@ -11,6 +11,7 @@ const returnEngine = require('../tax-return-engine.js');
 const electionDeadline = require('../election-deadline.js');
 const switchDecision = require('../switch-decision.js');
 const taxRows = require('../tax-entry-rows.js');
+const salesScenario = require('../sales-scenario.js');
 const inputDiagnostics = require('../input-diagnostics.js');
 const { rowsFromJournalAnalysis } = require('../tax-entry-csv.js');
 const { DEFERRED_LIMITATIONS } = require('../release-history.js');
@@ -224,7 +225,9 @@ test('匿名のTKC行→CSV反映→申告調整→方式比較まで同じ申�
   const incomplete = h.context.calculate();
   assert.equal(incomplete.returnCalculation.complete,false);
   assert.match(incomplete.inputUnconfirmedItems.join(' '),/申告書計算：未算定/);
-  assert.equal(incomplete.methods.find(method => method.key === 'regular').amount,null);
+  assert.equal(incomplete.methods.find(method => method.key === 'regular').amount,incomplete.regular.amount);
+  assert.ok(Number.isFinite(incomplete.regular.amount));
+  assert.equal(incomplete.comparisonProvisional,true);
 });
 
 function exactRowsHarness({sales=11000123,purchases=5500321,methods=['regular']} = {}){
@@ -320,6 +323,57 @@ function provisionalCsvHarness(source, methods=['regular']){
   h.context.selectedComparisonMethods = () => methods;
   return h;
 }
+
+test('[CSV1-P1] 明示1％売上を含む現行概算を通常行だけの申告再現額で上書きしない', () => {
+  const h = provisionalCsvHarness(csv([
+    csvRow({rate:'10',amount:1100000}),
+    csvRow({rate:'1',amount:101000}),
+    csvRow({side:'借方',code:'5',rate:'10',amount:110000})
+  ]), ['regular','simplified','special2','special3']);
+  h.context.ShohizeiSalesScenario = salesScenario;
+  h.context.applyJournalImport();
+  h.element('taxScenarioCurrent').checked = true;
+  h.element('taxScenarioFood1').checked = false;
+  const calc = h.context.calculate();
+  assert.equal(calc.comparisonReady,true,JSON.stringify(calc.inputErrors));
+  assert.equal(calc.sales.totalTax,101000);
+  assert.equal(calc.purchases.totalTax,10000);
+  assert.equal(calc.regular.amount,91000);
+  assert.equal(calc.methods.find(method=>method.key==='regular').amount,91000);
+  assert.equal(calc.returnCalculation.referenceCalculable,false);
+  for(const result of Object.values(calc.salesMethodCalculations)) assert.equal(result.referenceCalculable,false);
+  assert.equal(calc.comparisonProvisional,true);
+  assert.match(calc.inputUnconfirmedItems.join(' '),/CSV明示1％実績.*参考概算/);
+  for(const output of [h.context.buildSummaryText(calc),h.context.buildCsvText(calc)]){
+    assert.match(output,/91000/);
+    assert.match(output,/CSV明示1％実績.*参考概算/);
+  }
+});
+
+test('[CSV1-P1] 保存由来の1％仕入・元8％返還・相殺ゼロも申告再現へ脱落させない', () => {
+  const baseRows=[csvRow({rate:'10',amount:1100000}),csvRow({side:'借方',code:'5',rate:'10',amount:110000})];
+  for(const {entries,expected} of [
+    {entries:[{kind:'invoicePurchase',amount:101000,usage:'taxableOnly'}],expected:89000},
+    {entries:[{kind:'exemptPurchase',amount:101000,creditRatio:.5,usage:'taxableOnly'}],expected:89500},
+    {entries:[{kind:'sale',amount:-1080,transactionKind:'adjustment',originalRatePercent:8,originalTaxableState:'taxable'}],expected:89920},
+    {entries:[{kind:'sale',amount:101000},{kind:'sale',amount:-101000,transactionKind:'adjustment',originalRatePercent:1,originalTaxableState:'taxable'}],expected:90000},
+    {entries:[{kind:'invoicePurchase',amount:0,usage:'taxableOnly'}],expected:90000}
+  ]){
+    const h=provisionalCsvHarness(csv(baseRows));
+    h.context.ShohizeiSalesScenario=salesScenario;
+    h.context.applyJournalImport();
+    const actuals=entries.map(entry=>({ratePercent:1,businessType:'type2',transactionKind:'ordinary',date:'2028-01-15',...entry}));
+    h.context.importedActualOnePercent={source:'csvActual',entries:actuals,...taxRows.summarizeActualOnePercentEntries(actuals)};
+    h.context.syncTaxEntryRows();
+    const calc=h.context.calculate();
+    assert.equal(calc.comparisonReady,true,JSON.stringify(calc.inputErrors));
+    assert.equal(calc.regular.amount,expected,JSON.stringify(entries));
+    assert.equal(calc.methods.find(method=>method.key==='regular').amount,expected,JSON.stringify(entries));
+    assert.equal(calc.returnCalculation.referenceCalculable,false);
+    assert.equal(calc.comparisonProvisional,true);
+    assert.deepEqual(h.context.importedActualOnePercent.entries,actuals);
+  }
+});
 
 test('[R1] CSVの税率仮定だけでも端数処理後の参考額と厳密再現未完了を示す', () => {
   const h = provisionalCsvHarness(csv([
@@ -1015,7 +1069,7 @@ test('[F04/T05] CSV元日付の境界を検証し過年度80％実績は2027年7
   assert.equal(crossing.context.calculate().purchases.purchaseRatioConflicts.length,0);
   crossing.context.taxEntryRows.purchases[0].sourceDateStart = '2026-10-01';
   crossing.context.taxEntryRows.purchases[0].sourceDateEnd = '2026-10-01';
-  assert.match(crossing.context.calculate().regular.unavailableReasons.join(' '),/CSV元取引日/);
+  assert.match(crossing.context.calculate().inputUnconfirmedItems.join(' '),/CSV元取引日/);
   crossing.context.taxEntryRows.purchases[0].sourceDateStart = '2026-09-30';
   crossing.context.taxEntryRows.purchases[0].sourceDateEnd = '2026-09-30';
   const beforeAdjustment = crossing.context.calculate().regular.amount;
@@ -1496,7 +1550,7 @@ test('[第2次P1-1] 詳細欄を閉じても保存済み資産・届出・端数
   const facts = new Map(h.context.buildAssumptionRows(calc));
   assert.equal(facts.get('将来期の届出計画'),'はい・確認済み');
   assert.equal(facts.get('高額特定資産等'),'高額資産の取得制限あり');
-  assert.equal(facts.get('端数処理'),'現行制度の各方式は申告書段階の端数処理後。必要情報不足の方式は未算定');
+  assert.equal(facts.get('端数処理'),'再現可能な方式は申告書段階の端数処理後。再現条件が不足する方式は入力済み金額による参考概算（円表示時に丸め）');
   h.context.renderCurrentRateComparison(calc);
   assert.match(h.element('comparisonPrintContent').innerHTML,/高額資産の取得制限あり/);
   assert.doesNotMatch(h.element('comparisonPrintContent').innerHTML,/詳細試算未使用/);
@@ -1884,7 +1938,7 @@ test('[概算UI04] 仮定確認のキャンセルは現在値・反映済み前�
   assert.equal(h.context.workflowStep, 1);
 });
 
-test('[概算UI05] 負の仕入集計は明示0円仮置きと用途別税額が一致し参考状態になる', () => {
+test('[概算UI05] 負の仕入集計を符号付きで保持し用途別税額と注意付き概算が一致する', () => {
   const h = harness(csv([
     csvRow({rate:'10',amount:1100000}),
     csvRow({side:'借方',code:'5',rate:'10',amount:110000}),
@@ -1893,16 +1947,17 @@ test('[概算UI05] 負の仕入集計は明示0円仮置きと用途別税額が
   installCurrentCalculation(h);
   h.context.applyJournalImport();
   const calc = h.context.calculate();
-  assert.equal(h.element('purchase10').value, '0');
-  assert.equal(h.element('taxableOnlyPurchaseTax').value, '0');
-  assert.equal(calc.purchases.invoiceTax, 0);
-  assert.equal(calc.regular.amount, 100000);
+  assert.equal(h.element('purchase10').value, '-110000');
+  assert.equal(h.element('taxableOnlyPurchaseTax').value, '-10000');
+  assert.equal(calc.purchases.invoiceTax, -10000);
+  assert.equal(calc.regular.amount, 110000);
   assert.equal(calc.csvPartial, true);
-  assert.match(calc.csvRecoveryText, /-110000円→0円/);
+  assert.match(calc.csvRecoveryText, /符号のまま.*-110000円/);
+  assert.doesNotMatch(calc.csvRecoveryText,/→0円/);
   assert.equal(calc.csvRecovery.negativeBucketCount, 1);
 });
 
-test('[概算UI06] 読めない売上は未入力のまま、明示した負売上の0円仮置きと区別する', () => {
+test('[概算UI06] 読めない売上は未入力のまま、読める負売上の保持と区別する', () => {
   const unknown = harness(csv([csvRow({rate:'10',amount:'不明'})]));
   installCurrentCalculation(unknown);
   unknown.context.applyJournalImport();
@@ -1915,19 +1970,19 @@ test('[概算UI06] 読めない売上は未入力のまま、明示した負売�
   installCurrentCalculation(negative);
   negative.context.applyJournalImport();
   calc = negative.context.calculate();
-  assert.equal(negative.element('type2Sale10').value, '0');
+  assert.equal(negative.element('type2Sale10').value, '-11000');
   assert.equal(calc.salesEntryRequired, false);
   assert.equal(calc.csvPartial, true);
 });
 
-test('[概算UI07] 負の明示1％は自動0円化せず入力を保持して手入力経路を案内する', () => {
+test('[概算UI07] 負の明示1％も元の符号と税率を保持して概算へ反映する', () => {
   const h = harness(csv([csvRow({side:'借方',code:'11',rate:'1',amount:1010})]));
   h.element('type2Sale10').value = '555';
-  h.context.window.confirm = () => { throw new Error('不正な推測を反映しない'); };
+  h.context.window.confirm = () => true;
   h.context.applyJournalImport();
-  assert.equal(h.element('type2Sale10').value,'555');
-  assert.equal(h.context.importedCsvRecovery,null);
-  assert.match(h.element('journalImportStatus').textContent,/明示1％.*手入力して進む/);
+  assert.equal(h.context.importedActualOnePercent.entries[0].amount,-1010);
+  assert.equal(h.context.importedActualOnePercent.entries[0].ratePercent,1);
+  assert.ok(h.context.importedCsvRecovery);
 });
 
 test('[概算UI08] 仮定のみでも顧客出力・印刷・未算定の計算過程へ前提を保持する', () => {
@@ -2131,7 +2186,9 @@ test('[C12] 1％へ補正した返品は明示実績と元取引確認を維持�
   assert.equal(review.adjustmentCount, 1);
   assert.equal(h.context.importedActualOnePercent.entries[1].transactionKind, 'adjustment');
   assert.equal(h.context.importedActualOnePercent.entries[1].amount, -1010);
-  assert.equal(h.context.validateImportedOnePercentEntries({ ...period, end:'2028-01-01' }).errors.length, 2);
+  const outside=h.context.validateImportedOnePercentEntries({ ...period, end:'2028-01-01' });
+  assert.equal(outside.errors.length,0);
+  assert.equal(outside.reviewItems.filter(item=>item.kind==='sourcePeriod').length,2);
   h.context.updateJournalRecovery(id, 'action', 'exclude');
   assert.equal(h.context.importedActualOnePercent.entries.length, 2);
   h.context.applyJournalImport();
@@ -2345,9 +2402,11 @@ test('[r18-A][r20] CSVの通常1％は制度期間で検証し、調整は元仕
     assert.equal(entries[0].taxCode, '1');
     assert.equal(entries[0].side, '貸方');
     const selectedYear = date.slice(0,4);
-    const errors = h.context.validateImportedOnePercentEntries({ ...h.ctx, start:`${selectedYear}-01-01`, end:`${selectedYear}-12-31` }).errors;
-    assert.equal(errors.length, date === '2027/04/01' || date === '2029/03/31' ? 0 : 3, date);
-    if(errors.length) assert.match(errors[0], /1％の制度期間外/);
+    const review = h.context.validateImportedOnePercentEntries({ ...h.ctx, start:`${selectedYear}-01-01`, end:`${selectedYear}-12-31` });
+    assert.equal(review.errors.length,0);
+    const notes=review.reviewItems.filter(item=>item.kind==='outsidePeriod');
+    assert.equal(notes.length, date === '2027/04/01' || date === '2029/03/31' ? 0 : 3, date);
+    if(notes.length) assert.match(notes[0].reason, /1％の制度期間外/);
   }
   const adjustment = harness(csv([
     csvRow({ date:'2029/03/31', rate:'1', amount:1010 }),
@@ -2361,7 +2420,7 @@ test('[r18-A][r20] CSVの通常1％は制度期間で検証し、調整は元仕
   assert.match(adjustmentReview.reviewItems[0].reason, /元取引/);
   const missingDate = harness(csv([csvRow({ date:'', rate:'1', amount:1010 })]));
   missingDate.context.applyJournalImport();
-  assert.match(missingDate.context.validateImportedOnePercentEntries(missingDate.ctx).errors.join(' '), /日付不明/);
+  assert.match(missingDate.context.validateImportedOnePercentEntries(missingDate.ctx).reviewItems.map(item=>item.source+' '+item.reason).join(' '), /取引日不明/);
 });
 
 test('[A06][A10] 通常の方式比較でも8％実績から1％仕入を予測できる', () => {
@@ -2600,7 +2659,9 @@ test('[r19-T14-T16][r20] CSV各経路の返品と旧保存値の種別不明は�
   assert.equal(review.errors.length, 0);
   assert.equal(review.reviewItems.length, 3);
   for(const row of [3,5,7]) assert.match(review.reviewItems.map(item => item.source).join(' '), new RegExp(`CSV ${row}行目`));
-  assert.equal(h.context.validateImportedOnePercentEntries({ ...ctx, start:'2028-01-01', end:'2028-12-31' }).errors.filter(error => error.includes('対象課税期間外')).length, 6);
+  const outside=h.context.validateImportedOnePercentEntries({ ...ctx, start:'2028-01-01', end:'2028-12-31' });
+  assert.equal(outside.errors.length,0);
+  assert.equal(outside.reviewItems.filter(item=>item.kind==='sourcePeriod').length,6);
   delete entries[0].transactionKind;
   assert.match(h.context.validateImportedOnePercentEntries(ctx).reviewItems.map(item => item.source + item.reason).join(' '), /CSV 2行目.*取引種別が不明/);
 
@@ -2628,15 +2689,15 @@ test('[r20-W03-W04] 1％返品が未確認でも計算可能なら参考表示�
   assert.equal(decision.execution.eligibility, engine.ELIGIBILITY.UNKNOWN);
   assert.equal(decision.customer.effectiveFrom, '');
   assert.match(decision.customer.reportStatus, /参考試算/);
-  assert.match(decision.customer.confirmations.join(' '), /入力された1％を仮定した参考値/);
+  assert.match(decision.customer.confirmations.join(' '), /入力税率・符号を仮定した参考概算/);
   assert.doesNotMatch(decision.customer.confirmations.join(' '), /元帳・請求書で.*確認してください/);
   for(const output of [h.context.customerDecisionText(decision.customer), h.context.customerDecisionCsv(decision.customer), h.element('customerPrintReport').innerHTML]){
-    assert.match(output, /入力された1％を仮定した参考値/);
+    assert.match(output, /入力税率・符号を仮定した参考概算/);
     assert.doesNotMatch(output, /確認結果と見解を添えて相談/);
   }
   h.context.renderHero({ ...calc, inputErrors:[], hasComparisonInput:true, salesEntryRequired:false, comparisonProvisional:true, best:{ key:'regular', amount:10000 }, sorted:[{ key:'regular', amount:10000 },{ key:'simplified', amount:12000 }], unknownMethods:[], smallDifference:false });
   assert.match(h.element('resultHero').innerHTML, /入力済み金額に基づく参考比較/);
-  assert.match(h.element('resultHero').innerHTML, /元取引の税率は未確認/);
+  assert.match(h.element('resultHero').innerHTML, /元取引.*税率.*未確認/);
   assert.doesNotMatch(h.element('resultHero').innerHTML, /最有利見込み/);
 });
 

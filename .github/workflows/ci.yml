@@ -1,0 +1,29 @@
+name: Regression checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: npm test
+      - run: npm run build
+      - name: Anonymous browser regressions
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/kazei-browser/node_modules/playwright
+          KAZEI_EVIDENCE_DIR: ${{ runner.temp }}/kazei-evidence
+        run: |
+          npm install --prefix "$RUNNER_TEMP/kazei-browser" --no-save --no-package-lock playwright@1.62.1
+          "$RUNNER_TEMP/kazei-browser/node_modules/.bin/playwright" install --with-deps chromium
+          node scripts/csv-return-estimates-browser.cjs
